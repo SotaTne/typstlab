@@ -120,7 +120,7 @@ project/
   figures/               # 生成物（図）
   tables/                # 生成物（表）
 
-  dist/                  # 出力集約先（正）
+  dist/                  # 出力集約先（規約上必須、内容は派生物）
     <paper-id>/
       <output_name>.pdf
 
@@ -317,7 +317,7 @@ state.json は **このマシンにおける実行状態の観測キャッシュ
       "present": true,
       "version": "0.13.1",
       "synced_at": "2026-01-05T10:13:20Z",
-      "source": "official"
+      "source": "official"  // typst/typst リポジトリの docs（5.7.5 参照）
     }
   },
 
@@ -424,7 +424,7 @@ state.json は **このマシンにおける実行状態の観測キャッシュ
       "command": "typstlab build --paper report",
       "description": "Build this paper to PDF",
       "enabled": false,
-      "disabled_reason": "prerequisite action 'install_typst' not completed",
+      "disabled_reason": "Typst 0.13.1 is not resolved",
       "safety": {
         "network": false,
         "writes": true,
@@ -500,7 +500,15 @@ actions は次に実行可能なアクションを提示する。
 - **enabled: true**: 現在実行可能
 - **enabled: false**: 実行不可能、disabled_reason で理由を説明
   - 例: `"network policy is 'never'"`
-  - 例: `"prerequisite action 'install_typst' not completed"`
+  - 例: `"Typst 0.13.1 is not resolved"`
+- **重要**: disabled_reason は「なぜ今できないか（状態）」を説明する
+  - prerequisite は「どうすればよいか（推奨アクション）」を示す
+
+**prerequisite の定義**：
+
+- prerequisite は「状態条件を満たすための推奨アクション」であり、実行履歴ではない
+- enabled 判定は checks の状態から決定される
+- prerequisite はあくまで「この action を実行する前に、これらの action を完了させることを推奨」という宣言
 
 **重要な原則**：
 
@@ -821,6 +829,11 @@ steps:
 | 状態取得系（status, doctor） | exit 0 | exit 0 (JSON 内でエラー) | エージェント操作性 |
 | 実行系（build, watch, new, generate） | exit 0 | exit 1 | CI/CD, 人間の利用 |
 
+**JSON 出力の I/O 規約**：
+
+- `--json` 時は stdout に JSON のみを出力し、stderr には人間向けメッセージを出さない（必要なら `--verbose` 等で制御）
+- これにより、エージェントは stdout を安全にパースでき、stderr を監視する必要がない
+
 ### 5.2 Project Commands
 
 #### 5.2.1 `typstlab new <project-name>`
@@ -1020,6 +1033,13 @@ typstlab sync --apply      # ネットワーク通信・managed install を許�
   - `typstlab typst install <version>`（Typst が未解決の場合のみ）
   - `typstlab typst docs sync`（docs が不整合の場合のみ）
 
+**設計思想の位置づけ**：
+
+- `sync --apply` は **human-oriented convenience command** である
+- MCP / status / doctor が提示する actions の contract とは独立している
+- エージェントは `sync --apply` を使わず、status/doctor の actions を個別に実行すべき
+- この設計により「自動実行判断はエージェント側」という原則を維持しながら、人間向けの利便性も提供する
+
 **重要な原則**:
 
 - デフォルトモードは **SOT（正）を変更しない**
@@ -1153,9 +1173,15 @@ typstlab typst docs sync
 **動作**:
 
 1. 要求バージョンを取得
-2. docs を取得（ソースは要検討）
+2. Typst 公式リポジトリの docs を取得（`source: "official"` は typst/typst の docs/ を指す）
 3. `.typstlab/kb/typst/docs/` に保存
 4. state.json を更新
+
+**v0.1 の最低限 contract**：
+
+- docs は optional（存在しない場合は `status`/`doctor` で warning とし、actions に `sync_docs` を提示）
+- `source: "official"` の定義：typst/typst リポジトリの docs（Markdown 形式）
+- エージェントが Typst の型情報・関数情報を取得できることが目的
 
 **Exit code**: 成功 0, 失敗 1
 
