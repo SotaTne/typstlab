@@ -1,0 +1,12 @@
+[workspace]
+members = [
+  "crates/typstlab",
+  "crates/typstlab-core",
+  "crates/typstlab-typst",
+  "crates/typstlab-watch",
+  "crates/typstlab-mcp",
+  "crates/typstlab-shim",
+  "crates/typstlab-testkit",
+]
+
+resolver = "2"
