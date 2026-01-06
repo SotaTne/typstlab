@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use typstlab_core::{Result, TypstlabError};
-use crate::info::TypstInfo;
+use crate::info::{TypstInfo, TypstSource};
 
 /// Options for resolving the Typst binary
 #[derive(Debug, Clone)]
@@ -123,13 +123,78 @@ fn check_cache(_version: &str) -> Option<TypstInfo> {
 // ============================================================================
 
 /// Resolve Typst from managed cache
-fn resolve_managed(_version: &str) -> Result<Option<TypstInfo>> {
-    unimplemented!("resolve_managed will be implemented in Commit 5")
+///
+/// Checks {cache_dir}/{version}/typst for the binary
+fn resolve_managed(version: &str) -> Result<Option<TypstInfo>> {
+    let cache_dir = managed_cache_dir()?;
+    let version_dir = cache_dir.join(version);
+
+    // Determine binary name based on platform
+    #[cfg(windows)]
+    let binary_name = "typst.exe";
+    #[cfg(not(windows))]
+    let binary_name = "typst";
+
+    let binary_path = version_dir.join(binary_name);
+
+    // Check if binary exists
+    if !binary_path.exists() {
+        return Ok(None);
+    }
+
+    // Validate version matches
+    match validate_version(&binary_path, version) {
+        Ok(true) => {
+            // Version matches, return TypstInfo
+            Ok(Some(TypstInfo {
+                version: version.to_string(),
+                source: TypstSource::Managed,
+                path: binary_path,
+            }))
+        }
+        Ok(false) => {
+            // Version mismatch
+            Ok(None)
+        }
+        Err(_) => {
+            // Error executing or parsing version
+            Ok(None)
+        }
+    }
 }
 
 /// Resolve Typst from system PATH
-fn resolve_system(_version: &str) -> Result<Option<TypstInfo>> {
-    unimplemented!("resolve_system will be implemented in Commit 5")
+///
+/// Uses `which` crate to find typst binary in PATH
+fn resolve_system(version: &str) -> Result<Option<TypstInfo>> {
+    // Use `which` to find typst in PATH
+    let binary_path = match which::which("typst") {
+        Ok(path) => path,
+        Err(_) => {
+            // typst not found in PATH
+            return Ok(None);
+        }
+    };
+
+    // Validate version matches
+    match validate_version(&binary_path, version) {
+        Ok(true) => {
+            // Version matches, return TypstInfo
+            Ok(Some(TypstInfo {
+                version: version.to_string(),
+                source: TypstSource::System,
+                path: binary_path,
+            }))
+        }
+        Ok(false) => {
+            // Version mismatch
+            Ok(None)
+        }
+        Err(_) => {
+            // Error executing or parsing version
+            Ok(None)
+        }
+    }
 }
 
 // ============================================================================
