@@ -1,14 +1,14 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+// Re-export rmcp for convenience
+pub use rmcp;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// Export tools module
+pub mod tools;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+// Re-export the 4 MCP tools with rmcp_tool macro applied
+pub use tools::rules::{rules_get, rules_list, rules_page, rules_search};
+
+// Re-export input/output types for external use
+pub use tools::rules::{
+    FileEntry, RulesGetInput, RulesGetOutput, RulesListInput, RulesListOutput, RulesPageInput,
+    RulesPageOutput, RulesScope, RulesSearchInput, RulesSearchOutput, RulesSubdir, SearchMatch,
+};
