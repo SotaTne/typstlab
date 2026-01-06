@@ -504,10 +504,39 @@ actions は次に実行可能なアクションを提示する。
 
 **safety schema (v0.1)**：
 
-- `network`: boolean
-- `reads`: boolean
+- `network`: boolean（typstlab 自身のネットワーク通信のみ。typst/@preview や uv の内部通信は含まない）
+- `reads`: boolean（プロジェクトルート配下のファイルを読みうるか）
 - `writes`: boolean
 - `writes_sot`: boolean（SOT を変更しうるか）
+
+**network のスコープ**：
+
+- `network` は **typstlab 自身が行うネットワーク通信のみ** を示す
+- Typst の @preview パッケージダウンロード、uv の内部通信、Python スクリプトのネットワーク通信は制御対象外
+- つまり `network: false` でも、外部ツールが内部でネットワーク通信を行う可能性がある
+- エージェントは「typstlab の network ポリシーに準拠する操作」と理解すべき
+
+**reads のスコープ**：
+
+- `reads: true` は、「typstlab が **プロジェクトルート（typstlab.toml の存在するディレクトリ）配下のプロジェクトデータを読みうる** 操作である」ことを意味する
+- 読み取り対象は **プロジェクトデータに限定**される
+- **重要**：typst/uv の解決や検証のために、プロジェクトルート外（managed cache / system binary 等）をローカルに参照することはありうる。これは `reads` の分類対象外である
+- **`reads: false` は「プロジェクトデータを読まない」を意味し、「ファイルシステムを一切読まない」を意味しない**
+
+**symlink ポリシー（v0.1）**：
+
+- typstlab が自前で走査する際は symlink を辿らない（`follow_links = false`）
+- ただし、直接指定されたファイルパスが symlink の場合は読み取り自体は許可する
+- その際、実体がプロジェクトルート外に解決される場合はエラーとする（例：`PROJECT_PATH_ESCAPE`）
+
+**writes_sot のデフォルト原則**：
+
+- `writes_sot` は **デフォルト true** として扱う
+- `writes_sot: false` は「派生物（dist/, _generated/, bin/）/観測物（.typstlab/kb/）/観測キャッシュ（state.json）のみを書き換えることが仕様上保証できる操作」に限る
+- false を付けていい条件（v0.1）：
+  - **条件A**: 出力先が派生物/観測物/観測キャッシュに限定され、かつ SOT（typstlab.toml, paper.toml, main.typ, library.bib, sources.lock, layouts/, pyproject.toml, uv.lock）に触らないことが仕様上保証できる
+  - **条件B**: コマンド自身が SOT への書き込みパスを持たない（例：reads=false, writes=false の場合）
+- この原則により、エージェントは保守的に動作でき、事故を防げる
 
 **enabled と disabled_reason**：
 
@@ -523,6 +552,17 @@ actions は次に実行可能なアクションを提示する。
 - prerequisite は「状態条件を満たすための推奨アクション」であり、実行履歴ではない
 - enabled 判定は checks の状態から決定される
 - prerequisite はあくまで「この action を実行する前に、これらの action を完了させることを推奨」という宣言
+
+**破壊的操作（destructive）の扱い**：
+
+- v0.1 では `destructive` フィールドは追加しない（シンプルさ優先）
+- 代わりに、破壊的操作（削除、クリア等）は **description で明示** する
+  - 良い例: `"Clear Typst docs (destructive)"`, `"Remove generated files"`
+  - エージェントは description から破壊性を推論できる
+- 破壊的操作の典型例：
+  - `typst docs clear`: 観測物の削除（診断情報の喪失）
+  - `clean`: 派生物の削除（再生成コスト）
+- v0.2 以降で `destructive: boolean` の追加を検討
 
 **重要な原則**：
 
@@ -1352,10 +1392,10 @@ bin/uv pip install numpy
 **Safety classification (v0.1)**：
 
 - `writes`: true（uv 実行は書き込みを伴う可能性があるため）
-- `writes_sot`: コマンド内容に応じて判定（不明なら true に倒す）
-  - `uv pip *` → **true**（保守扱い）
-  - `uv add|remove|lock|sync|init *` → **true**
-  - それ以外 → false
+- `writes_sot`: **true**（常に保守的に扱う）
+  - v0.1 では uv exec は常に writes_sot: true とする
+  - uv のコマンドは pyproject.toml / uv.lock（SOT）を変更しうるため
+  - 引数 allowlist によって false を付けることも可能だが、コストの割に価値が薄いため v0.1 では見送り
 
 **Exit code**: uv の exit code をそのまま返す（未解決時は exit 1）
 
@@ -1863,9 +1903,9 @@ v0.1 では簡易的なパターンマッチ：
 - Typst の incremental compilation に任せる
 - typstlab は hash 管理しない（シンプルに）
 
-### 6.7 Network Policy
+### 6.7 Safety Scope Definitions
 
-#### 6.7.1 Scope
+#### 6.7.1 Network Scope
 
 network policy が影響するのは **typstlab 自身が行う通信のみ**：
 
@@ -1882,14 +1922,39 @@ network policy が影響するのは **typstlab 自身が行う通信のみ**：
 - ❌ uv が内部で行うネットワーク通信（v0.1 では typstlab は制御しない）
 - ❌ OS レベル通信
 
-#### 6.7.2 Policy Values
+**詳細は 3.4.4 の network のスコープを参照**。
+
+#### 6.7.2 Reads Scope
+
+`reads: true` が示すのは **プロジェクトルート配下のプロジェクトデータ読み取りのみ**：
+
+- ✅ typstlab.toml, paper.toml, main.typ 等のプロジェクトファイル
+- ✅ refs/, layouts/, papers/ 配下の全ファイル
+- ✅ .typstlab/state.json, bin/ 等の派生物（プロジェクトデータ）
+- ❌ managed cache（`~/Library/Caches/typstlab/...` 等）— ツールチェーン解決の内部実装
+- ❌ system binary（`/usr/bin/typst` 等）— ツールチェーン解決の内部実装
+
+**重要な区別**：
+
+- `reads: false` は「プロジェクトデータを読まない」であり、「ファイルシステムを一切読まない」ではない
+- ツールチェーン解決（typst/uv の検証等）のためのローカル参照は `reads` の分類対象外
+
+**symlink ポリシー**：
+
+- typstlab の自前走査は `follow_links = false`
+- 直接指定されたファイルが symlink の場合は読み取り許可
+- 実体がプロジェクトルート外なら `PROJECT_PATH_ESCAPE` エラー
+
+**詳細は 3.4.4 の reads のスコープを参照**。
+
+#### 6.7.3 Policy Values
 
 | Value | 意味 |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `"auto"` | 通信を許可（デフォルト） |
 | `"never"` | typstlab 自身のネットワーク通信を禁止。ネットワークが必要なコマンドは実行時にエラー。status/doctor は actions を列挙し enabled=false と disabled_reason で示す |
 
-#### 6.7.3 Enforcement
+#### 6.7.4 Network Policy Enforcement
 
 - `network = "never"` 時：
   - `typstlab typst install` → エラー
