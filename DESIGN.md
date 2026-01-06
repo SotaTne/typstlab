@@ -59,6 +59,12 @@ typstlab は人間だけでなく **コードエージェントが操作する�
 - Typst のパッケージ管理は Typst 本体に任せる
 - ただし「何が使われたか」は **観測・記録** する
 
+#### 1.2.4 rules/ は AI agent の「知識」
+
+- `rules/` には Markdown 形式で自由に文書を配置できる
+- AI agent は MCP tools 経由で rules を参照し、プロジェクトの文脈を理解する
+- SOT ではないが、再現性・説明可能性のために git commit を推奨
+
 ### 1.3 Scope (v0.1)
 
 **含むもの**：
@@ -121,6 +127,13 @@ project/
   data/                  # 入力データ（原則immutable）
   figures/               # 生成物（図）
 
+  rules/                 # AI agent向け参考情報（Markdown）
+    paper/               # 論文執筆の規約・ガイド
+    scripts/             # スクリプト実装の補足
+    data/                # データ形式の説明
+    misc/                # その他
+    README.md            # このディレクトリの説明
+
   dist/                  # 出力集約先（規約上必須、内容は派生物）
     <paper-id>/
       <output_name>.pdf
@@ -135,6 +148,8 @@ project/
         refs.typ
       sections/          # splitモード時の本文
       assets/            # paper固有のアセット
+      rules/             # paper固有の参考情報
+        README.md
 
   bin/                   # shim（bin/typst, bin/uv 等）
     typst
@@ -159,6 +174,7 @@ project/
 | 参考文献（セット） | **正** | `refs/sets/<set-id>/library.bib` | git commit |
 | 参考文献履歴（セット） | **正** | `refs/sets/<set-id>/sources.lock` | git commit |
 | レイアウト | **正** | `layouts/**/*.typ` | git commit |
+| rules/ | **参考情報** | `rules/**/*.md`, `papers/<id>/rules/**/*.md` | git commit推奨、AI agent向け |
 | 出力物 | **派生物** | `dist/**/*.pdf` | gitignore、再生成可能 |
 | 生成コード | **派生物** | `papers/*/_generated/*.typ` | gitignore、再生成可能 |
 | bin shim | **派生物** | `bin/typst`, `bin/uv` | gitignore、再生成可能 |
@@ -1594,6 +1610,200 @@ typstlab mcp serve --offline
 
 **Exit code**: 中断まで実行
 
+#### 5.10.2 Provided MCP Tools
+
+##### rules_list
+
+List files in rules/ directories with pagination.
+
+**Input Schema**:
+
+```json
+{
+  "scope": "project" | "paper",
+  "paper_id": "<id>",  // required if scope=paper
+  "subdir": "paper" | "scripts" | "data" | "misc" | null,
+  "cursor": "<opaque>",  // optional, for pagination
+  "limit": 50  // default 50, max 200
+}
+```
+
+**Output Schema**:
+
+```json
+{
+  "files": [
+    {
+      "name": "getting-started.md",
+      "path": "rules/paper/getting-started.md",
+      "size": 1024,
+      "modified": "2026-01-05T10:00:00Z"
+    }
+  ],
+  "total": 10,
+  "has_more": false,
+  "next_cursor": null
+}
+```
+
+**Path Resolution**:
+
+- `scope=project, subdir=null` → `rules/`
+- `scope=project, subdir=paper` → `rules/paper/`
+- `scope=paper, subdir=null` → `papers/<id>/rules/`
+- `scope=paper, subdir=data` → `papers/<id>/rules/data/`
+
+**Constraints**:
+
+- Only .md files
+- No hidden files (starting with .)
+- No symlinks or files resolving outside project root
+- Cursor-based pagination
+
+**Safety classification (v0.1)**:
+
+- `network`: false
+- `reads`: true（rules/ 配下を読む）
+- `writes`: false
+- `writes_sot`: false
+
+##### rules_get
+
+Retrieve full content of a rules file.
+
+**Input Schema**:
+
+```json
+{
+  "path": "rules/paper/guidelines.md"
+}
+```
+
+**Output Schema**:
+
+```json
+{
+  "path": "rules/paper/guidelines.md",
+  "content": "# Guidelines\n...",
+  "size": 2048,
+  "lines": 42,
+  "modified": "2026-01-05T10:00:00Z",
+  "sha256": null  // always null in v0.1
+}
+```
+
+**Constraints**:
+
+- max_bytes: 262144 (256KB)
+- Path must be project-relative
+- Must resolve within project root
+- Error if file > 256KB
+
+**Safety classification (v0.1)**:
+
+- `network`: false
+- `reads`: true
+- `writes`: false
+- `writes_sot`: false
+
+##### rules_page
+
+Retrieve file content in line-based chunks.
+
+**Input Schema**:
+
+```json
+{
+  "path": "rules/data/formats.md",
+  "cursor": "<opaque>",  // optional, references line number
+  "max_lines": 200  // default 200, max 400
+}
+```
+
+**Output Schema**:
+
+```json
+{
+  "path": "rules/data/formats.md",
+  "content": "...",
+  "start_line": 1,
+  "end_line": 200,
+  "total_lines": 500,
+  "has_more": true,
+  "next_cursor": "<opaque>"
+}
+```
+
+**Critical Constraint**:
+
+- **LINE-BASED PAGING** (not byte-based) to prevent UTF-8 corruption
+- Cursor encodes line number
+- Never split multi-byte characters
+
+**Safety classification (v0.1)**:
+
+- `network`: false
+- `reads`: true
+- `writes`: false
+- `writes_sot`: false
+
+##### rules_search
+
+Full-text search across all rules files.
+
+**Input Schema**:
+
+```json
+{
+  "query": "citation format",
+  "scope": "project" | "paper" | "all",
+  "paper_id": "<id>",  // required if scope=paper
+  "limit": 20  // default 20, max 50
+}
+```
+
+**Output Schema**:
+
+```json
+{
+  "matches": [
+    {
+      "path": "rules/paper/citations.md",
+      "line": 42,
+      "excerpt": "...use APA citation format for...",
+      "context_before": "In this project, we",
+      "context_after": "all references."
+    }
+  ],
+  "total": 5
+}
+```
+
+**Constraints**:
+
+- Case-insensitive substring match
+- Return 2 lines context before/after
+- Max 3 matches per file
+
+**Safety classification (v0.1)**:
+
+- `network`: false
+- `reads`: true
+- `writes`: false
+- `writes_sot`: false
+
+**Error Schema** (common to all tools):
+
+```json
+{
+  "error": {
+    "code": "PATH_ESCAPE" | "FILE_TOO_LARGE" | "NOT_FOUND" | "INVALID_INPUT",
+    "message": "...",
+    "details": {}
+  }
+}
+```
+
 ---
 
 ## 6. System Design
@@ -1963,6 +2173,43 @@ network policy が影響するのは **typstlab 自身が行う通信のみ**：
   - `typstlab refs touch` → エラー
   - actions に network=true なものは `enabled: false, disabled_reason: "network policy is 'never'"` で列挙
     - 例: `typst_install`, `docs_sync`, `refs_fetch`, `refs_touch`
+
+### 6.8 Path Security (rules/)
+
+**Prevention of Path Escaping**:
+
+1. No `..` in paths
+2. No absolute paths
+3. Symlinks: direct file access allowed, but must resolve within project root
+4. Error: `PROJECT_PATH_ESCAPE` if resolution fails
+
+**Implementation**:
+
+```rust
+fn validate_path(project_root: &Path, requested: &Path) -> Result<PathBuf> {
+    let canonical = requested.canonicalize()?;
+    if !canonical.starts_with(project_root) {
+        return Err(TypstlabError::ProjectPathEscape {
+            path: requested.to_path_buf()
+        });
+    }
+    Ok(canonical)
+}
+```
+
+**Design Rationale**:
+
+- `canonicalize()` resolves symlinks and normalizes paths
+- `starts_with()` check ensures path is within project root
+- This prevents path traversal attacks while allowing legitimate symlinks
+- Error message includes the attempted path for debugging
+
+**rules/ specific constraints**:
+
+- Only `.md` files are accessible
+- Hidden files (starting with `.`) are excluded
+- Directory traversal with `walkdir` uses `follow_links = false`
+- Direct file access via symlinks is validated with canonicalization
 
 ---
 
