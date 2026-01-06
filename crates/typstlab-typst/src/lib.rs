@@ -1,16 +1,9 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
-
+// Core modules
 pub mod info;
+pub mod resolve;
+pub mod exec;
+
+// Re-export commonly used types
+pub use info::{TypstInfo, TypstSource};
+pub use resolve::{resolve_typst, ResolveOptions, ResolveResult};
+pub use exec::{exec_typst, ExecOptions, ExecResult};
