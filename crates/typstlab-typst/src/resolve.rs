@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
-use typstlab_core::Result;
-use crate::info::{TypstInfo, TypstSource};
+use std::process::Command;
+use typstlab_core::{Result, TypstlabError};
+use crate::info::TypstInfo;
 
 /// Options for resolving the Typst binary
 #[derive(Debug, Clone)]
@@ -35,7 +36,12 @@ pub enum ResolveResult {
 /// - Linux: ~/.cache/typstlab/typst
 /// - Windows: %LOCALAPPDATA%\typstlab\typst
 fn managed_cache_dir() -> Result<PathBuf> {
-    unimplemented!("managed_cache_dir will be implemented in Commit 3")
+    let base = dirs::cache_dir()
+        .ok_or_else(|| TypstlabError::Generic(
+            "Could not determine cache directory".to_string()
+        ))?;
+
+    Ok(base.join("typstlab").join("typst"))
 }
 
 /// Validate that a Typst binary matches the expected version
@@ -43,15 +49,73 @@ fn managed_cache_dir() -> Result<PathBuf> {
 /// Executes: `typst --version`
 /// Parses output: "typst 0.13.1" -> "0.13.1"
 /// Returns: Ok(true) if version matches, Ok(false) if mismatch
-fn validate_version(_path: &Path, _expected: &str) -> Result<bool> {
-    unimplemented!("validate_version will be implemented in Commit 3")
+fn validate_version(path: &Path, expected: &str) -> Result<bool> {
+    // Execute typst --version
+    let output = Command::new(path)
+        .arg("--version")
+        .output()
+        .map_err(|e| TypstlabError::TypstExecFailed(
+            format!("Failed to execute typst --version: {}", e)
+        ))?;
+
+    if !output.status.success() {
+        return Err(TypstlabError::TypstExecFailed(
+            format!("typst --version exited with status: {}", output.status)
+        ));
+    }
+
+    // Parse stdout to extract version
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Match pattern: "typst X.Y.Z" or "typst vX.Y.Z"
+    // Use simple string parsing instead of regex to avoid dependency
+    let version = parse_typst_version(&stdout)
+        .ok_or_else(|| TypstlabError::TypstExecFailed(
+            format!("Could not parse version from typst --version output: {}", stdout)
+        ))?;
+
+    Ok(version == expected)
+}
+
+/// Parse version string from typst --version output
+///
+/// Expected formats:
+/// - "typst 0.13.1"
+/// - "typst v0.13.1"
+fn parse_typst_version(output: &str) -> Option<String> {
+    // Find "typst" in the output
+    let output = output.trim();
+
+    // Look for pattern: "typst" followed by optional "v" and version number
+    for line in output.lines() {
+        let line = line.trim();
+        if line.starts_with("typst") {
+            // Split by whitespace
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                // Second part should be version (possibly with 'v' prefix)
+                let version = parts[1].trim_start_matches('v');
+                // Basic validation: should contain at least one dot
+                if version.contains('.') {
+                    return Some(version.to_string());
+                }
+            }
+        }
+    }
+
+    None
 }
 
 /// Check if a Typst binary is cached in state
 ///
 /// Fast path: returns cached TypstInfo if binary still exists and version matches
+///
+/// Note: This is a simplified implementation for Phase 1.
+/// Full state.json integration will be added in Commit 7.
 fn check_cache(_version: &str) -> Option<TypstInfo> {
-    unimplemented!("check_cache will be implemented in Commit 3")
+    // TODO: Integrate with state.json in Commit 7
+    // For now, always return None (no cache hit)
+    None
 }
 
 // ============================================================================
