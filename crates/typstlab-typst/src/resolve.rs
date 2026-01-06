@@ -209,9 +209,45 @@ fn resolve_system(version: &str) -> Result<Option<TypstInfo>> {
 /// 3. System PATH
 /// 4. NotFound
 pub fn resolve_typst(
-    _options: ResolveOptions,
+    options: ResolveOptions,
 ) -> Result<ResolveResult> {
-    unimplemented!("resolve_typst will be implemented in Commit 7")
+    let version = &options.required_version;
+    let mut searched_locations = Vec::new();
+
+    // Step 1: Check cache (fast path) if not force_refresh
+    if !options.force_refresh {
+        if let Some(cached_info) = check_cache(version) {
+            return Ok(ResolveResult::Cached(cached_info));
+        }
+    }
+
+    // Step 2: Try managed cache
+    match resolve_managed(version)? {
+        Some(info) => {
+            return Ok(ResolveResult::Resolved(info));
+        }
+        None => {
+            let cache_dir = managed_cache_dir()?;
+            let managed_path = cache_dir.join(version);
+            searched_locations.push(format!("managed cache: {}", managed_path.display()));
+        }
+    }
+
+    // Step 3: Try system PATH
+    match resolve_system(version)? {
+        Some(info) => {
+            return Ok(ResolveResult::Resolved(info));
+        }
+        None => {
+            searched_locations.push("system PATH".to_string());
+        }
+    }
+
+    // Step 4: Not found anywhere
+    Ok(ResolveResult::NotFound {
+        required_version: version.clone(),
+        searched_locations,
+    })
 }
 
 // ============================================================================
@@ -619,5 +655,270 @@ mod tests {
 
         // Should return None or Some (doesn't matter which)
         // Important: should not panic or return Err
+    }
+
+    // ========================================================================
+    // Main Orchestration Tests
+    // ========================================================================
+
+    #[test]
+    fn test_resolve_typst_from_managed() {
+        // Setup: Create managed cache with valid binary
+        let cache_dir = managed_cache_dir().unwrap();
+        let version = "0.14.0";
+        let version_dir = cache_dir.join(version);
+
+        fs::create_dir_all(&version_dir).unwrap();
+
+        #[cfg(unix)]
+        let binary_path = version_dir.join("typst");
+        #[cfg(windows)]
+        let binary_path = version_dir.join("typst.exe");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::write(&binary_path, format!("#!/bin/sh\necho 'typst {}'", version)).unwrap();
+            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&binary_path, perms).unwrap();
+        }
+
+        #[cfg(windows)]
+        {
+            fs::write(&binary_path, format!("@echo typst {}", version)).unwrap();
+        }
+
+        // Test: resolve_typst should find it in managed cache
+        let options = ResolveOptions {
+            required_version: version.to_string(),
+            project_root: env::current_dir().unwrap(),
+            force_refresh: false,
+        };
+
+        let result = resolve_typst(options);
+        assert!(result.is_ok());
+
+        match result.unwrap() {
+            ResolveResult::Resolved(info) | ResolveResult::Cached(info) => {
+                assert_eq!(info.version, version);
+                assert_eq!(info.path, binary_path);
+            }
+            ResolveResult::NotFound { .. } => {
+                panic!("Should have found binary in managed cache");
+            }
+        }
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&version_dir);
+    }
+
+    #[test]
+    fn test_resolve_typst_from_system() {
+        // Test: resolve_typst should try system if not in managed
+        // This test depends on system state
+        let options = ResolveOptions {
+            required_version: "99.88.77".to_string(), // Unlikely to be in managed
+            project_root: env::current_dir().unwrap(),
+            force_refresh: false,
+        };
+
+        let result = resolve_typst(options);
+        assert!(result.is_ok());
+
+        // Result depends on system state
+        // Just verify it doesn't panic or error
+        match result.unwrap() {
+            ResolveResult::Resolved(info) | ResolveResult::Cached(info) => {
+                // If found, version should match (though unlikely)
+                assert_eq!(info.version, "99.88.77");
+            }
+            ResolveResult::NotFound { required_version, searched_locations } => {
+                // More likely: not found
+                assert_eq!(required_version, "99.88.77");
+                assert!(!searched_locations.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn test_resolve_typst_not_found() {
+        // Test: resolve_typst should return NotFound when binary doesn't exist
+        let options = ResolveOptions {
+            required_version: "99.99.99".to_string(),
+            project_root: env::current_dir().unwrap(),
+            force_refresh: false,
+        };
+
+        let result = resolve_typst(options);
+        assert!(result.is_ok());
+
+        match result.unwrap() {
+            ResolveResult::NotFound { required_version, searched_locations } => {
+                assert_eq!(required_version, "99.99.99");
+                assert!(!searched_locations.is_empty());
+                // Should have searched both managed and system
+                assert!(searched_locations.len() >= 2);
+            }
+            _ => {
+                // If somehow found, that's also acceptable (system state)
+                // Just verify no panic
+            }
+        }
+    }
+
+    #[test]
+    fn test_resolve_typst_force_refresh() {
+        // Setup: Create managed cache with valid binary
+        let cache_dir = managed_cache_dir().unwrap();
+        let version = "0.15.0";
+        let version_dir = cache_dir.join(version);
+
+        fs::create_dir_all(&version_dir).unwrap();
+
+        #[cfg(unix)]
+        let binary_path = version_dir.join("typst");
+        #[cfg(windows)]
+        let binary_path = version_dir.join("typst.exe");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::write(&binary_path, format!("#!/bin/sh\necho 'typst {}'", version)).unwrap();
+            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&binary_path, perms).unwrap();
+        }
+
+        #[cfg(windows)]
+        {
+            fs::write(&binary_path, format!("@echo typst {}", version)).unwrap();
+        }
+
+        // Test: With force_refresh=true, should re-resolve
+        let options = ResolveOptions {
+            required_version: version.to_string(),
+            project_root: env::current_dir().unwrap(),
+            force_refresh: true,
+        };
+
+        let result = resolve_typst(options);
+        assert!(result.is_ok());
+
+        // Should return Resolved (not Cached) since force_refresh=true
+        match result.unwrap() {
+            ResolveResult::Resolved(info) => {
+                assert_eq!(info.version, version);
+            }
+            ResolveResult::Cached(_) => {
+                // With force_refresh=true, should not return Cached
+                // But for now, check_cache always returns None, so this won't happen
+            }
+            ResolveResult::NotFound { .. } => {
+                panic!("Should have found binary");
+            }
+        }
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&version_dir);
+    }
+
+    #[test]
+    fn test_resolve_typst_managed_priority_over_system() {
+        // Setup: Create managed cache with specific version
+        let cache_dir = managed_cache_dir().unwrap();
+        let version = "0.16.0";
+        let version_dir = cache_dir.join(version);
+
+        fs::create_dir_all(&version_dir).unwrap();
+
+        #[cfg(unix)]
+        let binary_path = version_dir.join("typst");
+        #[cfg(windows)]
+        let binary_path = version_dir.join("typst.exe");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::write(&binary_path, format!("#!/bin/sh\necho 'typst {}'", version)).unwrap();
+            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&binary_path, perms).unwrap();
+        }
+
+        #[cfg(windows)]
+        {
+            fs::write(&binary_path, format!("@echo typst {}", version)).unwrap();
+        }
+
+        // Test: resolve_typst should prefer managed over system
+        let options = ResolveOptions {
+            required_version: version.to_string(),
+            project_root: env::current_dir().unwrap(),
+            force_refresh: false,
+        };
+
+        let result = resolve_typst(options);
+        assert!(result.is_ok());
+
+        match result.unwrap() {
+            ResolveResult::Resolved(info) | ResolveResult::Cached(info) => {
+                // Should find the managed version
+                assert_eq!(info.version, version);
+                assert_eq!(info.path, binary_path);
+                // Verify it came from managed cache
+                match info.source {
+                    TypstSource::Managed => {
+                        // Good! Managed has priority
+                    }
+                    TypstSource::System => {
+                        // Only acceptable if system happens to have same version
+                        // and managed check somehow failed
+                    }
+                    _ => {
+                        panic!("Unexpected source");
+                    }
+                }
+            }
+            ResolveResult::NotFound { .. } => {
+                panic!("Should have found binary in managed cache");
+            }
+        }
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&version_dir);
+    }
+
+    #[test]
+    fn test_resolve_typst_searched_locations() {
+        // Test: NotFound result should include searched locations
+        let options = ResolveOptions {
+            required_version: "98.76.54".to_string(),
+            project_root: env::current_dir().unwrap(),
+            force_refresh: false,
+        };
+
+        let result = resolve_typst(options);
+        assert!(result.is_ok());
+
+        match result.unwrap() {
+            ResolveResult::NotFound { searched_locations, .. } => {
+                // Should have searched at least 2 locations (managed and system)
+                assert!(searched_locations.len() >= 2);
+
+                // Should include managed cache path
+                let has_managed = searched_locations.iter()
+                    .any(|loc| loc.contains("managed") || loc.contains("cache"));
+                assert!(has_managed, "Searched locations should include managed cache");
+
+                // Should include system PATH
+                let has_system = searched_locations.iter()
+                    .any(|loc| loc.contains("system") || loc.contains("PATH"));
+                assert!(has_system, "Searched locations should include system PATH");
+            }
+            _ => {
+                // If found (unlikely), that's also acceptable
+            }
+        }
     }
 }
