@@ -468,7 +468,7 @@ mod tests {
     fn test_resolve_managed_found_exact_version() {
         // Setup: Create managed cache directory with fake typst binary
         let cache_dir = managed_cache_dir().unwrap();
-        let version = "0.13.1";
+        let version = "0.13.1-test-exact";
         let version_dir = cache_dir.join(version);
 
         // Create directory structure
@@ -483,7 +483,7 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::write(&binary_path, "#!/bin/sh\necho 'typst 0.13.1'").unwrap();
+            fs::write(&binary_path, "#!/bin/sh\necho 'typst 0.13.1-test-exact'").unwrap();
             let mut perms = fs::metadata(&binary_path).unwrap().permissions();
             perms.set_mode(0o755);
             fs::set_permissions(&binary_path, perms).unwrap();
@@ -491,7 +491,7 @@ mod tests {
 
         #[cfg(windows)]
         {
-            fs::write(&binary_path, "@echo typst 0.13.1").unwrap();
+            fs::write(&binary_path, "@echo typst 0.13.1-test-exact").unwrap();
         }
 
         // Test: resolve_managed should find the binary
@@ -521,8 +521,8 @@ mod tests {
     fn test_resolve_managed_version_mismatch() {
         // Setup: Create managed cache with wrong version
         let cache_dir = managed_cache_dir().unwrap();
-        let actual_version = "0.12.0";
-        let requested_version = "0.13.1";
+        let actual_version = "0.12.0-test-actual";
+        let requested_version = "0.13.1-test-mismatch";
         let version_dir = cache_dir.join(requested_version);
 
         fs::create_dir_all(&version_dir).unwrap();
@@ -560,7 +560,7 @@ mod tests {
     fn test_resolve_managed_binary_not_executable() {
         // Setup: Create directory but no binary file
         let cache_dir = managed_cache_dir().unwrap();
-        let version = "0.13.1";
+        let version = "0.13.1-test-notexec";
         let version_dir = cache_dir.join(version);
 
         fs::create_dir_all(&version_dir).unwrap();
