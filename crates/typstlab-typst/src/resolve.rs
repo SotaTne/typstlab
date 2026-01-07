@@ -35,7 +35,7 @@ pub enum ResolveResult {
 /// - macOS: ~/Library/Caches/typstlab/typst
 /// - Linux: ~/.cache/typstlab/typst
 /// - Windows: %LOCALAPPDATA%\typstlab\typst
-fn managed_cache_dir() -> Result<PathBuf> {
+pub fn managed_cache_dir() -> Result<PathBuf> {
     let base = dirs::cache_dir()
         .ok_or_else(|| TypstlabError::Generic(
             "Could not determine cache directory".to_string()
