@@ -497,9 +497,15 @@ mod tests {
 
     #[test]
     fn test_validate_version_exact_match() {
+        use tempfile::TempDir;
+
         // Create a fake typst binary for testing
-        let temp_dir = env::temp_dir();
-        let fake_binary = temp_dir.join("fake_typst_exact");
+        let temp_dir = TempDir::new().unwrap();
+
+        #[cfg(unix)]
+        let fake_binary = temp_dir.path().join("typst");
+        #[cfg(windows)]
+        let fake_binary = temp_dir.path().join("typst.bat");
 
         // Create a script that outputs "typst 0.13.1"
         #[cfg(unix)]
@@ -513,31 +519,28 @@ mod tests {
 
         #[cfg(windows)]
         {
-            // On Windows, create a .bat file
-            let fake_binary = temp_dir.join("fake_typst_exact.bat");
             fs::write(&fake_binary, "@echo typst 0.13.1").unwrap();
         }
 
-        #[cfg(unix)]
         let result = validate_version(&fake_binary, "0.13.1");
-        #[cfg(windows)]
-        let result = validate_version(&temp_dir.join("fake_typst_exact.bat"), "0.13.1");
 
         // Should return Ok(true) for exact match
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true);
 
-        // Cleanup
-        #[cfg(unix)]
-        let _ = fs::remove_file(&fake_binary);
-        #[cfg(windows)]
-        let _ = fs::remove_file(temp_dir.join("fake_typst_exact.bat"));
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_validate_version_mismatch() {
-        let temp_dir = env::temp_dir();
-        let fake_binary = temp_dir.join("fake_typst_mismatch");
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+
+        #[cfg(unix)]
+        let fake_binary = temp_dir.path().join("typst");
+        #[cfg(windows)]
+        let fake_binary = temp_dir.path().join("typst.bat");
 
         #[cfg(unix)]
         {
@@ -550,24 +553,16 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let fake_binary = temp_dir.join("fake_typst_mismatch.bat");
             fs::write(&fake_binary, "@echo typst 0.12.0").unwrap();
         }
 
-        #[cfg(unix)]
         let result = validate_version(&fake_binary, "0.13.1");
-        #[cfg(windows)]
-        let result = validate_version(&temp_dir.join("fake_typst_mismatch.bat"), "0.13.1");
 
         // Should return Ok(false) for version mismatch
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false);
 
-        // Cleanup
-        #[cfg(unix)]
-        let _ = fs::remove_file(&fake_binary);
-        #[cfg(windows)]
-        let _ = fs::remove_file(temp_dir.join("fake_typst_mismatch.bat"));
+        // TempDir automatically cleans up
     }
 
     #[test]
@@ -581,8 +576,14 @@ mod tests {
 
     #[test]
     fn test_validate_version_invalid_output() {
-        let temp_dir = env::temp_dir();
-        let fake_binary = temp_dir.join("fake_typst_invalid");
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+
+        #[cfg(unix)]
+        let fake_binary = temp_dir.path().join("typst");
+        #[cfg(windows)]
+        let fake_binary = temp_dir.path().join("typst.bat");
 
         #[cfg(unix)]
         {
@@ -595,23 +596,15 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let fake_binary = temp_dir.join("fake_typst_invalid.bat");
             fs::write(&fake_binary, "@echo invalid output").unwrap();
         }
 
-        #[cfg(unix)]
         let result = validate_version(&fake_binary, "0.13.1");
-        #[cfg(windows)]
-        let result = validate_version(&temp_dir.join("fake_typst_invalid.bat"), "0.13.1");
 
         // Should return error when output can't be parsed
         assert!(result.is_err());
 
-        // Cleanup
-        #[cfg(unix)]
-        let _ = fs::remove_file(&fake_binary);
-        #[cfg(windows)]
-        let _ = fs::remove_file(temp_dir.join("fake_typst_invalid.bat"));
+        // TempDir automatically cleans up
     }
 
     #[test]
@@ -636,12 +629,14 @@ mod tests {
 
     #[test]
     fn test_validate_version_invalid_expected() {
-        let temp_dir = env::temp_dir();
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
 
         #[cfg(unix)]
-        let fake_binary = temp_dir.join("fake_typst_invalid_expected");
+        let fake_binary = temp_dir.path().join("typst");
         #[cfg(windows)]
-        let fake_binary = temp_dir.join("fake_typst_invalid_expected.bat");
+        let fake_binary = temp_dir.path().join("typst.bat");
 
         // Test with invalid expected version format
         let result = validate_version(&fake_binary, "invalid.format");
@@ -652,6 +647,8 @@ mod tests {
             let error_msg = format!("{:?}", e);
             assert!(error_msg.contains("Invalid expected version format"));
         }
+
+        // TempDir automatically cleans up
     }
 
     #[test]
@@ -779,27 +776,7 @@ mod tests {
 
     #[test]
     fn test_resolve_system_found_in_path() {
-        // This test requires a real typst binary in PATH
-        // We'll create a temporary directory and add it to PATH simulation
-        let temp_dir = env::temp_dir();
-        let fake_binary = temp_dir.join("fake_typst_system");
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&fake_binary, "#!/bin/sh\necho 'typst 0.13.1'").unwrap();
-            let mut perms = fs::metadata(&fake_binary).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&fake_binary, perms).unwrap();
-        }
-
-        #[cfg(windows)]
-        {
-            let fake_binary = temp_dir.join("fake_typst_system.bat");
-            fs::write(&fake_binary, "@echo typst 0.13.1").unwrap();
-        }
-
-        // Note: This test will actually fail unless typst is in PATH
+        // Note: This test relies on the system PATH
         // In a real scenario, we'd need to mock `which::which()`
         // For now, we test that the function returns Ok
         let result = resolve_system("0.13.1");
@@ -807,12 +784,6 @@ mod tests {
 
         // The result may be Some or None depending on system state
         // We just verify it doesn't panic or error
-
-        // Cleanup
-        #[cfg(unix)]
-        let _ = fs::remove_file(&fake_binary);
-        #[cfg(windows)]
-        let _ = fs::remove_file(temp_dir.join("fake_typst_system.bat"));
     }
 
     #[test]
