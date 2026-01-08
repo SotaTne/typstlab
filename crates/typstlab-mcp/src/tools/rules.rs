@@ -764,7 +764,6 @@ pub fn rules_search(input: RulesSearchInput, project_root: &Path) -> CoreResult<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[test]
     fn test_validate_rules_path_rejects_absolute() {

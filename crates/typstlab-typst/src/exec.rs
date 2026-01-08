@@ -160,6 +160,11 @@ mod tests {
     // Test Helper Functions
     // ========================================================================
 
+    fn tempdir_in_workspace() -> TempDir {
+        let base = env::current_dir().unwrap();
+        TempDir::new_in(base).unwrap()
+    }
+
     /// Create a fake binary using NamedTempFile::persist() for atomicity
     fn create_fake_binary(path: &std::path::Path, script_content: &str) {
         let parent_dir = path.parent().unwrap();
@@ -201,7 +206,7 @@ mod tests {
 
     #[test]
     fn test_run_command_success() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = tempdir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("fake_typst_success");
@@ -217,7 +222,7 @@ mod tests {
         let args = vec!["--version".to_string()];
         let result = run_command(&fake_binary, &args);
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "run_command failed: {:?}", result.err());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 0);
         assert!(exec_result.stdout.contains("success output"));
@@ -229,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_run_command_failure() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = tempdir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("fake_typst_failure");
@@ -245,7 +250,7 @@ mod tests {
         let args = vec!["compile".to_string()];
         let result = run_command(&fake_binary, &args);
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "run_command failed: {:?}", result.err());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 1);
         assert!(exec_result.stderr.contains("error output"));
@@ -266,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_run_command_captures_stdout_stderr() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = tempdir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("fake_typst_mixed");
@@ -288,7 +293,7 @@ mod tests {
         let args = vec![];
         let result = run_command(&fake_binary, &args);
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "run_command failed: {:?}", result.err());
         let exec_result = result.unwrap();
         assert!(exec_result.stdout.contains("stdout message"));
         assert!(exec_result.stderr.contains("stderr message"));
@@ -298,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_run_command_timing() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = tempdir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("fake_typst_timing");
@@ -314,7 +319,7 @@ mod tests {
         let args = vec![];
         let result = run_command(&fake_binary, &args);
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "run_command failed: {:?}", result.err());
         let exec_result = result.unwrap();
         // Should take at least some time
         assert!(exec_result.duration_ms > 0);
@@ -344,7 +349,7 @@ mod tests {
     #[test]
     fn test_exec_typst_with_resolved_binary() {
         // Setup: Create temp cache with valid binary
-        let temp_cache = TempDir::new().unwrap();
+        let temp_cache = tempdir_in_workspace();
         let version = "0.17.0";
         let version_dir = temp_cache.path().join(version);
 
@@ -387,7 +392,7 @@ mod tests {
     #[test]
     fn test_exec_typst_preserves_exit_code() {
         // Setup: Create binary that exits with specific code
-        let temp_cache = TempDir::new().unwrap();
+        let temp_cache = tempdir_in_workspace();
         let version = "0.18.0";
         let version_dir = temp_cache.path().join(version);
 
@@ -425,7 +430,7 @@ mod tests {
 
         let result = exec_typst_with_override(options, Some(temp_cache.path().to_path_buf()));
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "exec_typst_with_override failed: {:?}", result.err());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 42);
 
