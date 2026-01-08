@@ -562,8 +562,9 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
     let (content, actual_lines, total_lines, has_more) =
         read_lines_range(&path, start_line, input.max_lines)?;
 
-    // Handle empty file: return start_line=0, end_line=0 (special case for empty files)
-    // This maintains both invariants: start_line <= end_line AND end_line <= total_lines
+    // Handle empty file: return start_line=1, end_line=0 (1-indexed with empty range)
+    // Empty range is represented by end_line < start_line (documented API behavior)
+    // This maintains: end_line <= total_lines (0 <= 0) and 1-indexed consistency
     // Allow cursor=None or cursor=1, reject cursor >= 2
     if total_lines == 0 {
         if let Some(cursor_str) = &input.cursor {
@@ -582,8 +583,8 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
         return Ok(RulesPageOutput {
             path: input.path,
             content: String::new(),
-            start_line: 0,
-            end_line: 0,
+            start_line: 1,  // Always 1-indexed (no exceptions)
+            end_line: 0,    // Empty range: end_line < start_line
             total_lines: 0,
             has_more: false,
             next_cursor: None,
@@ -993,7 +994,7 @@ mod bounds_tests_v2 {
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // cursor=1 on empty file should be allowed (Phase 4 behavior)
+        // cursor=1 on empty file should be allowed (Phase 5 behavior)
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: Some("1".to_string()),
@@ -1004,8 +1005,8 @@ mod bounds_tests_v2 {
         assert!(result.is_ok(), "Should allow cursor=1 on empty file");
 
         let output = result.unwrap();
-        assert_eq!(output.start_line, 0, "Empty file should start at line 0 (special case)");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (special case)");
+        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
+        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (empty range)");
         assert_eq!(output.total_lines, 0, "Empty file has 0 lines");
     }
 
@@ -1017,7 +1018,7 @@ mod bounds_tests_v2 {
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // No cursor on empty file should return start_line=0, end_line=0 (Phase 4 behavior)
+        // No cursor on empty file should return start_line=1, end_line=0 (Phase 5 behavior)
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: None,
@@ -1029,8 +1030,8 @@ mod bounds_tests_v2 {
 
         let output = result.unwrap();
         assert_eq!(output.content, "", "Should return empty content");
-        assert_eq!(output.start_line, 0, "Empty file should start at line 0 (special case)");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (special case)");
+        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
+        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (empty range)");
         assert_eq!(output.total_lines, 0, "Should have 0 total lines");
         assert!(!output.has_more, "Should not have more lines");
     }
@@ -1254,8 +1255,8 @@ mod correctness_tests_v3 {
         assert!(result.is_ok(), "Should allow cursor=1 on empty file");
 
         let output = result.unwrap();
-        assert_eq!(output.start_line, 0, "Empty file should start at line 0 (special case)");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (special case)");
+        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
+        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (empty range)");
         assert_eq!(output.total_lines, 0, "Empty file has 0 lines");
         assert_eq!(output.content, "", "Content should be empty");
         assert!(!output.has_more, "Should not have more");
@@ -1270,7 +1271,7 @@ mod correctness_tests_v3 {
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // Empty file with no cursor should return start_line=0, end_line=0 (special case)
+        // Empty file with no cursor should return start_line=1, end_line=0 (1-indexed with empty range)
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: None,
@@ -1281,8 +1282,8 @@ mod correctness_tests_v3 {
         assert!(result.is_ok(), "Should allow no cursor on empty file");
 
         let output = result.unwrap();
-        assert_eq!(output.start_line, 0, "Empty file should start at line 0 (special case)");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (special case)");
+        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
+        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (empty range)");
         assert_eq!(output.total_lines, 0, "Should have 0 total lines");
         assert_eq!(output.content, "", "Content should be empty");
         assert!(!output.has_more, "Should not have more lines");
