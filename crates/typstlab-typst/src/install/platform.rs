@@ -1,4 +1,8 @@
 use crate::Result;
+#[cfg(not(all(
+    any(target_os = "macos", target_os = "linux", target_os = "windows"),
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 use typstlab_core::error::TypstlabError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

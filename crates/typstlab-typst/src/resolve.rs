@@ -305,7 +305,7 @@ pub fn resolve_managed_with_override(
     #[cfg(unix)]
     let binary_path = version_dir.join("typst");
     #[cfg(windows)]
-    let binary_path = version_dir.join("typst.exe");
+    let binary_path = version_dir.join("typst.bat");
 
     if !binary_path.exists() {
         return Ok(None);
@@ -393,7 +393,7 @@ mod tests {
             #[cfg(unix)]
             let binary_path = version_dir.join("typst");
             #[cfg(windows)]
-            let binary_path = version_dir.join("typst.exe");
+            let binary_path = version_dir.join("typst.bat");
 
             #[cfg(unix)]
             {
@@ -734,7 +734,7 @@ mod tests {
         #[cfg(unix)]
         let binary_path = version_dir.join("typst");
         #[cfg(windows)]
-        let binary_path = version_dir.join("typst.exe");
+        let binary_path = version_dir.join("typst.bat");
 
         #[cfg(unix)]
         {
