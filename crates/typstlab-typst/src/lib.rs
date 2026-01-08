@@ -98,11 +98,11 @@
 //! - **Windows**: `%LOCALAPPDATA%\typstlab\typst\{version}\typst.exe`
 
 // Core modules
+pub mod exec;
 pub mod info;
 pub mod resolve;
-pub mod exec;
 
 // Re-export commonly used types
+pub use exec::{ExecOptions, ExecResult, exec_typst};
 pub use info::{TypstInfo, TypstSource};
-pub use resolve::{resolve_typst, ResolveOptions, ResolveResult};
-pub use exec::{exec_typst, ExecOptions, ExecResult};
+pub use resolve::{ResolveOptions, ResolveResult, resolve_typst};

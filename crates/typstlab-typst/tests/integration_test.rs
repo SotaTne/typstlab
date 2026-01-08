@@ -11,11 +11,7 @@ use typstlab_typst::{ExecOptions, ResolveOptions, ResolveResult};
 use std::os::unix::fs::PermissionsExt;
 
 /// Helper function to create a fake typst binary in a temp directory
-fn create_fake_typst_in_temp(
-    temp_dir: &TempDir,
-    version: &str,
-    script_content: &str
-) -> PathBuf {
+fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: &str) -> PathBuf {
     let version_dir = temp_dir.path().join(version);
     fs::create_dir_all(&version_dir).unwrap();
 
@@ -68,8 +64,9 @@ exit 0
 
     let resolve_result = typstlab_typst::resolve::resolve_typst_with_override(
         resolve_options,
-        Some(temp_cache.path().to_path_buf())
-    ).unwrap();
+        Some(temp_cache.path().to_path_buf()),
+    )
+    .unwrap();
 
     // Verify resolution succeeded
     match resolve_result {
@@ -89,8 +86,9 @@ exit 0
 
     let exec_result = typstlab_typst::exec::exec_typst_with_override(
         exec_options,
-        Some(temp_cache.path().to_path_buf())
-    ).unwrap();
+        Some(temp_cache.path().to_path_buf()),
+    )
+    .unwrap();
 
     // Verify execution succeeded
     assert_eq!(exec_result.exit_code, 0);
@@ -115,7 +113,7 @@ fn test_e2e_binary_not_found() {
     // Should fail because binary cannot be resolved
     let result = typstlab_typst::exec::exec_typst_with_override(
         exec_options,
-        Some(temp_cache.path().to_path_buf())
+        Some(temp_cache.path().to_path_buf()),
     );
     assert!(result.is_err());
 
@@ -141,8 +139,9 @@ exit 1
 
     let exec_result = typstlab_typst::exec::exec_typst_with_override(
         exec_options,
-        Some(temp_cache.path().to_path_buf())
-    ).unwrap();
+        Some(temp_cache.path().to_path_buf()),
+    )
+    .unwrap();
 
     // Verify error was captured
     assert_eq!(exec_result.exit_code, 1);
@@ -168,8 +167,9 @@ fn test_e2e_force_refresh() {
 
     let result1 = typstlab_typst::resolve::resolve_typst_with_override(
         resolve_options,
-        Some(temp_cache.path().to_path_buf())
-    ).unwrap();
+        Some(temp_cache.path().to_path_buf()),
+    )
+    .unwrap();
     assert!(matches!(result1, ResolveResult::Resolved(_)));
 
     // Second resolve with force_refresh should still work
@@ -181,8 +181,9 @@ fn test_e2e_force_refresh() {
 
     let result2 = typstlab_typst::resolve::resolve_typst_with_override(
         resolve_options,
-        Some(temp_cache.path().to_path_buf())
-    ).unwrap();
+        Some(temp_cache.path().to_path_buf()),
+    )
+    .unwrap();
     assert!(matches!(result2, ResolveResult::Resolved(_)));
 
     // TempDir automatically cleans up
@@ -206,8 +207,9 @@ fn test_e2e_various_exit_codes() {
 
     let exec_result = typstlab_typst::exec::exec_typst_with_override(
         exec_options,
-        Some(temp_cache.path().to_path_buf())
-    ).unwrap();
+        Some(temp_cache.path().to_path_buf()),
+    )
+    .unwrap();
     assert_eq!(exec_result.exit_code, 42);
 
     // TempDir automatically cleans up
@@ -241,8 +243,9 @@ exit /b 0
 
     let exec_result = typstlab_typst::exec::exec_typst_with_override(
         exec_options,
-        Some(temp_cache.path().to_path_buf())
-    ).unwrap();
+        Some(temp_cache.path().to_path_buf()),
+    )
+    .unwrap();
 
     assert_eq!(exec_result.exit_code, 0);
     assert!(exec_result.stdout.contains("This is stdout"));

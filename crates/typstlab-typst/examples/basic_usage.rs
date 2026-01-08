@@ -5,7 +5,7 @@
 //! Run with: cargo run --example basic_usage
 
 use std::path::PathBuf;
-use typstlab_typst::{exec_typst, resolve_typst, ExecOptions, ResolveOptions, ResolveResult};
+use typstlab_typst::{ExecOptions, ResolveOptions, ResolveResult, exec_typst, resolve_typst};
 
 fn main() -> typstlab_core::Result<()> {
     println!("=== Typstlab-Typst Basic Usage Example ===\n");

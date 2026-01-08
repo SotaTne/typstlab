@@ -23,7 +23,9 @@ pub enum TypstlabError {
     #[error("PAPER_CONFIG_INVALID: failed to parse paper.toml for '{paper_id}': {reason}")]
     PaperConfigInvalid { paper_id: String, reason: String },
 
-    #[error("PAPER_ID_MISMATCH: paper.toml id '{toml_id}' does not match directory name '{dir_name}'")]
+    #[error(
+        "PAPER_ID_MISMATCH: paper.toml id '{toml_id}' does not match directory name '{dir_name}'"
+    )]
     PaperIdMismatch { toml_id: String, dir_name: String },
 
     #[error("PAPER_MAIN_NOT_FOUND: main.typ not found for paper '{0}'")]

@@ -1,7 +1,7 @@
 //! Status and health check system
 
-pub mod schema;
 pub mod engine;
+pub mod schema;
 
-pub use schema::StatusReport;
 pub use engine::StatusEngine;
+pub use schema::StatusReport;

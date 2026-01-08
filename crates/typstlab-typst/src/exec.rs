@@ -1,8 +1,8 @@
+use crate::resolve::{ResolveOptions, ResolveResult, resolve_typst};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 use typstlab_core::{Result, TypstlabError};
-use crate::resolve::{resolve_typst, ResolveOptions, ResolveResult};
 
 /// Options for executing Typst commands
 #[derive(Debug, Clone)]
@@ -28,20 +28,18 @@ pub struct ExecResult {
 /// Execute command and capture output with timing
 fn run_command(path: &Path, args: &[String]) -> Result<ExecResult> {
     let start = Instant::now();
-    
+
     let output = Command::new(path)
         .args(args)
         .output()
-        .map_err(|e| TypstlabError::TypstExecFailed(
-            format!("Failed to execute command: {}", e)
-        ))?;
-    
+        .map_err(|e| TypstlabError::TypstExecFailed(format!("Failed to execute command: {}", e)))?;
+
     let duration_ms = start.elapsed().as_millis() as u64;
-    
+
     let exit_code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    
+
     Ok(ExecResult {
         exit_code,
         stdout,
@@ -60,29 +58,28 @@ fn run_command(path: &Path, args: &[String]) -> Result<ExecResult> {
 /// 1. Resolves the Typst binary using resolve_typst
 /// 2. Executes the command with provided args
 /// 3. Captures stdout, stderr, exit code, and timing
-pub fn exec_typst(
-    options: ExecOptions,
-) -> Result<ExecResult> {
+pub fn exec_typst(options: ExecOptions) -> Result<ExecResult> {
     // Step 1: Resolve the Typst binary
     let resolve_options = ResolveOptions {
         required_version: options.required_version.clone(),
         project_root: options.project_root.clone(),
         force_refresh: false,
     };
-    
+
     let resolve_result = resolve_typst(resolve_options)?;
-    
+
     // Step 2: Extract the binary path from resolve result
     let binary_path = match resolve_result {
         ResolveResult::Cached(info) => info.path,
         ResolveResult::Resolved(info) => info.path,
-        ResolveResult::NotFound { required_version, searched_locations: _ } => {
-            return Err(TypstlabError::TypstNotResolved {
-                required_version,
-            });
+        ResolveResult::NotFound {
+            required_version,
+            searched_locations: _,
+        } => {
+            return Err(TypstlabError::TypstNotResolved { required_version });
         }
     };
-    
+
     // Step 3: Execute the command
     run_command(&binary_path, &options.args)
 }
@@ -100,19 +97,18 @@ pub fn exec_typst_with_override(
         force_refresh: false,
     };
 
-    let resolve_result = crate::resolve::resolve_typst_with_override(
-        resolve_options,
-        cache_dir_override
-    )?;
+    let resolve_result =
+        crate::resolve::resolve_typst_with_override(resolve_options, cache_dir_override)?;
 
     // Step 2: Extract the binary path from resolve result
     let binary_path = match resolve_result {
         ResolveResult::Cached(info) => info.path,
         ResolveResult::Resolved(info) => info.path,
-        ResolveResult::NotFound { required_version, searched_locations: _ } => {
-            return Err(TypstlabError::TypstNotResolved {
-                required_version,
-            });
+        ResolveResult::NotFound {
+            required_version,
+            searched_locations: _,
+        } => {
+            return Err(TypstlabError::TypstNotResolved { required_version });
         }
     };
 
@@ -227,7 +223,11 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::write(&fake_binary, "#!/bin/sh\necho 'stdout message'\necho 'stderr message' >&2\nexit 0").unwrap();
+            fs::write(
+                &fake_binary,
+                "#!/bin/sh\necho 'stdout message'\necho 'stderr message' >&2\nexit 0",
+            )
+            .unwrap();
             let mut perms = fs::metadata(&fake_binary).unwrap().permissions();
             perms.set_mode(0o755);
             fs::set_permissions(&fake_binary, perms).unwrap();
@@ -235,7 +235,11 @@ mod tests {
 
         #[cfg(windows)]
         {
-            fs::write(&fake_binary, "@echo stdout message\r\n@echo stderr message 1>&2\r\n@exit /b 0").unwrap();
+            fs::write(
+                &fake_binary,
+                "@echo stdout message\r\n@echo stderr message 1>&2\r\n@exit /b 0",
+            )
+            .unwrap();
         }
 
         let args = vec![];
@@ -321,7 +325,11 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::write(&binary_path, format!("#!/bin/sh\necho 'typst {}'\nexit 0", version)).unwrap();
+            fs::write(
+                &binary_path,
+                format!("#!/bin/sh\necho 'typst {}'\nexit 0", version),
+            )
+            .unwrap();
             let mut perms = fs::metadata(&binary_path).unwrap().permissions();
             perms.set_mode(0o755);
             fs::set_permissions(&binary_path, perms).unwrap();
@@ -329,7 +337,11 @@ mod tests {
 
         #[cfg(windows)]
         {
-            fs::write(&binary_path, format!("@echo typst {}\r\n@exit /b 0", version)).unwrap();
+            fs::write(
+                &binary_path,
+                format!("@echo typst {}\r\n@exit /b 0", version),
+            )
+            .unwrap();
         }
 
         // Test: exec_typst should execute the command
@@ -376,7 +388,14 @@ mod tests {
 
         #[cfg(windows)]
         {
-            fs::write(&binary_path, format!("@if \"%1\"==\"--version\" (echo typst {} && exit /b 0) else (exit /b 42)", version)).unwrap();
+            fs::write(
+                &binary_path,
+                format!(
+                    "@if \"%1\"==\"--version\" (echo typst {} && exit /b 0) else (exit /b 42)",
+                    version
+                ),
+            )
+            .unwrap();
         }
 
         // Test: exec_typst with failing command

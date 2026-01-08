@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 use typstlab_core::TypstlabError;
-use typstlab_typst::{exec_typst, resolve_typst, ExecOptions, ResolveOptions, ResolveResult};
+use typstlab_typst::{ExecOptions, ResolveOptions, ResolveResult, exec_typst, resolve_typst};
 
 fn main() {
     println!("=== Typstlab-Typst Error Handling Example ===\n");

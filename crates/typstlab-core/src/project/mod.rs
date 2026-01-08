@@ -3,8 +3,8 @@
 //! This module is under development. Current implementation provides
 //! minimal stubs to allow compilation.
 
-use std::path::{Path, PathBuf};
 use crate::error::{Result, TypstlabError};
+use std::path::{Path, PathBuf};
 
 /// Represents a typstlab project
 #[derive(Debug)]
