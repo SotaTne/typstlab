@@ -12,5 +12,20 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 semver = "1.0.27"
 
-[dev-dependencies]
+# HTTP client for GitHub API (blocking, no async)
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"] }
+
+# Archive extraction
+tar = "0.4"
+flate2 = "1.0"
+zip = "2.2"
+
+# SHA256 verification
+sha2 = "0.10"
+
+# Temporary files (moved from dev-dependencies for atomic installation)
 tempfile = "3.24.0"
+
+[dev-dependencies]
+# HTTP mocking for TDD
+mockito = "1.5"

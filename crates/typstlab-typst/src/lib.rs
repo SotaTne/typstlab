@@ -100,9 +100,13 @@
 // Core modules
 pub mod exec;
 pub mod info;
+pub mod install;
 pub mod resolve;
 
 // Re-export commonly used types
 pub use exec::{ExecOptions, ExecResult, exec_typst};
 pub use info::{TypstInfo, TypstSource};
 pub use resolve::{ResolveOptions, ResolveResult, resolve_typst};
+
+// Type alias for convenience
+pub type Result<T> = typstlab_core::Result<T>;
