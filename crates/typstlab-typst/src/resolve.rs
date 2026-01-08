@@ -808,7 +808,7 @@ mod tests {
         let result =
             resolve_managed_with_override(requested_version, Some(temp_cache.path().to_path_buf()));
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "resolve_managed_with_override failed: {:?}", result.err());
         assert!(result.unwrap().is_none());
 
         // TempDir automatically cleans up

@@ -376,7 +376,7 @@ mod tests {
 
         let result = exec_typst_with_override(options, Some(temp_cache.path().to_path_buf()));
 
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "exec_typst_with_override failed: {:?}", result.err());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 0);
         assert!(exec_result.stdout.contains("typst"));
