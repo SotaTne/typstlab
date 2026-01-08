@@ -175,7 +175,12 @@ mod tests {
             perms.set_mode(0o755);
             temp_file.as_file().set_permissions(perms).unwrap();
 
-            temp_file.persist(path).unwrap();
+            // Ensure filesystem sync before execution to prevent ETXTBSY
+            temp_file.as_file().sync_all().unwrap();
+
+            // Persist and explicitly drop to close file handle
+            let persisted = temp_file.persist(path).unwrap();
+            drop(persisted);
         }
 
         #[cfg(windows)]
@@ -183,7 +188,12 @@ mod tests {
             let mut temp_file = NamedTempFile::new_in(parent_dir).unwrap();
             temp_file.write_all(script_content.as_bytes()).unwrap();
 
-            temp_file.persist(path).unwrap();
+            // Ensure filesystem sync before execution to prevent race conditions
+            temp_file.as_file().sync_all().unwrap();
+
+            // Persist and explicitly drop to close file handle
+            let persisted = temp_file.persist(path).unwrap();
+            drop(persisted);
         }
     }
 

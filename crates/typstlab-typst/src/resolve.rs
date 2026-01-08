@@ -419,8 +419,12 @@ mod tests {
                 perms.set_mode(0o755);
                 temp_file.as_file().set_permissions(perms).unwrap();
 
-                // Atomically persist to final location (closes file handle)
-                temp_file.persist(&binary_path).unwrap();
+                // Ensure filesystem sync before execution to prevent ETXTBSY
+                temp_file.as_file().sync_all().unwrap();
+
+                // Atomically persist to final location and explicitly drop to close file handle
+                let persisted = temp_file.persist(&binary_path).unwrap();
+                drop(persisted);
             }
 
             #[cfg(windows)]
@@ -434,8 +438,12 @@ mod tests {
                 let mut temp_file = NamedTempFile::new_in(&version_dir).unwrap();
                 temp_file.write_all(script.as_bytes()).unwrap();
 
-                // Atomically persist to final location (closes file handle)
-                temp_file.persist(&binary_path).unwrap();
+                // Ensure filesystem sync before execution to prevent race conditions
+                temp_file.as_file().sync_all().unwrap();
+
+                // Atomically persist to final location and explicitly drop to close file handle
+                let persisted = temp_file.persist(&binary_path).unwrap();
+                drop(persisted);
             }
 
             binary_path
@@ -775,7 +783,12 @@ mod tests {
             perms.set_mode(0o755);
             temp_file.as_file().set_permissions(perms).unwrap();
 
-            temp_file.persist(&binary_path).unwrap();
+            // Ensure filesystem sync before execution to prevent ETXTBSY
+            temp_file.as_file().sync_all().unwrap();
+
+            // Persist and explicitly drop to close file handle
+            let persisted = temp_file.persist(&binary_path).unwrap();
+            drop(persisted);
         }
 
         #[cfg(windows)]
@@ -788,7 +801,12 @@ mod tests {
             let mut temp_file = NamedTempFile::new_in(&version_dir).unwrap();
             temp_file.write_all(script.as_bytes()).unwrap();
 
-            temp_file.persist(&binary_path).unwrap();
+            // Ensure filesystem sync before execution to prevent race conditions
+            temp_file.as_file().sync_all().unwrap();
+
+            // Persist and explicitly drop to close file handle
+            let persisted = temp_file.persist(&binary_path).unwrap();
+            drop(persisted);
         }
 
         let result =
