@@ -562,19 +562,27 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
     let (content, actual_lines, total_lines, has_more) =
         read_lines_range(&path, start_line, input.max_lines)?;
 
-    // Handle empty file: return start_line=0, end_line=0 for consistency
-    // Empty files should not accept cursors (reject any cursor value)
+    // Handle empty file: return start_line=1, end_line=1 for 1-indexed API consistency
+    // Allow cursor=None or cursor=1, reject cursor >= 2
     if total_lines == 0 {
-        if input.cursor.is_some() {
-            return Err(TypstlabError::Generic(
-                "Empty file does not support cursor (total_lines=0)".to_string(),
-            ));
+        if let Some(cursor_str) = &input.cursor {
+            let cursor_line = cursor_str
+                .parse::<usize>()
+                .map_err(|_| TypstlabError::Generic("Invalid cursor".to_string()))?;
+
+            if cursor_line != 1 {
+                return Err(TypstlabError::Generic(format!(
+                    "Empty file (total_lines=0): cursor must be 1 if provided, got {}",
+                    cursor_line
+                )));
+            }
         }
+
         return Ok(RulesPageOutput {
             path: input.path,
             content: String::new(),
-            start_line: 0,
-            end_line: 0,
+            start_line: 1,
+            end_line: 1,
             total_lines: 0,
             has_more: false,
             next_cursor: None,
@@ -984,7 +992,7 @@ mod bounds_tests_v2 {
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // cursor=1 on empty file should be rejected (new behavior)
+        // cursor=1 on empty file should be allowed (Phase 3 behavior)
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: Some("1".to_string()),
@@ -992,7 +1000,12 @@ mod bounds_tests_v2 {
         };
 
         let result = rules_page(input, project_root);
-        assert!(result.is_err(), "Should reject cursor on empty file");
+        assert!(result.is_ok(), "Should allow cursor=1 on empty file");
+
+        let output = result.unwrap();
+        assert_eq!(output.start_line, 1, "Empty file should start at line 1");
+        assert_eq!(output.end_line, 1, "Empty file should end at line 1");
+        assert_eq!(output.total_lines, 0, "Empty file has 0 lines");
     }
 
     #[test]
@@ -1003,7 +1016,7 @@ mod bounds_tests_v2 {
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // No cursor on empty file should return start_line=0, end_line=0
+        // No cursor on empty file should return start_line=1, end_line=1 (Phase 3 behavior)
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: None,
@@ -1015,8 +1028,8 @@ mod bounds_tests_v2 {
 
         let output = result.unwrap();
         assert_eq!(output.content, "", "Should return empty content");
-        assert_eq!(output.start_line, 0, "Empty file should start at line 0");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0");
+        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
+        assert_eq!(output.end_line, 1, "Empty file should end at line 1 (1-indexed)");
         assert_eq!(output.total_lines, 0, "Should have 0 total lines");
         assert!(!output.has_more, "Should not have more lines");
     }
@@ -1222,14 +1235,14 @@ mod correctness_tests_v3 {
     use tempfile::TempDir;
 
     #[test]
-    fn test_empty_file_with_cursor_rejected() {
+    fn test_empty_file_with_cursor_1_allowed() {
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // Empty file should reject ANY cursor (even cursor=1)
+        // Empty file should allow cursor=1 for client stability
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: Some("1".to_string()),
@@ -1237,24 +1250,26 @@ mod correctness_tests_v3 {
         };
 
         let result = rules_page(input, project_root);
-        assert!(result.is_err(), "Should reject cursor on empty file");
+        assert!(result.is_ok(), "Should allow cursor=1 on empty file");
 
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("cursor") || err_msg.contains("total_lines=0"),
-            "Error message should mention cursor/empty file"
-        );
+        let output = result.unwrap();
+        assert_eq!(output.start_line, 1, "Empty file should start at line 1");
+        assert_eq!(output.end_line, 1, "Empty file should end at line 1");
+        assert_eq!(output.total_lines, 0, "Empty file has 0 lines");
+        assert_eq!(output.content, "", "Content should be empty");
+        assert!(!output.has_more, "Should not have more");
+        assert!(output.next_cursor.is_none(), "No next cursor");
     }
 
     #[test]
-    fn test_empty_file_no_cursor_returns_zero_range() {
+    fn test_empty_file_no_cursor_returns_consistent_range() {
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // Empty file with no cursor should return start_line=0, end_line=0
+        // Empty file with no cursor should return start_line=1, end_line=1 for 1-indexed consistency
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: None,
@@ -1265,8 +1280,8 @@ mod correctness_tests_v3 {
         assert!(result.is_ok(), "Should allow no cursor on empty file");
 
         let output = result.unwrap();
-        assert_eq!(output.start_line, 0, "Empty file should start at line 0");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0");
+        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
+        assert_eq!(output.end_line, 1, "Empty file should end at line 1 (1-indexed)");
         assert_eq!(output.total_lines, 0, "Should have 0 total lines");
         assert_eq!(output.content, "", "Content should be empty");
         assert!(!output.has_more, "Should not have more lines");
@@ -1294,11 +1309,11 @@ mod correctness_tests_v3 {
             "Should reject arbitrary cursor on empty file"
         );
 
-        // Verify error message mentions empty file
+        // Verify error message mentions cursor=1 requirement
         let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("empty file") || err_msg.contains("total_lines=0"),
-            "Error message should mention empty file, got: {}",
+            err_msg.contains("Empty file") && err_msg.contains("cursor must be 1"),
+            "Error message should mention cursor=1 requirement, got: {}",
             err_msg
         );
     }
