@@ -157,11 +157,16 @@ pub struct SearchMatch {
 ///
 /// Security: Prevents path traversal attacks by:
 /// 1. Blocking absolute paths
-/// 2. Blocking ".." directory traversal
-/// 3. Requiring "rules/" or "papers/" prefix
-/// 4. Canonicalizing to resolve symlinks (when file exists)
-/// 5. Verifying final path is within project root
+/// 2. Blocking ".." directory traversal using Path::components()
+/// 3. Requiring "rules/" or "papers/<paper_id>/rules/" prefix
+/// 4. Blocking empty paper_id in papers/ paths
+/// 5. Canonicalizing to resolve symlinks (when file exists)
+/// 6. Verifying final path is within project root
+///
+/// Cross-platform: Uses Path::components() to support both / and \ separators
 fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<PathBuf> {
+    use std::path::Component;
+
     let requested = Path::new(requested_path);
 
     // 1. Check for absolute paths
@@ -171,26 +176,55 @@ fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<
         });
     }
 
-    // 2. Check for .. components (directory traversal)
-    if requested_path.contains("..") {
+    // 2. Check for .. components (directory traversal) using Path::components()
+    let components: Vec<Component> = requested.components().collect();
+    if components.iter().any(|c| matches!(c, Component::ParentDir)) {
         return Err(TypstlabError::ProjectPathEscape {
             path: requested.to_path_buf(),
         });
     }
 
     // 3. Must start with "rules/" or "papers/<paper_id>/rules/"
-    let allowed_base = if requested_path.starts_with("rules/") {
+    let allowed_base = if components.first() == Some(&Component::Normal("rules".as_ref())) {
         "rules"
-    } else if requested_path.starts_with("papers/") {
+    } else if components.first() == Some(&Component::Normal("papers".as_ref())) {
         // papers/ の場合、papers/<paper_id>/rules/ パターンを検証
-        let path_parts: Vec<&str> = requested_path.split('/').collect();
-        if path_parts.len() < 4 || path_parts[2] != "rules" {
+        if components.len() < 4 {
             return Err(TypstlabError::Generic(format!(
                 "Path must be within rules/ or papers/<paper_id>/rules/ directory, got: {}",
                 requested_path
             )));
         }
-        // papers/<paper_id>/rules/ 配下であることを確認
+
+        // components[1] must be non-empty paper_id
+        match components.get(1) {
+            Some(Component::Normal(name)) => {
+                let name_str = name
+                    .to_str()
+                    .ok_or_else(|| TypstlabError::Generic("Invalid UTF-8 in path".to_string()))?;
+                if name_str.is_empty() {
+                    return Err(TypstlabError::Generic(format!(
+                        "paper_id cannot be empty, got: {}",
+                        requested_path
+                    )));
+                }
+            }
+            _ => {
+                return Err(TypstlabError::Generic(format!(
+                    "Invalid paper_id component, got: {}",
+                    requested_path
+                )));
+            }
+        }
+
+        // components[2] must be "rules"
+        if components.get(2) != Some(&Component::Normal("rules".as_ref())) {
+            return Err(TypstlabError::Generic(format!(
+                "Path must be within rules/ or papers/<paper_id>/rules/ directory, got: {}",
+                requested_path
+            )));
+        }
+
         "papers"
     } else {
         return Err(TypstlabError::Generic(format!(
@@ -204,40 +238,39 @@ fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<
 
     // 5. If file exists, verify it resolves within project root AND allowed directory
     if full_path.exists() {
-        let canonical = full_path.canonicalize().map_err(|e| {
-            TypstlabError::Generic(format!("Path canonicalization failed: {}", e))
-        })?;
+        let canonical = full_path
+            .canonicalize()
+            .map_err(|e| TypstlabError::Generic(format!("Path canonicalization failed: {}", e)))?;
 
-        let canonical_root = project_root.canonicalize().map_err(|e| {
-            TypstlabError::Generic(format!("Root canonicalization failed: {}", e))
-        })?;
+        let canonical_root = project_root
+            .canonicalize()
+            .map_err(|e| TypstlabError::Generic(format!("Root canonicalization failed: {}", e)))?;
 
         // Check if canonical path is within project root
         if !canonical.starts_with(&canonical_root) {
-            return Err(TypstlabError::ProjectPathEscape {
-                path: canonical,
-            });
+            return Err(TypstlabError::ProjectPathEscape { path: canonical });
         }
 
         // Check if canonical path is within the allowed base directory (rules/ or papers/)
         let allowed_base_full = canonical_root.join(allowed_base);
         if !canonical.starts_with(&allowed_base_full) {
-            return Err(TypstlabError::ProjectPathEscape {
-                path: canonical,
-            });
+            return Err(TypstlabError::ProjectPathEscape { path: canonical });
         }
 
         // Additional check for papers/: must be within papers/<paper_id>/rules/
         if allowed_base == "papers" {
-            // Extract paper_id from original requested_path
-            let path_parts: Vec<&str> = requested_path.split('/').collect();
-            if path_parts.len() >= 3 {
-                let paper_id = path_parts[1];
-                let expected_base = canonical_root.join("papers").join(paper_id).join("rules");
+            // paper_id already validated above
+            let components: Vec<Component> = requested.components().collect();
+            if let Some(Component::Normal(paper_id)) = components.get(1) {
+                let paper_id_str = paper_id
+                    .to_str()
+                    .ok_or_else(|| TypstlabError::Generic("Invalid UTF-8 in path".to_string()))?;
+                let expected_base = canonical_root
+                    .join("papers")
+                    .join(paper_id_str)
+                    .join("rules");
                 if !canonical.starts_with(&expected_base) {
-                    return Err(TypstlabError::ProjectPathEscape {
-                        path: canonical,
-                    });
+                    return Err(TypstlabError::ProjectPathEscape { path: canonical });
                 }
             }
         }
@@ -389,9 +422,9 @@ pub fn rules_list(input: RulesListInput, project_root: &Path) -> CoreResult<Rule
             .unwrap_or_default();
 
         // Get relative path from project root
-        let relative_path = path.strip_prefix(project_root).map_err(|e| {
-            TypstlabError::Generic(format!("Path error: {}", e))
-        })?;
+        let relative_path = path
+            .strip_prefix(project_root)
+            .map_err(|e| TypstlabError::Generic(format!("Path error: {}", e)))?;
 
         let name = path
             .file_name()
@@ -509,7 +542,7 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
         // Line numbers must be >= 1 (1-indexed)
         if line == 0 {
             return Err(TypstlabError::Generic(
-                "Invalid cursor: line numbers start at 1".to_string()
+                "Invalid cursor: line numbers start at 1".to_string(),
             ));
         }
 
@@ -522,9 +555,18 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
     let (content, actual_lines, total_lines, has_more) =
         read_lines_range(&path, start_line, input.max_lines)?;
 
-    // Validate cursor (only for non-empty files)
-    // Empty files (total_lines=0) should return empty results, not error
-    if total_lines > 0 && start_line > total_lines {
+    // Validate cursor
+    if total_lines == 0 {
+        // Empty file: only accept cursor=1 (or None, which defaults to 1)
+        // Reject arbitrary cursors like cursor=5 on empty files
+        if start_line > 1 {
+            return Err(TypstlabError::Generic(format!(
+                "Invalid cursor {} for empty file (total_lines=0)",
+                start_line
+            )));
+        }
+    } else if start_line > total_lines {
+        // Non-empty file: cursor must be within bounds
         return Err(TypstlabError::Generic(format!(
             "Start line {} exceeds total lines {}",
             start_line, total_lines
@@ -533,7 +575,12 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
 
     let end_line = if actual_lines > 0 {
         start_line + actual_lines - 1
+    } else if total_lines == 0 {
+        // Empty file: end_line should be 0, not start_line
+        0
     } else {
+        // Non-empty file but no lines read (cursor beyond total)
+        // This case is already handled by validation above, but for safety
         start_line
     };
 
@@ -558,9 +605,7 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
 pub fn rules_search(input: RulesSearchInput, project_root: &Path) -> CoreResult<RulesSearchOutput> {
     // Validate limit
     if input.limit > 50 {
-        return Err(TypstlabError::Generic(
-            "limit cannot exceed 50".to_string(),
-        ));
+        return Err(TypstlabError::Generic("limit cannot exceed 50".to_string()));
     }
 
     // Determine search directories
@@ -651,9 +696,9 @@ pub fn rules_search(input: RulesSearchInput, project_root: &Path) -> CoreResult<
                     };
 
                     // Get relative path
-                    let relative_path = path.strip_prefix(project_root).map_err(|e| {
-                        TypstlabError::Generic(format!("Path error: {}", e))
-                    })?;
+                    let relative_path = path
+                        .strip_prefix(project_root)
+                        .map_err(|e| TypstlabError::Generic(format!("Path error: {}", e)))?;
 
                     matches.push(SearchMatch {
                         path: relative_path.to_string_lossy().to_string(),
@@ -761,11 +806,7 @@ mod security_tests {
 
         // Create papers directory
         fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
-        fs::write(
-            project_root.join("papers/paper1/rules/guide.md"),
-            "content",
-        )
-        .unwrap();
+        fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
 
         // Valid papers path
         let result = validate_rules_path(project_root, "papers/paper1/rules/guide.md");
@@ -890,7 +931,10 @@ mod security_tests_v2 {
 
         // Should block: papers/<paper_id>/ (no rules/)
         let result = validate_rules_path(project_root, "papers/paper1/test.md");
-        assert!(result.is_err(), "Should block papers/paper1/test.md (no rules/)");
+        assert!(
+            result.is_err(),
+            "Should block papers/paper1/test.md (no rules/)"
+        );
     }
 }
 
@@ -1086,7 +1130,10 @@ mod bounds_tests {
 
         // Create file with exactly 10 lines
         fs::create_dir_all(project_root.join("rules")).unwrap();
-        let content = (1..=10).map(|i| format!("line{}", i)).collect::<Vec<_>>().join("\n");
+        let content = (1..=10)
+            .map(|i| format!("line{}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         fs::write(project_root.join("rules/test.md"), content).unwrap();
 
         // Read first 5 lines
@@ -1105,7 +1152,10 @@ mod bounds_tests {
 
         // Create file with exactly 5 lines
         fs::create_dir_all(project_root.join("rules")).unwrap();
-        let content = (1..=5).map(|i| format!("line{}", i)).collect::<Vec<_>>().join("\n");
+        let content = (1..=5)
+            .map(|i| format!("line{}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         fs::write(project_root.join("rules/test.md"), content).unwrap();
 
         // Read all lines (request more than available)
@@ -1115,5 +1165,138 @@ mod bounds_tests {
         assert_eq!(actual_lines, 5, "Should read all 5 lines");
         assert_eq!(total_lines, 5, "Should count all 5 lines");
         assert!(!has_more, "Should indicate no more lines");
+    }
+}
+
+#[cfg(test)]
+mod security_tests_v3 {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_empty_paper_id_blocked() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Should block: papers//rules/file.md (empty paper_id)
+        let result = validate_rules_path(project_root, "papers//rules/file.md");
+        assert!(result.is_err(), "Should block empty paper_id");
+
+        // Should block: papers///rules/file.md (multiple slashes)
+        let result = validate_rules_path(project_root, "papers///rules/file.md");
+        assert!(result.is_err(), "Should block multiple slashes");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_windows_path_separator_accepted() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
+        fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
+
+        // Should allow: papers\paper1\rules\guide.md (Windows separator)
+        let result = validate_rules_path(project_root, r"papers\paper1\rules\guide.md");
+        assert!(result.is_ok(), "Should allow Windows path separator");
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_mixed_separators() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
+        fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
+
+        // Should allow: papers/paper1\rules\guide.md (mixed separators)
+        let result = validate_rules_path(project_root, r"papers/paper1\rules\guide.md");
+        assert!(result.is_ok(), "Should allow mixed path separators");
+    }
+}
+
+#[cfg(test)]
+mod correctness_tests_v3 {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_empty_file_end_line_zero() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/empty.md"), "").unwrap();
+
+        // Empty file should return end_line=0, not 1
+        let input = RulesPageInput {
+            path: "rules/empty.md".to_string(),
+            cursor: Some("1".to_string()),
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_ok(), "Should allow cursor=1 on empty file");
+
+        let output = result.unwrap();
+        assert_eq!(output.start_line, 1, "Should start at line 1");
+        assert_eq!(output.end_line, 0, "Should end at line 0 for empty file");
+        assert_eq!(output.total_lines, 0, "Should have 0 total lines");
+    }
+
+    #[test]
+    fn test_empty_file_no_cursor_end_line_zero() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/empty.md"), "").unwrap();
+
+        // Empty file with no cursor should also return end_line=0
+        let input = RulesPageInput {
+            path: "rules/empty.md".to_string(),
+            cursor: None,
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_ok(), "Should allow no cursor on empty file");
+
+        let output = result.unwrap();
+        assert_eq!(output.start_line, 1, "Should start at line 1");
+        assert_eq!(output.end_line, 0, "Should end at line 0 for empty file");
+    }
+
+    #[test]
+    fn test_empty_file_arbitrary_cursor_rejected() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/empty.md"), "").unwrap();
+
+        // Empty file should reject arbitrary cursors like cursor=5
+        let input = RulesPageInput {
+            path: "rules/empty.md".to_string(),
+            cursor: Some("5".to_string()),
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(
+            result.is_err(),
+            "Should reject arbitrary cursor on empty file"
+        );
+
+        // Verify error message mentions empty file
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("empty file") || err_msg.contains("total_lines=0"),
+            "Error message should mention empty file, got: {}",
+            err_msg
+        );
     }
 }
