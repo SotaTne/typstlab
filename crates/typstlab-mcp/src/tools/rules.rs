@@ -485,7 +485,8 @@ pub fn rules_get(input: RulesGetInput, project_root: &Path) -> CoreResult<RulesG
     const MAX_BYTES: u64 = 262144; // 256KB
 
     // Validate and resolve path
-    let path = validate_rules_path(project_root, &input.path)?;
+    let requested_path = Path::new(&input.path);
+    let path = validate_rules_path(project_root, requested_path)?;
 
     // Check file size
     let metadata = fs::metadata(&path)?;
@@ -536,7 +537,8 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
     }
 
     // Validate and resolve path
-    let path = validate_rules_path(project_root, &input.path)?;
+    let requested_path = Path::new(&input.path);
+    let path = validate_rules_path(project_root, requested_path)?;
 
     // Determine start line with simple string cursor
     let start_line = if let Some(cursor_str) = &input.cursor {
@@ -748,14 +750,14 @@ mod tests {
     #[test]
     fn test_validate_rules_path_rejects_absolute() {
         let project_root = PathBuf::from("/tmp/project");
-        let result = validate_rules_path(&project_root, "/etc/passwd");
+        let result = validate_rules_path(&project_root, Path::new("/etc/passwd"));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_rules_path_rejects_dotdot() {
         let project_root = PathBuf::from("/tmp/project");
-        let result = validate_rules_path(&project_root, "../../../etc/passwd");
+        let result = validate_rules_path(&project_root, Path::new("../../../etc/passwd"));
         assert!(result.is_err());
     }
 }
@@ -776,19 +778,19 @@ mod security_tests {
         fs::write(&secret_file, "SECRET=password123").unwrap();
 
         // Attempt 1: Direct parent traversal
-        let result = validate_rules_path(project_root, "../.env");
+        let result = validate_rules_path(project_root, Path::new("../.env"));
         assert!(result.is_err(), "Should block direct parent traversal");
 
         // Attempt 2: Deep parent traversal
-        let result = validate_rules_path(project_root, "rules/../../.env");
+        let result = validate_rules_path(project_root, Path::new("rules/../../.env"));
         assert!(result.is_err(), "Should block deep parent traversal");
 
         // Attempt 3: Absolute path
-        let result = validate_rules_path(project_root, secret_file.to_str().unwrap());
+        let result = validate_rules_path(project_root, &secret_file);
         assert!(result.is_err(), "Should block absolute path");
 
         // Attempt 4: Non-rules path
-        let result = validate_rules_path(project_root, "src/main.rs");
+        let result = validate_rules_path(project_root, Path::new("src/main.rs"));
         assert!(result.is_err(), "Should block non-rules/papers path");
     }
 
@@ -802,11 +804,11 @@ mod security_tests {
         fs::write(project_root.join("rules/test.md"), "content").unwrap();
 
         // Valid path - existing file
-        let result = validate_rules_path(project_root, "rules/test.md");
+        let result = validate_rules_path(project_root, Path::new("rules/test.md"));
         assert!(result.is_ok(), "Should allow valid existing file");
 
         // Valid subdirectory path - non-existing file
-        let result = validate_rules_path(project_root, "rules/paper/guide.md");
+        let result = validate_rules_path(project_root, Path::new("rules/paper/guide.md"));
         assert!(result.is_ok(), "Should allow valid non-existing file");
     }
 
@@ -820,7 +822,7 @@ mod security_tests {
         fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
 
         // Valid papers path
-        let result = validate_rules_path(project_root, "papers/paper1/rules/guide.md");
+        let result = validate_rules_path(project_root, Path::new("papers/paper1/rules/guide.md"));
         assert!(result.is_ok(), "Should allow papers/ prefix");
     }
 
@@ -841,7 +843,7 @@ mod security_tests {
         symlink(project_root.join(".env"), &symlink_path).unwrap();
 
         // Should be blocked when canonicalized
-        let result = validate_rules_path(project_root, "rules/escape.md");
+        let result = validate_rules_path(project_root, Path::new("rules/escape.md"));
         assert!(
             result.is_err(),
             "Should block symlink escaping project root"
@@ -919,15 +921,15 @@ mod security_tests_v2 {
         fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
 
         // Should block: papers/<paper_id>/main.typ
-        let result = validate_rules_path(project_root, "papers/paper1/main.typ");
+        let result = validate_rules_path(project_root, Path::new("papers/paper1/main.typ"));
         assert!(result.is_err(), "Should block papers/paper1/main.typ");
 
         // Should block: papers/<paper_id>/paper.toml
-        let result = validate_rules_path(project_root, "papers/paper1/paper.toml");
+        let result = validate_rules_path(project_root, Path::new("papers/paper1/paper.toml"));
         assert!(result.is_err(), "Should block papers/paper1/paper.toml");
 
         // Should allow: papers/<paper_id>/rules/guide.md
-        let result = validate_rules_path(project_root, "papers/paper1/rules/guide.md");
+        let result = validate_rules_path(project_root, Path::new("papers/paper1/rules/guide.md"));
         assert!(result.is_ok(), "Should allow papers/paper1/rules/guide.md");
     }
 
@@ -937,11 +939,11 @@ mod security_tests_v2 {
         let project_root = temp.path();
 
         // Should block: papers/ (too shallow)
-        let result = validate_rules_path(project_root, "papers/test.md");
+        let result = validate_rules_path(project_root, Path::new("papers/test.md"));
         assert!(result.is_err(), "Should block papers/test.md (no paper_id)");
 
         // Should block: papers/<paper_id>/ (no rules/)
-        let result = validate_rules_path(project_root, "papers/paper1/test.md");
+        let result = validate_rules_path(project_root, Path::new("papers/paper1/test.md"));
         assert!(
             result.is_err(),
             "Should block papers/paper1/test.md (no rules/)"
@@ -1190,11 +1192,11 @@ mod security_tests_v3 {
         let project_root = temp.path();
 
         // Should block: papers//rules/file.md (empty paper_id)
-        let result = validate_rules_path(project_root, "papers//rules/file.md");
+        let result = validate_rules_path(project_root, Path::new("papers//rules/file.md"));
         assert!(result.is_err(), "Should block empty paper_id");
 
         // Should block: papers///rules/file.md (multiple slashes)
-        let result = validate_rules_path(project_root, "papers///rules/file.md");
+        let result = validate_rules_path(project_root, Path::new("papers///rules/file.md"));
         assert!(result.is_err(), "Should block multiple slashes");
     }
 
