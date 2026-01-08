@@ -154,47 +154,99 @@ pub struct SearchMatch {
 // ============================================================================
 
 /// Validate that a path is within project root and resolves safely
+///
+/// Security: Prevents path traversal attacks by:
+/// 1. Blocking absolute paths
+/// 2. Blocking ".." directory traversal
+/// 3. Requiring "rules/" or "papers/" prefix
+/// 4. Canonicalizing to resolve symlinks (when file exists)
+/// 5. Verifying final path is within project root
 fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<PathBuf> {
     let requested = Path::new(requested_path);
 
-    // Check for absolute paths
+    // 1. Check for absolute paths
     if requested.is_absolute() {
         return Err(TypstlabError::ProjectPathEscape {
             path: requested.to_path_buf(),
         });
     }
 
-    // Check for .. in path
+    // 2. Check for .. components (directory traversal)
     if requested_path.contains("..") {
         return Err(TypstlabError::ProjectPathEscape {
             path: requested.to_path_buf(),
         });
     }
 
-    // Resolve relative to project root
-    let full_path = project_root.join(requested);
-
-    // Check if file exists (canonicalize requires existence)
-    if !full_path.exists() {
+    // 3. Must start with "rules/" or "papers/<paper_id>/rules/"
+    let allowed_base = if requested_path.starts_with("rules/") {
+        "rules"
+    } else if requested_path.starts_with("papers/") {
+        // papers/ の場合、papers/<paper_id>/rules/ パターンを検証
+        let path_parts: Vec<&str> = requested_path.split('/').collect();
+        if path_parts.len() < 4 || path_parts[2] != "rules" {
+            return Err(TypstlabError::Generic(format!(
+                "Path must be within rules/ or papers/<paper_id>/rules/ directory, got: {}",
+                requested_path
+            )));
+        }
+        // papers/<paper_id>/rules/ 配下であることを確認
+        "papers"
+    } else {
         return Err(TypstlabError::Generic(format!(
-            "File not found: {}",
+            "Path must be within rules/ or papers/<paper_id>/rules/ directory, got: {}",
             requested_path
         )));
+    };
+
+    // 4. Construct full path and canonicalize
+    let full_path = project_root.join(requested);
+
+    // 5. If file exists, verify it resolves within project root AND allowed directory
+    if full_path.exists() {
+        let canonical = full_path.canonicalize().map_err(|e| {
+            TypstlabError::Generic(format!("Path canonicalization failed: {}", e))
+        })?;
+
+        let canonical_root = project_root.canonicalize().map_err(|e| {
+            TypstlabError::Generic(format!("Root canonicalization failed: {}", e))
+        })?;
+
+        // Check if canonical path is within project root
+        if !canonical.starts_with(&canonical_root) {
+            return Err(TypstlabError::ProjectPathEscape {
+                path: canonical,
+            });
+        }
+
+        // Check if canonical path is within the allowed base directory (rules/ or papers/)
+        let allowed_base_full = canonical_root.join(allowed_base);
+        if !canonical.starts_with(&allowed_base_full) {
+            return Err(TypstlabError::ProjectPathEscape {
+                path: canonical,
+            });
+        }
+
+        // Additional check for papers/: must be within papers/<paper_id>/rules/
+        if allowed_base == "papers" {
+            // Extract paper_id from original requested_path
+            let path_parts: Vec<&str> = requested_path.split('/').collect();
+            if path_parts.len() >= 3 {
+                let paper_id = path_parts[1];
+                let expected_base = canonical_root.join("papers").join(paper_id).join("rules");
+                if !canonical.starts_with(&expected_base) {
+                    return Err(TypstlabError::ProjectPathEscape {
+                        path: canonical,
+                    });
+                }
+            }
+        }
+
+        Ok(canonical)
+    } else {
+        // File doesn't exist, but path structure is valid
+        Ok(full_path)
     }
-
-    // Canonicalize to resolve symlinks
-    let canonical = full_path.canonicalize().map_err(|e| {
-        TypstlabError::Generic(format!("Failed to resolve path: {}", e))
-    })?;
-
-    // Verify it's still within project root
-    if !canonical.starts_with(project_root) {
-        return Err(TypstlabError::ProjectPathEscape {
-            path: requested.to_path_buf(),
-        });
-    }
-
-    Ok(canonical)
 }
 
 /// Resolve rules directory path based on scope and subdir
@@ -249,45 +301,24 @@ fn read_lines_range(
     let reader = BufReader::new(file);
 
     let mut lines_vec: Vec<String> = Vec::new();
-    let mut total_lines = 0;
+    let mut line_count = 0;
+    let mut has_more = false;
 
     for line_result in reader.lines() {
-        total_lines += 1;
+        line_count += 1;
         let line = line_result?;
 
-        if total_lines >= start_line {
+        if line_count >= start_line && lines_vec.len() < max_lines {
             lines_vec.push(line);
-            if lines_vec.len() >= max_lines {
-                break;
-            }
+        } else if lines_vec.len() >= max_lines {
+            // We've collected enough lines, but continue counting
+            has_more = true;
+            // Continue to count total lines
         }
     }
 
-    // If we stopped because we hit max_lines, check if there are more lines
-    let has_more = if lines_vec.len() == max_lines {
-        // Try to read one more line to see if there are more
-        let file = fs::File::open(path)?;
-        let reader = BufReader::new(file);
-        let mut line_count = 0;
-        for _ in reader.lines() {
-            line_count += 1;
-            if line_count > start_line + max_lines - 1 {
-                // There's at least one more line
-                return Ok((
-                    lines_vec.join("\n"),
-                    lines_vec.len(),
-                    line_count,
-                    true,
-                ));
-            }
-        }
-        false
-    } else {
-        false
-    };
-
     let content = lines_vec.join("\n");
-    Ok((content, lines_vec.len(), total_lines, has_more))
+    Ok((content, lines_vec.len(), line_count, has_more))
 }
 
 // ============================================================================
@@ -390,6 +421,14 @@ pub fn rules_list(input: RulesListInput, project_root: &Path) -> CoreResult<Rule
         0
     };
 
+    // Validate offset
+    if start_index > total {
+        return Err(TypstlabError::Generic(format!(
+            "Offset {} exceeds total files {}",
+            start_index, total
+        )));
+    }
+
     let end_index = std::cmp::min(start_index + input.limit, total);
     let files: Vec<FileEntry> = all_files[start_index..end_index].to_vec();
 
@@ -463,9 +502,18 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
 
     // Determine start line with simple string cursor
     let start_line = if let Some(cursor_str) = &input.cursor {
-        cursor_str
+        let line = cursor_str
             .parse::<usize>()
-            .map_err(|_| TypstlabError::Generic("Invalid cursor".to_string()))?
+            .map_err(|_| TypstlabError::Generic("Invalid cursor".to_string()))?;
+
+        // Line numbers must be >= 1 (1-indexed)
+        if line == 0 {
+            return Err(TypstlabError::Generic(
+                "Invalid cursor: line numbers start at 1".to_string()
+            ));
+        }
+
+        line
     } else {
         1 // Line numbers start at 1
     };
@@ -474,7 +522,20 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
     let (content, actual_lines, total_lines, has_more) =
         read_lines_range(&path, start_line, input.max_lines)?;
 
-    let end_line = start_line + actual_lines - 1;
+    // Validate cursor (only for non-empty files)
+    // Empty files (total_lines=0) should return empty results, not error
+    if total_lines > 0 && start_line > total_lines {
+        return Err(TypstlabError::Generic(format!(
+            "Start line {} exceeds total lines {}",
+            start_line, total_lines
+        )));
+    }
+
+    let end_line = if actual_lines > 0 {
+        start_line + actual_lines - 1
+    } else {
+        start_line
+    };
 
     let next_cursor = if has_more {
         Some((end_line + 1).to_string())
@@ -626,6 +687,7 @@ pub fn rules_search(input: RulesSearchInput, project_root: &Path) -> CoreResult<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_validate_rules_path_rejects_absolute() {
@@ -639,5 +701,419 @@ mod tests {
         let project_root = PathBuf::from("/tmp/project");
         let result = validate_rules_path(&project_root, "../../../etc/passwd");
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_path_traversal_blocked() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create a secret file outside rules/
+        let secret_file = project_root.join(".env");
+        fs::write(&secret_file, "SECRET=password123").unwrap();
+
+        // Attempt 1: Direct parent traversal
+        let result = validate_rules_path(project_root, "../.env");
+        assert!(result.is_err(), "Should block direct parent traversal");
+
+        // Attempt 2: Deep parent traversal
+        let result = validate_rules_path(project_root, "rules/../../.env");
+        assert!(result.is_err(), "Should block deep parent traversal");
+
+        // Attempt 3: Absolute path
+        let result = validate_rules_path(project_root, secret_file.to_str().unwrap());
+        assert!(result.is_err(), "Should block absolute path");
+
+        // Attempt 4: Non-rules path
+        let result = validate_rules_path(project_root, "src/main.rs");
+        assert!(result.is_err(), "Should block non-rules/papers path");
+    }
+
+    #[test]
+    fn test_valid_rules_paths() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create rules directory
+        fs::create_dir_all(project_root.join("rules/paper")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "content").unwrap();
+
+        // Valid path - existing file
+        let result = validate_rules_path(project_root, "rules/test.md");
+        assert!(result.is_ok(), "Should allow valid existing file");
+
+        // Valid subdirectory path - non-existing file
+        let result = validate_rules_path(project_root, "rules/paper/guide.md");
+        assert!(result.is_ok(), "Should allow valid non-existing file");
+    }
+
+    #[test]
+    fn test_papers_directory_allowed() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create papers directory
+        fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
+        fs::write(
+            project_root.join("papers/paper1/rules/guide.md"),
+            "content",
+        )
+        .unwrap();
+
+        // Valid papers path
+        let result = validate_rules_path(project_root, "papers/paper1/rules/guide.md");
+        assert!(result.is_ok(), "Should allow papers/ prefix");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_symlink_escape_blocked() {
+        use std::os::unix::fs::symlink;
+
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create rules directory and secret file
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join(".env"), "SECRET=123").unwrap();
+
+        // Create symlink pointing outside rules/
+        let symlink_path = project_root.join("rules/escape.md");
+        symlink(project_root.join(".env"), &symlink_path).unwrap();
+
+        // Should be blocked when canonicalized
+        let result = validate_rules_path(project_root, "rules/escape.md");
+        assert!(
+            result.is_err(),
+            "Should block symlink escaping project root"
+        );
+    }
+
+    #[test]
+    fn test_rules_get_with_path_validation() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create valid file
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "test content").unwrap();
+
+        // Valid request
+        let input = RulesGetInput {
+            path: "rules/test.md".to_string(),
+        };
+        let result = rules_get(input, project_root);
+        assert!(result.is_ok(), "Should allow valid path");
+
+        // Invalid request - path traversal
+        let input = RulesGetInput {
+            path: "../.env".to_string(),
+        };
+        let result = rules_get(input, project_root);
+        assert!(result.is_err(), "Should block path traversal in rules_get");
+    }
+
+    #[test]
+    fn test_rules_page_with_path_validation() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create valid file
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "line1\nline2\nline3").unwrap();
+
+        // Valid request
+        let input = RulesPageInput {
+            path: "rules/test.md".to_string(),
+            cursor: None,
+            max_lines: 10,
+        };
+        let result = rules_page(input, project_root);
+        assert!(result.is_ok(), "Should allow valid path");
+
+        // Invalid request - path traversal
+        let input = RulesPageInput {
+            path: "../.env".to_string(),
+            cursor: None,
+            max_lines: 10,
+        };
+        let result = rules_page(input, project_root);
+        assert!(result.is_err(), "Should block path traversal in rules_page");
+    }
+}
+
+#[cfg(test)]
+mod security_tests_v2 {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_papers_direct_access_blocked() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create papers directory with files
+        fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
+        fs::write(project_root.join("papers/paper1/main.typ"), "content").unwrap();
+        fs::write(project_root.join("papers/paper1/paper.toml"), "content").unwrap();
+        fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
+
+        // Should block: papers/<paper_id>/main.typ
+        let result = validate_rules_path(project_root, "papers/paper1/main.typ");
+        assert!(result.is_err(), "Should block papers/paper1/main.typ");
+
+        // Should block: papers/<paper_id>/paper.toml
+        let result = validate_rules_path(project_root, "papers/paper1/paper.toml");
+        assert!(result.is_err(), "Should block papers/paper1/paper.toml");
+
+        // Should allow: papers/<paper_id>/rules/guide.md
+        let result = validate_rules_path(project_root, "papers/paper1/rules/guide.md");
+        assert!(result.is_ok(), "Should allow papers/paper1/rules/guide.md");
+    }
+
+    #[test]
+    fn test_papers_shallow_path_blocked() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Should block: papers/ (too shallow)
+        let result = validate_rules_path(project_root, "papers/test.md");
+        assert!(result.is_err(), "Should block papers/test.md (no paper_id)");
+
+        // Should block: papers/<paper_id>/ (no rules/)
+        let result = validate_rules_path(project_root, "papers/paper1/test.md");
+        assert!(result.is_err(), "Should block papers/paper1/test.md (no rules/)");
+    }
+}
+
+#[cfg(test)]
+mod bounds_tests_v2 {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_cursor_zero_rejected() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "line1\nline2\nline3").unwrap();
+
+        // cursor=0 should be rejected
+        let input = RulesPageInput {
+            path: "rules/test.md".to_string(),
+            cursor: Some("0".to_string()),
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_err(), "Should reject cursor=0");
+    }
+
+    #[test]
+    fn test_empty_file_cursor_1() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/empty.md"), "").unwrap();
+
+        // cursor=1 on empty file should return empty results, not error
+        let input = RulesPageInput {
+            path: "rules/empty.md".to_string(),
+            cursor: Some("1".to_string()),
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_ok(), "Should allow cursor=1 on empty file");
+
+        let output = result.unwrap();
+        assert_eq!(output.content, "", "Should return empty content");
+        assert_eq!(output.total_lines, 0, "Should have 0 total lines");
+        assert!(!output.has_more, "Should not have more lines");
+    }
+
+    #[test]
+    fn test_empty_file_no_cursor() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/empty.md"), "").unwrap();
+
+        // No cursor on empty file should return empty results
+        let input = RulesPageInput {
+            path: "rules/empty.md".to_string(),
+            cursor: None,
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_ok(), "Should allow no cursor on empty file");
+
+        let output = result.unwrap();
+        assert_eq!(output.content, "", "Should return empty content");
+        assert_eq!(output.start_line, 1, "Should start at line 1");
+    }
+}
+
+#[cfg(test)]
+mod bounds_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_rules_list_offset_exceeds_total() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "content").unwrap();
+
+        // Offset beyond total files
+        let input = RulesListInput {
+            scope: RulesScope::Project,
+            paper_id: None,
+            subdir: None,
+            cursor: Some("100".to_string()), // offset > total
+            limit: 10,
+        };
+
+        let result = rules_list(input, project_root);
+        assert!(result.is_err(), "Should reject offset > total");
+    }
+
+    #[test]
+    fn test_rules_list_offset_equals_total() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "content").unwrap();
+
+        // Offset equals total (should return empty results, not error)
+        let input = RulesListInput {
+            scope: RulesScope::Project,
+            paper_id: None,
+            subdir: None,
+            cursor: Some("1".to_string()), // offset == total
+            limit: 10,
+        };
+
+        let result = rules_list(input, project_root);
+        assert!(result.is_ok(), "Should allow offset == total");
+        let output = result.unwrap();
+        assert_eq!(output.files.len(), 0, "Should return empty results");
+    }
+
+    #[test]
+    fn test_rules_page_cursor_exceeds_total() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "line1\nline2\nline3").unwrap();
+
+        // Cursor beyond total lines
+        let input = RulesPageInput {
+            path: "rules/test.md".to_string(),
+            cursor: Some("1000".to_string()), // cursor > total lines
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_err(), "Should reject cursor > total lines");
+    }
+
+    #[test]
+    fn test_rules_page_cursor_equals_total() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "line1\nline2\nline3").unwrap();
+
+        // Cursor equals total lines (should return the last line)
+        let input = RulesPageInput {
+            path: "rules/test.md".to_string(),
+            cursor: Some("3".to_string()), // cursor == total lines
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_ok(), "Should allow cursor == total lines");
+        let output = result.unwrap();
+        assert_eq!(output.content, "line3", "Should return the last line");
+        assert_eq!(output.start_line, 3);
+        assert_eq!(output.end_line, 3);
+        assert!(!output.has_more, "Should indicate no more lines");
+    }
+
+    #[test]
+    fn test_rules_page_cursor_beyond_total() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "line1\nline2\nline3").unwrap();
+
+        // Cursor beyond total lines (should error)
+        let input = RulesPageInput {
+            path: "rules/test.md".to_string(),
+            cursor: Some("4".to_string()), // cursor > total lines
+            max_lines: 10,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_err(), "Should reject cursor beyond total lines");
+    }
+
+    #[test]
+    fn test_read_lines_range_correct_total() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create file with exactly 10 lines
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        let content = (1..=10).map(|i| format!("line{}", i)).collect::<Vec<_>>().join("\n");
+        fs::write(project_root.join("rules/test.md"), content).unwrap();
+
+        // Read first 5 lines
+        let path = project_root.join("rules/test.md");
+        let (_, actual_lines, total_lines, has_more) = read_lines_range(&path, 1, 5).unwrap();
+
+        assert_eq!(actual_lines, 5, "Should read 5 lines");
+        assert_eq!(total_lines, 10, "Should count all 10 lines");
+        assert!(has_more, "Should indicate more lines exist");
+    }
+
+    #[test]
+    fn test_read_lines_range_read_all() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // Create file with exactly 5 lines
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        let content = (1..=5).map(|i| format!("line{}", i)).collect::<Vec<_>>().join("\n");
+        fs::write(project_root.join("rules/test.md"), content).unwrap();
+
+        // Read all lines (request more than available)
+        let path = project_root.join("rules/test.md");
+        let (_, actual_lines, total_lines, has_more) = read_lines_range(&path, 1, 10).unwrap();
+
+        assert_eq!(actual_lines, 5, "Should read all 5 lines");
+        assert_eq!(total_lines, 5, "Should count all 5 lines");
+        assert!(!has_more, "Should indicate no more lines");
     }
 }
