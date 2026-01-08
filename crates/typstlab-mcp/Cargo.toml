@@ -17,3 +17,6 @@ typstlab-core = { path = "../typstlab-core" }
 # RMCP - Official Rust MCP SDK (for future integration)
 rmcp = { version = "0.8", features = ["server"] }
 rmcp-macros = "0.8"
+
+[dev-dependencies]
+tempfile = "3"

@@ -37,13 +37,24 @@ pub enum ResolveResult {
 /// - macOS: ~/Library/Caches/typstlab/typst
 /// - Linux: ~/.cache/typstlab/typst
 /// - Windows: %LOCALAPPDATA%\typstlab\typst
+///
+/// Falls back to temp directory if cache_dir is unavailable (e.g., in containers)
 pub fn managed_cache_dir() -> Result<PathBuf> {
-    let base = dirs::cache_dir()
-        .ok_or_else(|| TypstlabError::Generic(
-            "Could not determine cache directory".to_string()
+    let base_cache = match dirs::cache_dir() {
+        Some(dir) => dir,
+        None => {
+            // Fallback: use temp directory
+            std::env::temp_dir().join(".typstlab-cache")
+        }
+    };
+
+    let typst_cache = base_cache.join("typstlab").join("typst");
+    fs::create_dir_all(&typst_cache)
+        .map_err(|e| TypstlabError::Generic(
+            format!("Failed to create cache directory: {}", e)
         ))?;
 
-    Ok(base.join("typstlab").join("typst"))
+    Ok(typst_cache)
 }
 
 /// Validate that a Typst binary matches the expected version
@@ -1049,5 +1060,41 @@ mod tests {
         }
 
         // TempDir automatically cleans up
+    }
+
+    // ========================================================================
+    // Robustness Tests
+    // ========================================================================
+
+    #[test]
+    fn test_managed_cache_dir_always_succeeds() {
+        // Should not panic even if dirs::cache_dir() returns None
+        let result = managed_cache_dir();
+        assert!(result.is_ok(), "managed_cache_dir should always succeed");
+
+        let cache_dir = result.unwrap();
+        assert!(
+            cache_dir.ends_with("typstlab/typst") ||
+            cache_dir.to_string_lossy().contains(".typstlab-cache"),
+            "Cache dir should be either standard cache or fallback"
+        );
+
+        // Directory should exist after calling managed_cache_dir
+        assert!(cache_dir.exists(), "Cache directory should be created");
+    }
+
+    #[test]
+    fn test_managed_cache_dir_with_override_creates_directory() {
+        let temp_base = TempDir::new().unwrap();
+        let override_path = temp_base.path().join("custom-cache");
+
+        let result = managed_cache_dir_with_override(Some(override_path.clone()));
+        assert!(result.is_ok());
+
+        let cache_dir = result.unwrap();
+
+        // Should create the directory structure
+        assert!(cache_dir.exists(), "Cache directory should be created");
+        assert!(cache_dir.ends_with("typstlab/typst"));
     }
 }
