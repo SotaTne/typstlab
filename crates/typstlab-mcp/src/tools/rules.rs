@@ -176,8 +176,11 @@ fn validate_rules_path(project_root: &Path, requested_path: impl AsRef<Path>) ->
         });
     }
 
-    // 2. Check for .. components (directory traversal) using Path::components()
-    let components: Vec<Component> = requested.components().collect();
+    // 2. Normalize components (drop leading "./") and check for parent traversal
+    let mut components: Vec<Component> = requested.components().collect();
+    while components.first() == Some(&Component::CurDir) {
+        components.remove(0);
+    }
     if components.iter().any(|c| matches!(c, Component::ParentDir)) {
         return Err(TypstlabError::ProjectPathEscape {
             path: requested.to_path_buf(),
@@ -260,7 +263,10 @@ fn validate_rules_path(project_root: &Path, requested_path: impl AsRef<Path>) ->
         // Additional check for papers/: must be within papers/<paper_id>/rules/
         if allowed_base == "papers" {
             // paper_id already validated above
-            let components: Vec<Component> = requested.components().collect();
+            let mut components: Vec<Component> = requested.components().collect();
+            while components.first() == Some(&Component::CurDir) {
+                components.remove(0);
+            }
             if let Some(Component::Normal(paper_id)) = components.get(1) {
                 let paper_id_str = paper_id
                     .to_str()
@@ -1227,6 +1233,71 @@ mod security_tests_v3 {
         let path = PathBuf::from("papers").join("paper1").join("rules").join("guide.md");
         let result = validate_rules_path(project_root, &path);
         assert!(result.is_ok(), "Should accept path constructed with Path API");
+    }
+
+    #[test]
+    fn test_curdir_prefix_rules() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "content").unwrap();
+
+        // Should accept ./rules/test.md
+        let result = validate_rules_path(project_root, Path::new("./rules/test.md"));
+        assert!(result.is_ok(), "Should accept ./rules/ prefix");
+
+        // Verify canonicalized path is correct
+        let canonical = result.unwrap();
+        assert!(canonical.ends_with("rules/test.md"));
+    }
+
+    #[test]
+    fn test_curdir_prefix_papers() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
+        fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
+
+        // Should accept ./papers/paper1/rules/guide.md
+        let result = validate_rules_path(project_root, Path::new("./papers/paper1/rules/guide.md"));
+        assert!(result.is_ok(), "Should accept ./papers/ prefix");
+
+        // Verify canonicalized path is correct
+        let canonical = result.unwrap();
+        assert!(canonical.ends_with("papers/paper1/rules/guide.md"));
+    }
+
+    #[test]
+    fn test_multiple_curdir_normalized() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "content").unwrap();
+
+        // Should handle ././rules/test.md (multiple .)
+        let result = validate_rules_path(project_root, Path::new("././rules/test.md"));
+        assert!(result.is_ok(), "Should handle multiple . components");
+    }
+
+    #[test]
+    fn test_curdir_does_not_bypass_security() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        // ./../../etc/passwd should still be blocked
+        let result = validate_rules_path(project_root, Path::new("./../../etc/passwd"));
+        assert!(result.is_err(), "Should still block parent traversal with ./");
+
+        // ./../.env should still be blocked
+        let result = validate_rules_path(project_root, Path::new("./../.env"));
+        assert!(result.is_err(), "Should still block parent traversal");
+
+        // ./.env should be blocked (not in rules/ or papers/)
+        let result = validate_rules_path(project_root, Path::new("./.env"));
+        assert!(result.is_err(), "Should block ./.env (not in allowed directories)");
     }
 }
 
