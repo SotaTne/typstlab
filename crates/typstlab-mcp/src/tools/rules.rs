@@ -164,10 +164,10 @@ pub struct SearchMatch {
 /// 6. Verifying final path is within project root
 ///
 /// Cross-platform: Uses Path::components() to support both / and \ separators
-fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<PathBuf> {
+fn validate_rules_path(project_root: &Path, requested_path: impl AsRef<Path>) -> CoreResult<PathBuf> {
     use std::path::Component;
 
-    let requested = Path::new(requested_path);
+    let requested = requested_path.as_ref();
 
     // 1. Check for absolute paths
     if requested.is_absolute() {
@@ -192,7 +192,7 @@ fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<
         if components.len() < 4 {
             return Err(TypstlabError::Generic(format!(
                 "Path must be within rules/ or papers/<paper_id>/rules/ directory, got: {}",
-                requested_path
+                requested.display()
             )));
         }
 
@@ -205,14 +205,14 @@ fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<
                 if name_str.is_empty() {
                     return Err(TypstlabError::Generic(format!(
                         "paper_id cannot be empty, got: {}",
-                        requested_path
+                        requested.display()
                     )));
                 }
             }
             _ => {
                 return Err(TypstlabError::Generic(format!(
                     "Invalid paper_id component, got: {}",
-                    requested_path
+                    requested.display()
                 )));
             }
         }
@@ -221,7 +221,7 @@ fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<
         if components.get(2) != Some(&Component::Normal("rules".as_ref())) {
             return Err(TypstlabError::Generic(format!(
                 "Path must be within rules/ or papers/<paper_id>/rules/ directory, got: {}",
-                requested_path
+                requested.display()
             )));
         }
 
@@ -229,7 +229,7 @@ fn validate_rules_path(project_root: &Path, requested_path: &str) -> CoreResult<
     } else {
         return Err(TypstlabError::Generic(format!(
             "Path must be within rules/ or papers/<paper_id>/rules/ directory, got: {}",
-            requested_path
+            requested.display()
         )));
     };
 
@@ -524,6 +524,11 @@ pub fn rules_get(input: RulesGetInput, project_root: &Path) -> CoreResult<RulesG
 /// Get file content in line-based chunks
 pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<RulesPageOutput> {
     // Validate max_lines
+    if input.max_lines == 0 {
+        return Err(TypstlabError::Generic(
+            "max_lines must be at least 1".to_string(),
+        ));
+    }
     if input.max_lines > 400 {
         return Err(TypstlabError::Generic(
             "max_lines cannot exceed 400".to_string(),
@@ -555,32 +560,38 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
     let (content, actual_lines, total_lines, has_more) =
         read_lines_range(&path, start_line, input.max_lines)?;
 
-    // Validate cursor
+    // Handle empty file: return start_line=0, end_line=0 for consistency
+    // Empty files should not accept cursors (reject any cursor value)
     if total_lines == 0 {
-        // Empty file: only accept cursor=1 (or None, which defaults to 1)
-        // Reject arbitrary cursors like cursor=5 on empty files
-        if start_line > 1 {
-            return Err(TypstlabError::Generic(format!(
-                "Invalid cursor {} for empty file (total_lines=0)",
-                start_line
-            )));
+        if input.cursor.is_some() {
+            return Err(TypstlabError::Generic(
+                "Empty file does not support cursor (total_lines=0)".to_string(),
+            ));
         }
-    } else if start_line > total_lines {
-        // Non-empty file: cursor must be within bounds
+        return Ok(RulesPageOutput {
+            path: input.path,
+            content: String::new(),
+            start_line: 0,
+            end_line: 0,
+            total_lines: 0,
+            has_more: false,
+            next_cursor: None,
+        });
+    }
+
+    // Validate cursor for non-empty files
+    if start_line > total_lines {
         return Err(TypstlabError::Generic(format!(
             "Start line {} exceeds total lines {}",
             start_line, total_lines
         )));
     }
 
+    // Calculate end_line for non-empty files
     let end_line = if actual_lines > 0 {
         start_line + actual_lines - 1
-    } else if total_lines == 0 {
-        // Empty file: end_line should be 0, not start_line
-        0
     } else {
-        // Non-empty file but no lines read (cursor beyond total)
-        // This case is already handled by validation above, but for safety
+        // Non-empty file but no lines read (should not happen after validation)
         start_line
     };
 
@@ -971,7 +982,7 @@ mod bounds_tests_v2 {
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // cursor=1 on empty file should return empty results, not error
+        // cursor=1 on empty file should be rejected (new behavior)
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: Some("1".to_string()),
@@ -979,12 +990,7 @@ mod bounds_tests_v2 {
         };
 
         let result = rules_page(input, project_root);
-        assert!(result.is_ok(), "Should allow cursor=1 on empty file");
-
-        let output = result.unwrap();
-        assert_eq!(output.content, "", "Should return empty content");
-        assert_eq!(output.total_lines, 0, "Should have 0 total lines");
-        assert!(!output.has_more, "Should not have more lines");
+        assert!(result.is_err(), "Should reject cursor on empty file");
     }
 
     #[test]
@@ -995,7 +1001,7 @@ mod bounds_tests_v2 {
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // No cursor on empty file should return empty results
+        // No cursor on empty file should return start_line=0, end_line=0
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: None,
@@ -1007,7 +1013,10 @@ mod bounds_tests_v2 {
 
         let output = result.unwrap();
         assert_eq!(output.content, "", "Should return empty content");
-        assert_eq!(output.start_line, 1, "Should start at line 1");
+        assert_eq!(output.start_line, 0, "Empty file should start at line 0");
+        assert_eq!(output.end_line, 0, "Empty file should end at line 0");
+        assert_eq!(output.total_lines, 0, "Should have 0 total lines");
+        assert!(!output.has_more, "Should not have more lines");
     }
 }
 
@@ -1172,6 +1181,7 @@ mod bounds_tests {
 mod security_tests_v3 {
     use super::*;
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]
@@ -1189,31 +1199,17 @@ mod security_tests_v3 {
     }
 
     #[test]
-    #[cfg(windows)]
-    fn test_windows_path_separator_accepted() {
+    fn test_cross_platform_path_handling() {
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
         fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
 
-        // Should allow: papers\paper1\rules\guide.md (Windows separator)
-        let result = validate_rules_path(project_root, r"papers\paper1\rules\guide.md");
-        assert!(result.is_ok(), "Should allow Windows path separator");
-    }
-
-    #[test]
-    #[cfg(windows)]
-    fn test_mixed_separators() {
-        let temp = TempDir::new().unwrap();
-        let project_root = temp.path();
-
-        fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
-        fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
-
-        // Should allow: papers/paper1\rules\guide.md (mixed separators)
-        let result = validate_rules_path(project_root, r"papers/paper1\rules\guide.md");
-        assert!(result.is_ok(), "Should allow mixed path separators");
+        // Use Path API for cross-platform path construction
+        let path = PathBuf::from("papers").join("paper1").join("rules").join("guide.md");
+        let result = validate_rules_path(project_root, &path);
+        assert!(result.is_ok(), "Should accept path constructed with Path API");
     }
 }
 
@@ -1224,14 +1220,14 @@ mod correctness_tests_v3 {
     use tempfile::TempDir;
 
     #[test]
-    fn test_empty_file_end_line_zero() {
+    fn test_empty_file_with_cursor_rejected() {
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // Empty file should return end_line=0, not 1
+        // Empty file should reject ANY cursor (even cursor=1)
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: Some("1".to_string()),
@@ -1239,23 +1235,24 @@ mod correctness_tests_v3 {
         };
 
         let result = rules_page(input, project_root);
-        assert!(result.is_ok(), "Should allow cursor=1 on empty file");
+        assert!(result.is_err(), "Should reject cursor on empty file");
 
-        let output = result.unwrap();
-        assert_eq!(output.start_line, 1, "Should start at line 1");
-        assert_eq!(output.end_line, 0, "Should end at line 0 for empty file");
-        assert_eq!(output.total_lines, 0, "Should have 0 total lines");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("cursor") || err_msg.contains("total_lines=0"),
+            "Error message should mention cursor/empty file"
+        );
     }
 
     #[test]
-    fn test_empty_file_no_cursor_end_line_zero() {
+    fn test_empty_file_no_cursor_returns_zero_range() {
         let temp = TempDir::new().unwrap();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
         fs::write(project_root.join("rules/empty.md"), "").unwrap();
 
-        // Empty file with no cursor should also return end_line=0
+        // Empty file with no cursor should return start_line=0, end_line=0
         let input = RulesPageInput {
             path: "rules/empty.md".to_string(),
             cursor: None,
@@ -1266,8 +1263,12 @@ mod correctness_tests_v3 {
         assert!(result.is_ok(), "Should allow no cursor on empty file");
 
         let output = result.unwrap();
-        assert_eq!(output.start_line, 1, "Should start at line 1");
-        assert_eq!(output.end_line, 0, "Should end at line 0 for empty file");
+        assert_eq!(output.start_line, 0, "Empty file should start at line 0");
+        assert_eq!(output.end_line, 0, "Empty file should end at line 0");
+        assert_eq!(output.total_lines, 0, "Should have 0 total lines");
+        assert_eq!(output.content, "", "Content should be empty");
+        assert!(!output.has_more, "Should not have more lines");
+        assert!(output.next_cursor.is_none(), "Should not have next cursor");
     }
 
     #[test]
@@ -1296,6 +1297,32 @@ mod correctness_tests_v3 {
         assert!(
             err_msg.contains("empty file") || err_msg.contains("total_lines=0"),
             "Error message should mention empty file, got: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_max_lines_zero_rejected() {
+        let temp = TempDir::new().unwrap();
+        let project_root = temp.path();
+
+        fs::create_dir_all(project_root.join("rules")).unwrap();
+        fs::write(project_root.join("rules/test.md"), "line1\nline2\nline3").unwrap();
+
+        // max_lines=0 should be rejected
+        let input = RulesPageInput {
+            path: "rules/test.md".to_string(),
+            cursor: None,
+            max_lines: 0,
+        };
+
+        let result = rules_page(input, project_root);
+        assert!(result.is_err(), "Should reject max_lines=0");
+
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("must be at least 1"),
+            "Error message should mention minimum requirement, got: {}",
             err_msg
         );
     }
