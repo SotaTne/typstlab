@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use semver::Version;
 use typstlab_core::{Result, TypstlabError};
 use crate::info::{TypstInfo, TypstSource};
 
@@ -50,6 +51,12 @@ pub fn managed_cache_dir() -> Result<PathBuf> {
 /// Parses output: "typst 0.13.1" -> "0.13.1"
 /// Returns: Ok(true) if version matches, Ok(false) if mismatch
 fn validate_version(path: &Path, expected: &str) -> Result<bool> {
+    // Validate expected version format first
+    Version::parse(expected)
+        .map_err(|e| TypstlabError::Generic(
+            format!("Invalid expected version format '{}': {}", expected, e)
+        ))?;
+
     // Execute typst --version
     let output = Command::new(path)
         .arg("--version")
@@ -94,10 +101,12 @@ fn parse_typst_version(output: &str) -> Option<String> {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 {
                 // Second part should be version (possibly with 'v' prefix)
-                let version = parts[1].trim_start_matches('v');
-                // Basic validation: should contain at least one dot
-                if version.contains('.') {
-                    return Some(version.to_string());
+                let version_str = parts[1].trim_start_matches('v');
+
+                // Validate using semver
+                match Version::parse(version_str) {
+                    Ok(_) => return Some(version_str.to_string()),
+                    Err(_) => continue, // Try next line
                 }
             }
         }
@@ -251,6 +260,81 @@ pub fn resolve_typst(
 }
 
 // ============================================================================
+// Test-Only Helpers
+// ============================================================================
+
+/// Test-only helper: resolve_managed with custom cache directory
+#[doc(hidden)]
+pub fn resolve_managed_with_override(
+    version: &str,
+    cache_dir_override: Option<PathBuf>
+) -> Result<Option<TypstInfo>> {
+    let cache_dir = match cache_dir_override {
+        Some(dir) => dir,
+        None => managed_cache_dir()?,
+    };
+
+    let version_dir = cache_dir.join(version);
+
+    #[cfg(unix)]
+    let binary_path = version_dir.join("typst");
+    #[cfg(windows)]
+    let binary_path = version_dir.join("typst.exe");
+
+    if !binary_path.exists() {
+        return Ok(None);
+    }
+
+    let is_match = validate_version(&binary_path, version)?;
+    if !is_match {
+        return Ok(None);
+    }
+
+    Ok(Some(TypstInfo {
+        version: version.to_string(),
+        path: binary_path,
+        source: TypstSource::Managed,
+    }))
+}
+
+/// Test-only helper: resolve_typst with custom cache directory
+#[doc(hidden)]
+pub fn resolve_typst_with_override(
+    options: ResolveOptions,
+    cache_dir_override: Option<PathBuf>
+) -> Result<ResolveResult> {
+    let version = &options.required_version;
+    let mut searched_locations = Vec::new();
+
+    if !options.force_refresh {
+        if let Some(cached_info) = check_cache(version) {
+            return Ok(ResolveResult::Cached(cached_info));
+        }
+    }
+
+    match resolve_managed_with_override(version, cache_dir_override.clone())? {
+        Some(info) => return Ok(ResolveResult::Resolved(info)),
+        None => {
+            let cache_dir = cache_dir_override.unwrap_or_else(|| managed_cache_dir().unwrap());
+            let managed_path = cache_dir.join(version);
+            searched_locations.push(format!("managed cache: {}", managed_path.display()));
+        }
+    }
+
+    match resolve_system(version)? {
+        Some(info) => return Ok(ResolveResult::Resolved(info)),
+        None => {
+            searched_locations.push("system PATH".to_string());
+        }
+    }
+
+    Ok(ResolveResult::NotFound {
+        required_version: version.clone(),
+        searched_locations,
+    })
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -260,6 +344,54 @@ mod tests {
     use std::env;
     use std::fs;
     use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    // ========================================================================
+    // Test Helpers Module
+    // ========================================================================
+
+    mod test_helpers {
+        use super::*;
+
+        /// Create a fake typst binary in a temporary directory
+        pub fn create_fake_typst_in_temp(
+            temp_dir: &TempDir,
+            version: &str,
+            script_content: &str
+        ) -> PathBuf {
+            let version_dir = temp_dir.path().join(version);
+            fs::create_dir_all(&version_dir).unwrap();
+
+            #[cfg(unix)]
+            let binary_path = version_dir.join("typst");
+            #[cfg(windows)]
+            let binary_path = version_dir.join("typst.exe");
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let script = format!(
+                    "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"typst {}\"\n  exit 0\nfi\n{}",
+                    version, script_content
+                );
+                fs::write(&binary_path, script).unwrap();
+                let mut perms = fs::metadata(&binary_path).unwrap().permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&binary_path, perms).unwrap();
+            }
+
+            #[cfg(windows)]
+            {
+                let script = format!(
+                    "@echo off\nif \"%1\"==\"--version\" (\n  echo typst {}\n  exit /b 0\n)\n{}",
+                    version, script_content
+                );
+                fs::write(&binary_path, script).unwrap();
+            }
+
+            binary_path
+        }
+    }
 
     // ========================================================================
     // Helper Function Tests
@@ -436,6 +568,46 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_typst_version_valid() {
+        // Test valid semver formats
+        assert_eq!(parse_typst_version("typst 0.11.0"), Some("0.11.0".to_string()));
+        assert_eq!(parse_typst_version("typst 1.0.0"), Some("1.0.0".to_string()));
+        assert_eq!(parse_typst_version("typst v0.11.0"), Some("0.11.0".to_string()));
+        assert_eq!(parse_typst_version("typst 0.13.1"), Some("0.13.1".to_string()));
+    }
+
+    #[test]
+    fn test_parse_typst_version_invalid() {
+        // Test invalid version formats - should reject non-semver strings
+        assert_eq!(parse_typst_version("typst invalid.version.format"), None);
+        assert_eq!(parse_typst_version("typst 1.a.b"), None);
+        assert_eq!(parse_typst_version("typst 1...2...3"), None);
+        assert_eq!(parse_typst_version("typst test.0.0"), None);
+        assert_eq!(parse_typst_version("not a version"), None);
+        assert_eq!(parse_typst_version(""), None);
+    }
+
+    #[test]
+    fn test_validate_version_invalid_expected() {
+        let temp_dir = env::temp_dir();
+
+        #[cfg(unix)]
+        let fake_binary = temp_dir.join("fake_typst_invalid_expected");
+        #[cfg(windows)]
+        let fake_binary = temp_dir.join("fake_typst_invalid_expected.bat");
+
+        // Test with invalid expected version format
+        let result = validate_version(&fake_binary, "invalid.format");
+        assert!(result.is_err());
+
+        // Verify error message contains expected text
+        if let Err(e) = result {
+            let error_msg = format!("{:?}", e);
+            assert!(error_msg.contains("Invalid expected version format"));
+        }
+    }
+
+    #[test]
     fn test_check_cache_none_when_version_not_cached() {
         // When no version is cached, should return None
         let result = check_cache("0.13.1");
@@ -466,47 +638,26 @@ mod tests {
 
     #[test]
     fn test_resolve_managed_found_exact_version() {
-        // Setup: Create managed cache directory with fake typst binary
-        let cache_dir = managed_cache_dir().unwrap();
-        let version = "0.13.1-test-exact";
-        let version_dir = cache_dir.join(version);
+        let temp_cache = TempDir::new().unwrap();
+        let version = "0.13.1";
 
-        // Create directory structure
-        fs::create_dir_all(&version_dir).unwrap();
+        let binary_path = test_helpers::create_fake_typst_in_temp(
+            &temp_cache,
+            version,
+            ""
+        );
 
-        // Create fake typst binary
-        #[cfg(unix)]
-        let binary_path = version_dir.join("typst");
-        #[cfg(windows)]
-        let binary_path = version_dir.join("typst.exe");
+        let result = resolve_managed_with_override(
+            version,
+            Some(temp_cache.path().to_path_buf())
+        );
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&binary_path, "#!/bin/sh\necho 'typst 0.13.1-test-exact'").unwrap();
-            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&binary_path, perms).unwrap();
-        }
-
-        #[cfg(windows)]
-        {
-            fs::write(&binary_path, "@echo typst 0.13.1-test-exact").unwrap();
-        }
-
-        // Test: resolve_managed should find the binary
-        let result = resolve_managed(version);
         assert!(result.is_ok());
-
-        let typst_info = result.unwrap();
-        assert!(typst_info.is_some());
-
-        let info = typst_info.unwrap();
+        let info = result.unwrap().unwrap();
         assert_eq!(info.version, version);
         assert_eq!(info.path, binary_path);
 
-        // Cleanup
-        let _ = fs::remove_dir_all(&version_dir);
+        // TempDir automatically cleans up
     }
 
     #[test]
@@ -519,12 +670,12 @@ mod tests {
 
     #[test]
     fn test_resolve_managed_version_mismatch() {
-        // Setup: Create managed cache with wrong version
-        let cache_dir = managed_cache_dir().unwrap();
-        let actual_version = "0.12.0-test-actual";
-        let requested_version = "0.13.1-test-mismatch";
-        let version_dir = cache_dir.join(requested_version);
+        let temp_cache = TempDir::new().unwrap();
+        let actual_version = "0.12.0";
+        let requested_version = "0.13.1";
 
+        // Create binary that reports different version
+        let version_dir = temp_cache.path().join(requested_version);
         fs::create_dir_all(&version_dir).unwrap();
 
         #[cfg(unix)]
@@ -532,11 +683,11 @@ mod tests {
         #[cfg(windows)]
         let binary_path = version_dir.join("typst.exe");
 
-        // Create fake binary that reports wrong version
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            fs::write(&binary_path, format!("#!/bin/sh\necho 'typst {}'", actual_version)).unwrap();
+            let script = format!("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"typst {}\"\n  exit 0\nfi", actual_version);
+            fs::write(&binary_path, script).unwrap();
             let mut perms = fs::metadata(&binary_path).unwrap().permissions();
             perms.set_mode(0o755);
             fs::set_permissions(&binary_path, perms).unwrap();
@@ -544,34 +695,39 @@ mod tests {
 
         #[cfg(windows)]
         {
-            fs::write(&binary_path, format!("@echo typst {}", actual_version)).unwrap();
+            let script = format!("@echo off\nif \"%1\"==\"--version\" (\n  echo typst {}\n  exit /b 0\n)", actual_version);
+            fs::write(&binary_path, script).unwrap();
         }
 
-        // Test: resolve_managed should return None due to version mismatch
-        let result = resolve_managed(requested_version);
+        let result = resolve_managed_with_override(
+            requested_version,
+            Some(temp_cache.path().to_path_buf())
+        );
+
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
 
-        // Cleanup
-        let _ = fs::remove_dir_all(&version_dir);
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_resolve_managed_binary_not_executable() {
-        // Setup: Create directory but no binary file
-        let cache_dir = managed_cache_dir().unwrap();
-        let version = "0.13.1-test-notexec";
-        let version_dir = cache_dir.join(version);
+        let temp_cache = TempDir::new().unwrap();
+        let version = "0.13.1";
+        let version_dir = temp_cache.path().join(version);
 
+        // Create directory but no binary file
         fs::create_dir_all(&version_dir).unwrap();
 
-        // Test: resolve_managed should return None when binary doesn't exist
-        let result = resolve_managed(version);
+        let result = resolve_managed_with_override(
+            version,
+            Some(temp_cache.path().to_path_buf())
+        );
+
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
 
-        // Cleanup
-        let _ = fs::remove_dir_all(&version_dir);
+        // TempDir automatically cleans up
     }
 
     #[test]
@@ -650,7 +806,7 @@ mod tests {
         // Test: resolve_system should handle errors gracefully
         // We can't easily force `which` to error, but we can test
         // that calling with an unusual version doesn't panic
-        let result = resolve_system("invalid.version.format");
+        let result = resolve_system("99.99.99");  // Use valid semver format
         assert!(result.is_ok());
 
         // Should return None or Some (doesn't matter which)
@@ -663,40 +819,26 @@ mod tests {
 
     #[test]
     fn test_resolve_typst_from_managed() {
-        // Setup: Create managed cache with valid binary
-        let cache_dir = managed_cache_dir().unwrap();
+        let temp_cache = TempDir::new().unwrap();
         let version = "0.14.0";
-        let version_dir = cache_dir.join(version);
 
-        fs::create_dir_all(&version_dir).unwrap();
+        let binary_path = test_helpers::create_fake_typst_in_temp(
+            &temp_cache,
+            version,
+            ""
+        );
 
-        #[cfg(unix)]
-        let binary_path = version_dir.join("typst");
-        #[cfg(windows)]
-        let binary_path = version_dir.join("typst.exe");
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&binary_path, format!("#!/bin/sh\necho 'typst {}'", version)).unwrap();
-            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&binary_path, perms).unwrap();
-        }
-
-        #[cfg(windows)]
-        {
-            fs::write(&binary_path, format!("@echo typst {}", version)).unwrap();
-        }
-
-        // Test: resolve_typst should find it in managed cache
         let options = ResolveOptions {
             required_version: version.to_string(),
             project_root: env::current_dir().unwrap(),
             force_refresh: false,
         };
 
-        let result = resolve_typst(options);
+        let result = resolve_typst_with_override(
+            options,
+            Some(temp_cache.path().to_path_buf())
+        );
+
         assert!(result.is_ok());
 
         match result.unwrap() {
@@ -709,8 +851,7 @@ mod tests {
             }
         }
 
-        // Cleanup
-        let _ = fs::remove_dir_all(&version_dir);
+        // TempDir automatically cleans up
     }
 
     #[test]
@@ -743,14 +884,19 @@ mod tests {
 
     #[test]
     fn test_resolve_typst_not_found() {
-        // Test: resolve_typst should return NotFound when binary doesn't exist
+        let temp_cache = TempDir::new().unwrap();
+
         let options = ResolveOptions {
             required_version: "99.99.99".to_string(),
             project_root: env::current_dir().unwrap(),
             force_refresh: false,
         };
 
-        let result = resolve_typst(options);
+        let result = resolve_typst_with_override(
+            options,
+            Some(temp_cache.path().to_path_buf())
+        );
+
         assert!(result.is_ok());
 
         match result.unwrap() {
@@ -761,48 +907,35 @@ mod tests {
                 assert!(searched_locations.len() >= 2);
             }
             _ => {
-                // If somehow found, that's also acceptable (system state)
-                // Just verify no panic
+                // If somehow found in system PATH, that's also acceptable
             }
         }
+
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_resolve_typst_force_refresh() {
-        // Setup: Create managed cache with valid binary
-        let cache_dir = managed_cache_dir().unwrap();
+        let temp_cache = TempDir::new().unwrap();
         let version = "0.15.0";
-        let version_dir = cache_dir.join(version);
 
-        fs::create_dir_all(&version_dir).unwrap();
+        test_helpers::create_fake_typst_in_temp(
+            &temp_cache,
+            version,
+            ""
+        );
 
-        #[cfg(unix)]
-        let binary_path = version_dir.join("typst");
-        #[cfg(windows)]
-        let binary_path = version_dir.join("typst.exe");
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&binary_path, format!("#!/bin/sh\necho 'typst {}'", version)).unwrap();
-            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&binary_path, perms).unwrap();
-        }
-
-        #[cfg(windows)]
-        {
-            fs::write(&binary_path, format!("@echo typst {}", version)).unwrap();
-        }
-
-        // Test: With force_refresh=true, should re-resolve
         let options = ResolveOptions {
             required_version: version.to_string(),
             project_root: env::current_dir().unwrap(),
             force_refresh: true,
         };
 
-        let result = resolve_typst(options);
+        let result = resolve_typst_with_override(
+            options,
+            Some(temp_cache.path().to_path_buf())
+        );
+
         assert!(result.is_ok());
 
         // Should return Resolved (not Cached) since force_refresh=true
@@ -812,93 +945,69 @@ mod tests {
             }
             ResolveResult::Cached(_) => {
                 // With force_refresh=true, should not return Cached
-                // But for now, check_cache always returns None, so this won't happen
             }
             ResolveResult::NotFound { .. } => {
                 panic!("Should have found binary");
             }
         }
 
-        // Cleanup
-        let _ = fs::remove_dir_all(&version_dir);
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_resolve_typst_managed_priority_over_system() {
-        // Setup: Create managed cache with specific version
-        let cache_dir = managed_cache_dir().unwrap();
+        let temp_cache = TempDir::new().unwrap();
         let version = "0.16.0";
-        let version_dir = cache_dir.join(version);
 
-        fs::create_dir_all(&version_dir).unwrap();
+        let binary_path = test_helpers::create_fake_typst_in_temp(
+            &temp_cache,
+            version,
+            ""
+        );
 
-        #[cfg(unix)]
-        let binary_path = version_dir.join("typst");
-        #[cfg(windows)]
-        let binary_path = version_dir.join("typst.exe");
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&binary_path, format!("#!/bin/sh\necho 'typst {}'", version)).unwrap();
-            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&binary_path, perms).unwrap();
-        }
-
-        #[cfg(windows)]
-        {
-            fs::write(&binary_path, format!("@echo typst {}", version)).unwrap();
-        }
-
-        // Test: resolve_typst should prefer managed over system
         let options = ResolveOptions {
             required_version: version.to_string(),
             project_root: env::current_dir().unwrap(),
             force_refresh: false,
         };
 
-        let result = resolve_typst(options);
+        let result = resolve_typst_with_override(
+            options,
+            Some(temp_cache.path().to_path_buf())
+        );
+
         assert!(result.is_ok());
 
         match result.unwrap() {
             ResolveResult::Resolved(info) | ResolveResult::Cached(info) => {
-                // Should find the managed version
                 assert_eq!(info.version, version);
                 assert_eq!(info.path, binary_path);
-                // Verify it came from managed cache
-                match info.source {
-                    TypstSource::Managed => {
-                        // Good! Managed has priority
-                    }
-                    TypstSource::System => {
-                        // Only acceptable if system happens to have same version
-                        // and managed check somehow failed
-                    }
-                    _ => {
-                        panic!("Unexpected source");
-                    }
-                }
+                // Should come from managed cache (not system)
+                assert!(matches!(info.source, TypstSource::Managed));
             }
             ResolveResult::NotFound { .. } => {
                 panic!("Should have found binary in managed cache");
             }
         }
 
-        // Cleanup
-        let _ = fs::remove_dir_all(&version_dir);
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_resolve_typst_searched_locations() {
-        // Test: NotFound result should include searched locations
+        let temp_cache = TempDir::new().unwrap();
+
         let options = ResolveOptions {
             required_version: "98.76.54".to_string(),
             project_root: env::current_dir().unwrap(),
             force_refresh: false,
         };
 
-        let result = resolve_typst(options);
+        let result = resolve_typst_with_override(
+            options,
+            Some(temp_cache.path().to_path_buf())
+        );
+
         assert!(result.is_ok());
 
         match result.unwrap() {
@@ -917,8 +1026,10 @@ mod tests {
                 assert!(has_system, "Searched locations should include system PATH");
             }
             _ => {
-                // If found (unlikely), that's also acceptable
+                // If found in system PATH (unlikely), that's acceptable
             }
         }
+
+        // TempDir automatically cleans up
     }
 }

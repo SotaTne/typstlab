@@ -87,6 +87,39 @@ pub fn exec_typst(
     run_command(&binary_path, &options.args)
 }
 
+/// Test-only helper: exec_typst with custom cache directory
+#[doc(hidden)]
+pub fn exec_typst_with_override(
+    options: ExecOptions,
+    cache_dir_override: Option<std::path::PathBuf>,
+) -> Result<ExecResult> {
+    // Step 1: Resolve the Typst binary with override
+    let resolve_options = ResolveOptions {
+        required_version: options.required_version.clone(),
+        project_root: options.project_root.clone(),
+        force_refresh: false,
+    };
+
+    let resolve_result = crate::resolve::resolve_typst_with_override(
+        resolve_options,
+        cache_dir_override
+    )?;
+
+    // Step 2: Extract the binary path from resolve result
+    let binary_path = match resolve_result {
+        ResolveResult::Cached(info) => info.path,
+        ResolveResult::Resolved(info) => info.path,
+        ResolveResult::NotFound { required_version, searched_locations: _ } => {
+            return Err(TypstlabError::TypstNotResolved {
+                required_version,
+            });
+        }
+    };
+
+    // Step 3: Execute the command
+    run_command(&binary_path, &options.args)
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -96,6 +129,7 @@ mod tests {
     use super::*;
     use std::env;
     use std::fs;
+    use tempfile::TempDir;
 
     // ========================================================================
     // Helper Function Tests
@@ -103,9 +137,12 @@ mod tests {
 
     #[test]
     fn test_run_command_success() {
-        // Create a fake binary that exits with success
-        let temp_dir = env::temp_dir();
-        let fake_binary = temp_dir.join("fake_typst_success");
+        let temp_dir = TempDir::new().unwrap();
+
+        #[cfg(unix)]
+        let fake_binary = temp_dir.path().join("fake_typst_success");
+        #[cfg(windows)]
+        let fake_binary = temp_dir.path().join("fake_typst_success.bat");
 
         #[cfg(unix)]
         {
@@ -118,16 +155,11 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let fake_binary = temp_dir.join("fake_typst_success.bat");
             fs::write(&fake_binary, "@echo success output\r\n@exit /b 0").unwrap();
         }
 
         let args = vec!["--version".to_string()];
-
-        #[cfg(unix)]
         let result = run_command(&fake_binary, &args);
-        #[cfg(windows)]
-        let result = run_command(&temp_dir.join("fake_typst_success.bat"), &args);
 
         assert!(result.is_ok());
         let exec_result = result.unwrap();
@@ -135,18 +167,17 @@ mod tests {
         assert!(exec_result.stdout.contains("success output"));
         assert!(exec_result.duration_ms > 0);
 
-        // Cleanup
-        #[cfg(unix)]
-        let _ = fs::remove_file(&fake_binary);
-        #[cfg(windows)]
-        let _ = fs::remove_file(temp_dir.join("fake_typst_success.bat"));
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_run_command_failure() {
-        // Create a fake binary that exits with error
-        let temp_dir = env::temp_dir();
-        let fake_binary = temp_dir.join("fake_typst_failure");
+        let temp_dir = TempDir::new().unwrap();
+
+        #[cfg(unix)]
+        let fake_binary = temp_dir.path().join("fake_typst_failure");
+        #[cfg(windows)]
+        let fake_binary = temp_dir.path().join("fake_typst_failure.bat");
 
         #[cfg(unix)]
         {
@@ -159,27 +190,18 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let fake_binary = temp_dir.join("fake_typst_failure.bat");
             fs::write(&fake_binary, "@echo error output 1>&2\r\n@exit /b 1").unwrap();
         }
 
         let args = vec!["compile".to_string()];
-
-        #[cfg(unix)]
         let result = run_command(&fake_binary, &args);
-        #[cfg(windows)]
-        let result = run_command(&temp_dir.join("fake_typst_failure.bat"), &args);
 
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 1);
         assert!(exec_result.stderr.contains("error output"));
 
-        // Cleanup
-        #[cfg(unix)]
-        let _ = fs::remove_file(&fake_binary);
-        #[cfg(windows)]
-        let _ = fs::remove_file(temp_dir.join("fake_typst_failure.bat"));
+        // TempDir automatically cleans up
     }
 
     #[test]
@@ -195,9 +217,12 @@ mod tests {
 
     #[test]
     fn test_run_command_captures_stdout_stderr() {
-        // Create a fake binary that outputs to both stdout and stderr
-        let temp_dir = env::temp_dir();
-        let fake_binary = temp_dir.join("fake_typst_mixed");
+        let temp_dir = TempDir::new().unwrap();
+
+        #[cfg(unix)]
+        let fake_binary = temp_dir.path().join("fake_typst_mixed");
+        #[cfg(windows)]
+        let fake_binary = temp_dir.path().join("fake_typst_mixed.bat");
 
         #[cfg(unix)]
         {
@@ -210,34 +235,28 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let fake_binary = temp_dir.join("fake_typst_mixed.bat");
             fs::write(&fake_binary, "@echo stdout message\r\n@echo stderr message 1>&2\r\n@exit /b 0").unwrap();
         }
 
         let args = vec![];
-
-        #[cfg(unix)]
         let result = run_command(&fake_binary, &args);
-        #[cfg(windows)]
-        let result = run_command(&temp_dir.join("fake_typst_mixed.bat"), &args);
 
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         assert!(exec_result.stdout.contains("stdout message"));
         assert!(exec_result.stderr.contains("stderr message"));
 
-        // Cleanup
-        #[cfg(unix)]
-        let _ = fs::remove_file(&fake_binary);
-        #[cfg(windows)]
-        let _ = fs::remove_file(temp_dir.join("fake_typst_mixed.bat"));
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_run_command_timing() {
-        // Test that duration_ms is measured
-        let temp_dir = env::temp_dir();
-        let fake_binary = temp_dir.join("fake_typst_timing");
+        let temp_dir = TempDir::new().unwrap();
+
+        #[cfg(unix)]
+        let fake_binary = temp_dir.path().join("fake_typst_timing");
+        #[cfg(windows)]
+        let fake_binary = temp_dir.path().join("fake_typst_timing.bat");
 
         #[cfg(unix)]
         {
@@ -250,27 +269,18 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let fake_binary = temp_dir.join("fake_typst_timing.bat");
             fs::write(&fake_binary, "@timeout /t 1 /nobreak >nul\r\n@echo done").unwrap();
         }
 
         let args = vec![];
-
-        #[cfg(unix)]
         let result = run_command(&fake_binary, &args);
-        #[cfg(windows)]
-        let result = run_command(&temp_dir.join("fake_typst_timing.bat"), &args);
 
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         // Should take at least some time
         assert!(exec_result.duration_ms > 0);
 
-        // Cleanup
-        #[cfg(unix)]
-        let _ = fs::remove_file(&fake_binary);
-        #[cfg(windows)]
-        let _ = fs::remove_file(temp_dir.join("fake_typst_timing.bat"));
+        // TempDir automatically cleans up
     }
 
     // ========================================================================
