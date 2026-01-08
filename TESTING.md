@@ -316,6 +316,19 @@ version = "0.1.0"
 
 #### Pattern 2: TestProject Helper Struct
 
+**⚠️ Security Warning**: When implementing helper structs, always validate path parameters to prevent directory traversal attacks:
+
+```rust
+fn validate_safe_name(name: &str) {
+    assert!(
+        !name.contains("..") && !name.starts_with('/') && !name.starts_with('\\'),
+        "Name must not contain '..' or be an absolute path"
+    );
+}
+```
+
+Without validation, `add_paper("../../etc", ...)` could escape the TempDir!
+
 Create a reusable helper for setting up test projects:
 
 ```rust
@@ -360,9 +373,32 @@ version = "0.1.0"
             &self.root
         }
 
+        /// Validate that a name is safe (no path traversal)
+        fn validate_safe_name(name: &str) {
+            assert!(
+                !name.contains("..") && !name.starts_with('/') && !name.starts_with('\\'),
+                "Name must not contain '..' or be an absolute path, got: {}",
+                name
+            );
+        }
+
+        /// Validate that a path is within the test project root
+        fn validate_within_root(&self, path: &Path) {
+            assert!(
+                path.starts_with(&self.root),
+                "Path {:?} must be within test project root {:?}",
+                path,
+                self.root
+            );
+        }
+
         /// Add a paper to the test project
         pub fn add_paper(&self, paper_id: &str, content: &str) -> &Self {
+            Self::validate_safe_name(paper_id);
+
             let paper_dir = self.root.join("papers").join(paper_id);
+            self.validate_within_root(&paper_dir);
+
             fs::create_dir_all(&paper_dir).unwrap();
             fs::write(paper_dir.join("main.typ"), content).unwrap();
             fs::write(
@@ -374,9 +410,18 @@ version = "0.1.0"
 
         /// Add a rule file to the test project
         pub fn add_rule(&self, paper_id: &str, filename: &str, content: &str) -> &Self {
+            Self::validate_safe_name(paper_id);
+            Self::validate_safe_name(filename);
+
             let rules_dir = self.root.join("papers").join(paper_id).join("rules");
+            self.validate_within_root(&rules_dir);
+
             fs::create_dir_all(&rules_dir).unwrap();
-            fs::write(rules_dir.join(filename), content).unwrap();
+
+            let file_path = rules_dir.join(filename);
+            self.validate_within_root(&file_path);
+
+            fs::write(file_path, content).unwrap();
             self
         }
     }
@@ -513,14 +558,148 @@ fn test_dangerous_fixed_path() {
 - Leaves garbage in system directories
 - Non-deterministic failures
 
+#### ❌ Modifying Environment Variables
+
+```rust
+// ❌ WRONG - DO NOT DO THIS
+#[test]
+fn test_dangerous_env() {
+    env::set_var("TYPSTLAB_CACHE", "/tmp/cache");  // ❌ Affects all tests!
+
+    // This environment variable change affects ALL tests running in parallel
+    let result = my_function();  // Uses the modified env var
+}
+```
+
+**Why this is dangerous:**
+
+- Rust tests run in the same process (different threads)
+- Environment variables are process-global state
+- Changes affect ALL concurrent tests
+- Can cause non-deterministic test failures
+
+**✅ Safe alternative**:
+
+```rust
+#[test]
+fn test_safe_config() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Pass config explicitly instead of using environment variables
+    let config = Config {
+        cache_dir: temp_dir.path().join("cache"),
+    };
+
+    let result = my_function_with_config(&config);
+}
+```
+
+#### ❌ Changing Current Working Directory
+
+```rust
+// ❌ WRONG - DO NOT DO THIS
+#[test]
+fn test_dangerous_chdir() {
+    let temp_dir = TempDir::new().unwrap();
+    env::set_current_dir(temp_dir.path()).unwrap();  // ❌ Global state change!
+
+    // All parallel tests now have wrong CWD!
+}
+```
+
+**Why this is dangerous:**
+
+- Current working directory is process-global state
+- Affects ALL tests running in parallel
+- Can cause non-deterministic path resolution failures
+- Tests may read/write wrong files
+
+**✅ Safe alternative**: Never rely on CWD, always pass explicit paths:
+
+```rust
+#[test]
+fn test_safe_paths() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Pass explicit paths, don't rely on CWD
+    let result = my_function(temp_dir.path());
+}
+```
+
+#### ❌ Creating Large Test Data
+
+```rust
+// ❌ WRONG - DO NOT DO THIS
+#[test]
+fn test_resource_exhaustion() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Creates 10GB test file!
+    let data = vec![0u8; 10 * 1024 * 1024 * 1024];
+    fs::write(temp_dir.path().join("huge.dat"), &data).unwrap();
+}
+```
+
+**Why this is dangerous:**
+
+- Can exhaust disk space or memory
+- Parallel tests multiply resource usage
+- Slows down test execution significantly
+- May cause OOM or disk full errors
+
+**✅ Safe guidelines**:
+
+- Keep test data small (< 10MB per test)
+- Limit file count (< 100 files per test)
+- For large data scenarios, use streaming or mocking
+- Consider `cargo test -- --test-threads=1` for resource-intensive tests
+
+#### ❌ Making Real Network Requests
+
+```rust
+// ❌ WRONG - DO NOT DO THIS
+#[test]
+fn test_dangerous_network() {
+    // Makes real HTTP request!
+    let result = download_typst_version("0.13.1").unwrap();
+}
+```
+
+**Why this is dangerous:**
+
+- Tests fail without internet connection
+- External service changes break tests
+- Slow test execution
+- May violate rate limits
+- CI/CD failures in isolated environments
+
+**✅ Safe alternatives**:
+
+- Mock the network layer with test doubles
+- Use fixture files in test data directories
+- Mark network tests with `#[ignore]` or `#[cfg(feature = "network-tests")]`
+
+```rust
+#[test]
+#[ignore]  // Skip by default, run with --ignored
+fn test_network() {
+    let result = download_typst_version("0.13.1").unwrap();
+}
+```
+
 ### ✅ E2E Testing Checklist
 
 Before writing an E2E test, ensure:
 
 - [ ] Using `TempDir::new()` for test project isolation
 - [ ] **Never** using `env::current_dir()` in test code
+- [ ] **Never** calling `env::set_current_dir()` to change working directory
+- [ ] **Never** modifying environment variables with `env::set_var()` (or restore immediately)
 - [ ] **Never** modifying home directory or global configs
 - [ ] **Never** using fixed paths like `/tmp/test-project`
+- [ ] Validating path parameters to prevent `..` traversal (in test helpers)
+- [ ] Test data size is reasonable (< 10MB per test)
+- [ ] Not making real network requests (use mocks or fixtures, or mark with `#[ignore]`)
 - [ ] Passing explicit `project_root` parameter to functions under test
 - [ ] No manual cleanup code (rely on `Drop`)
 - [ ] Test works when run in parallel with other tests
