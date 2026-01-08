@@ -164,7 +164,10 @@ pub struct SearchMatch {
 /// 6. Verifying final path is within project root
 ///
 /// Cross-platform: Uses Path::components() to support both / and \ separators
-fn validate_rules_path(project_root: &Path, requested_path: impl AsRef<Path>) -> CoreResult<PathBuf> {
+fn validate_rules_path(
+    project_root: &Path,
+    requested_path: impl AsRef<Path>,
+) -> CoreResult<PathBuf> {
     use std::path::Component;
 
     let requested = requested_path.as_ref();
@@ -589,8 +592,8 @@ pub fn rules_page(input: RulesPageInput, project_root: &Path) -> CoreResult<Rule
         return Ok(RulesPageOutput {
             path: input.path,
             content: String::new(),
-            start_line: 1,  // Always 1-indexed (no exceptions)
-            end_line: 0,    // Empty range: end_line < start_line
+            start_line: 1, // Always 1-indexed (no exceptions)
+            end_line: 0,   // Empty range: end_line < start_line
             total_lines: 0,
             has_more: false,
             next_cursor: None,
@@ -1011,8 +1014,14 @@ mod bounds_tests_v2 {
         assert!(result.is_ok(), "Should allow cursor=1 on empty file");
 
         let output = result.unwrap();
-        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (empty range)");
+        assert_eq!(
+            output.start_line, 1,
+            "Empty file should start at line 1 (1-indexed)"
+        );
+        assert_eq!(
+            output.end_line, 0,
+            "Empty file should end at line 0 (empty range)"
+        );
         assert_eq!(output.total_lines, 0, "Empty file has 0 lines");
     }
 
@@ -1036,8 +1045,14 @@ mod bounds_tests_v2 {
 
         let output = result.unwrap();
         assert_eq!(output.content, "", "Should return empty content");
-        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (empty range)");
+        assert_eq!(
+            output.start_line, 1,
+            "Empty file should start at line 1 (1-indexed)"
+        );
+        assert_eq!(
+            output.end_line, 0,
+            "Empty file should end at line 0 (empty range)"
+        );
         assert_eq!(output.total_lines, 0, "Should have 0 total lines");
         assert!(!output.has_more, "Should not have more lines");
     }
@@ -1230,9 +1245,15 @@ mod security_tests_v3 {
         fs::write(project_root.join("papers/paper1/rules/guide.md"), "content").unwrap();
 
         // Use Path API for cross-platform path construction
-        let path = PathBuf::from("papers").join("paper1").join("rules").join("guide.md");
+        let path = PathBuf::from("papers")
+            .join("paper1")
+            .join("rules")
+            .join("guide.md");
         let result = validate_rules_path(project_root, &path);
-        assert!(result.is_ok(), "Should accept path constructed with Path API");
+        assert!(
+            result.is_ok(),
+            "Should accept path constructed with Path API"
+        );
     }
 
     #[test]
@@ -1289,7 +1310,10 @@ mod security_tests_v3 {
 
         // ./../../etc/passwd should still be blocked
         let result = validate_rules_path(project_root, Path::new("./../../etc/passwd"));
-        assert!(result.is_err(), "Should still block parent traversal with ./");
+        assert!(
+            result.is_err(),
+            "Should still block parent traversal with ./"
+        );
 
         // ./../.env should still be blocked
         let result = validate_rules_path(project_root, Path::new("./../.env"));
@@ -1297,7 +1321,10 @@ mod security_tests_v3 {
 
         // ./.env should be blocked (not in rules/ or papers/)
         let result = validate_rules_path(project_root, Path::new("./.env"));
-        assert!(result.is_err(), "Should block ./.env (not in allowed directories)");
+        assert!(
+            result.is_err(),
+            "Should block ./.env (not in allowed directories)"
+        );
     }
 }
 
@@ -1326,8 +1353,14 @@ mod correctness_tests_v3 {
         assert!(result.is_ok(), "Should allow cursor=1 on empty file");
 
         let output = result.unwrap();
-        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (empty range)");
+        assert_eq!(
+            output.start_line, 1,
+            "Empty file should start at line 1 (1-indexed)"
+        );
+        assert_eq!(
+            output.end_line, 0,
+            "Empty file should end at line 0 (empty range)"
+        );
         assert_eq!(output.total_lines, 0, "Empty file has 0 lines");
         assert_eq!(output.content, "", "Content should be empty");
         assert!(!output.has_more, "Should not have more");
@@ -1353,8 +1386,14 @@ mod correctness_tests_v3 {
         assert!(result.is_ok(), "Should allow no cursor on empty file");
 
         let output = result.unwrap();
-        assert_eq!(output.start_line, 1, "Empty file should start at line 1 (1-indexed)");
-        assert_eq!(output.end_line, 0, "Empty file should end at line 0 (empty range)");
+        assert_eq!(
+            output.start_line, 1,
+            "Empty file should start at line 1 (1-indexed)"
+        );
+        assert_eq!(
+            output.end_line, 0,
+            "Empty file should end at line 0 (empty range)"
+        );
         assert_eq!(output.total_lines, 0, "Should have 0 total lines");
         assert_eq!(output.content, "", "Content should be empty");
         assert!(!output.has_more, "Should not have more lines");

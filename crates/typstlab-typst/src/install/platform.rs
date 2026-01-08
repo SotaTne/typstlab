@@ -100,7 +100,10 @@ mod tests {
     #[test]
     fn test_detect_arch_succeeds() {
         let arch = detect_arch();
-        assert!(arch.is_ok(), "detect_arch should succeed on current platform");
+        assert!(
+            arch.is_ok(),
+            "detect_arch should succeed on current platform"
+        );
     }
 
     #[test]
