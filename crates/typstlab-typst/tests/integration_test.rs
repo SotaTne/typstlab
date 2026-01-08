@@ -41,9 +41,8 @@ fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: 
         // Ensure filesystem sync before execution to prevent ETXTBSY
         temp_file.as_file().sync_all().unwrap();
 
-        // Persist and explicitly drop to close file handle
-        let persisted = temp_file.persist(&binary_path).unwrap();
-        drop(persisted);
+        // Persist - file handle will be dropped automatically at end of scope
+        temp_file.persist(&binary_path).unwrap();
     }
 
     #[cfg(windows)]
@@ -59,9 +58,8 @@ fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: 
         // Ensure filesystem sync before execution to prevent race conditions
         temp_file.as_file().sync_all().unwrap();
 
-        // Persist and explicitly drop to close file handle
-        let persisted = temp_file.persist(&binary_path).unwrap();
-        drop(persisted);
+        // Persist - file handle will be dropped automatically at end of scope
+        temp_file.persist(&binary_path).unwrap();
     }
 
     binary_path

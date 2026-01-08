@@ -178,9 +178,8 @@ mod tests {
             // Ensure filesystem sync before execution to prevent ETXTBSY
             temp_file.as_file().sync_all().unwrap();
 
-            // Persist and explicitly drop to close file handle
-            let persisted = temp_file.persist(path).unwrap();
-            drop(persisted);
+            // Persist - file handle will be dropped automatically at end of scope
+            temp_file.persist(path).unwrap();
         }
 
         #[cfg(windows)]
@@ -191,9 +190,8 @@ mod tests {
             // Ensure filesystem sync before execution to prevent race conditions
             temp_file.as_file().sync_all().unwrap();
 
-            // Persist and explicitly drop to close file handle
-            let persisted = temp_file.persist(path).unwrap();
-            drop(persisted);
+            // Persist - file handle will be dropped automatically at end of scope
+            temp_file.persist(path).unwrap();
         }
     }
 
