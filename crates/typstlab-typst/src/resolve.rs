@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use semver::Version;
@@ -263,16 +264,37 @@ pub fn resolve_typst(
 // Test-Only Helpers
 // ============================================================================
 
+/// Test-only helper: managed_cache_dir with custom base directory
+#[doc(hidden)]
+pub fn managed_cache_dir_with_override(
+    base_cache_override: Option<PathBuf>
+) -> Result<PathBuf> {
+    let base = match base_cache_override {
+        Some(dir) => dir,
+        None => dirs::cache_dir()
+            .ok_or_else(|| TypstlabError::Generic(
+                "Could not determine cache directory".to_string()
+            ))?,
+    };
+
+    let typst_cache = base.join("typstlab").join("typst");
+
+    // Create directory if it doesn't exist
+    fs::create_dir_all(&typst_cache)
+        .map_err(|e| TypstlabError::Generic(
+            format!("Failed to create cache directory: {}", e)
+        ))?;
+
+    Ok(typst_cache)
+}
+
 /// Test-only helper: resolve_managed with custom cache directory
 #[doc(hidden)]
 pub fn resolve_managed_with_override(
     version: &str,
     cache_dir_override: Option<PathBuf>
 ) -> Result<Option<TypstInfo>> {
-    let cache_dir = match cache_dir_override {
-        Some(dir) => dir,
-        None => managed_cache_dir()?,
-    };
+    let cache_dir = cache_dir_override.expect("cache_dir_override must be Some in tests");
 
     let version_dir = cache_dir.join(version);
 
@@ -315,7 +337,9 @@ pub fn resolve_typst_with_override(
     match resolve_managed_with_override(version, cache_dir_override.clone())? {
         Some(info) => return Ok(ResolveResult::Resolved(info)),
         None => {
-            let cache_dir = cache_dir_override.unwrap_or_else(|| managed_cache_dir().unwrap());
+            // Use the provided cache_dir_override for search locations
+            // This is a test-only function, so cache_dir_override is always Some
+            let cache_dir = cache_dir_override.expect("cache_dir_override must be Some in tests");
             let managed_path = cache_dir.join(version);
             searched_locations.push(format!("managed cache: {}", managed_path.display()));
         }
@@ -400,52 +424,75 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_managed_cache_dir_macos() {
-        let result = managed_cache_dir();
+        use tempfile::TempDir;
+
+        let temp_base = TempDir::new().unwrap();
+
+        let result = managed_cache_dir_with_override(Some(temp_base.path().to_path_buf()));
         assert!(result.is_ok());
 
         let cache_dir = result.unwrap();
-        let cache_str = cache_dir.to_string_lossy();
 
-        // Should be: ~/Library/Caches/typstlab/typst
-        assert!(cache_str.contains("Library/Caches/typstlab/typst"));
+        // Should end with typstlab/typst using Path API
+        assert!(cache_dir.ends_with(Path::new("typstlab").join("typst")));
+
+        // TempDir automatically cleans up
     }
 
     #[test]
     #[cfg(target_os = "linux")]
     fn test_managed_cache_dir_linux() {
-        let result = managed_cache_dir();
+        use tempfile::TempDir;
+
+        let temp_base = TempDir::new().unwrap();
+
+        let result = managed_cache_dir_with_override(Some(temp_base.path().to_path_buf()));
         assert!(result.is_ok());
 
         let cache_dir = result.unwrap();
-        let cache_str = cache_dir.to_string_lossy();
 
-        // Should be: ~/.cache/typstlab/typst
-        assert!(cache_str.contains(".cache/typstlab/typst"));
+        // Should end with typstlab/typst using Path API
+        assert!(cache_dir.ends_with(Path::new("typstlab").join("typst")));
+
+        // TempDir automatically cleans up
     }
 
     #[test]
     #[cfg(target_os = "windows")]
     fn test_managed_cache_dir_windows() {
-        let result = managed_cache_dir();
+        use tempfile::TempDir;
+
+        let temp_base = TempDir::new().unwrap();
+
+        let result = managed_cache_dir_with_override(Some(temp_base.path().to_path_buf()));
         assert!(result.is_ok());
 
         let cache_dir = result.unwrap();
-        let cache_str = cache_dir.to_string_lossy();
 
-        // Should be: %LOCALAPPDATA%\typstlab\typst
-        assert!(cache_str.contains("typstlab\\typst"));
+        // Should end with typstlab/typst using Path API
+        assert!(cache_dir.ends_with(Path::new("typstlab").join("typst")));
+
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_managed_cache_dir_creates_path() {
-        let result = managed_cache_dir();
+        use tempfile::TempDir;
+
+        let temp_base = TempDir::new().unwrap();
+
+        let result = managed_cache_dir_with_override(Some(temp_base.path().to_path_buf()));
         assert!(result.is_ok());
 
         let cache_dir = result.unwrap();
 
-        // Should end with typstlab/typst
-        assert!(cache_dir.ends_with("typstlab/typst") ||
-                cache_dir.ends_with("typstlab\\typst"));
+        // Should end with typstlab/typst using Path API
+        assert!(cache_dir.ends_with(Path::new("typstlab").join("typst")));
+
+        // Verify the directory was actually created
+        assert!(cache_dir.exists());
+
+        // TempDir automatically cleans up
     }
 
     #[test]

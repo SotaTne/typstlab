@@ -304,12 +304,12 @@ mod tests {
 
     #[test]
     fn test_exec_typst_with_resolved_binary() {
-        // Setup: Create managed cache with valid binary
-        use crate::resolve::managed_cache_dir;
+        use tempfile::TempDir;
 
-        let cache_dir = managed_cache_dir().unwrap();
+        // Setup: Create temp cache with valid binary
+        let temp_cache = TempDir::new().unwrap();
         let version = "0.17.0";
-        let version_dir = cache_dir.join(version);
+        let version_dir = temp_cache.path().join(version);
 
         fs::create_dir_all(&version_dir).unwrap();
 
@@ -339,25 +339,24 @@ mod tests {
             required_version: version.to_string(),
         };
 
-        let result = exec_typst(options);
+        let result = exec_typst_with_override(options, Some(temp_cache.path().to_path_buf()));
 
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 0);
         assert!(exec_result.stdout.contains("typst"));
 
-        // Cleanup
-        let _ = fs::remove_dir_all(&version_dir);
+        // TempDir automatically cleans up
     }
 
     #[test]
     fn test_exec_typst_preserves_exit_code() {
-        // Setup: Create binary that exits with specific code
-        use crate::resolve::managed_cache_dir;
+        use tempfile::TempDir;
 
-        let cache_dir = managed_cache_dir().unwrap();
+        // Setup: Create binary that exits with specific code
+        let temp_cache = TempDir::new().unwrap();
         let version = "0.18.0";
-        let version_dir = cache_dir.join(version);
+        let version_dir = temp_cache.path().join(version);
 
         fs::create_dir_all(&version_dir).unwrap();
 
@@ -387,13 +386,12 @@ mod tests {
             required_version: version.to_string(),
         };
 
-        let result = exec_typst(options);
+        let result = exec_typst_with_override(options, Some(temp_cache.path().to_path_buf()));
 
         assert!(result.is_ok());
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 42);
 
-        // Cleanup
-        let _ = fs::remove_dir_all(&version_dir);
+        // TempDir automatically cleans up
     }
 }
