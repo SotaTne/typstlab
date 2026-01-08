@@ -888,6 +888,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "tempfile",
  "typstlab-core",
  "walkdir",
 ]
