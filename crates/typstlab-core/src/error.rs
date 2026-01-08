@@ -99,4 +99,10 @@ pub enum TypstlabError {
     Generic(String),
 }
 
+impl From<serde_json::Error> for TypstlabError {
+    fn from(err: serde_json::Error) -> Self {
+        TypstlabError::Generic(format!("JSON error: {}", err))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, TypstlabError>;
