@@ -3,14 +3,18 @@
 //! These tests verify the complete flow from binary resolution to command execution.
 
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
-use tempfile::TempDir;
+use tempfile::{NamedTempFile, TempDir};
 use typstlab_typst::{ExecOptions, ResolveOptions, ResolveResult};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 /// Helper function to create a fake typst binary in a temp directory
+///
+/// Uses NamedTempFile::persist() for atomic file creation to avoid
+/// race conditions like Linux "Text file busy" (ETXTBSY) errors.
 fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: &str) -> PathBuf {
     let version_dir = temp_dir.path().join(version);
     fs::create_dir_all(&version_dir).unwrap();
@@ -18,7 +22,7 @@ fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: 
     #[cfg(unix)]
     let binary_path = version_dir.join("typst");
     #[cfg(windows)]
-    let binary_path = version_dir.join("typst.exe");
+    let binary_path = version_dir.join("typst.bat");
 
     #[cfg(unix)]
     {
@@ -26,10 +30,15 @@ fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: 
             "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"typst {}\"\n  exit 0\nfi\n{}",
             version, script_content
         );
-        fs::write(&binary_path, script).unwrap();
-        let mut perms = fs::metadata(&binary_path).unwrap().permissions();
+
+        let mut temp_file = NamedTempFile::new_in(&version_dir).unwrap();
+        temp_file.write_all(script.as_bytes()).unwrap();
+
+        let mut perms = temp_file.as_file().metadata().unwrap().permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(&binary_path, perms).unwrap();
+        temp_file.as_file().set_permissions(perms).unwrap();
+
+        temp_file.persist(&binary_path).unwrap();
     }
 
     #[cfg(windows)]
@@ -38,7 +47,11 @@ fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: 
             "@echo off\nif \"%1\"==\"--version\" (\n  echo typst {}\n  exit /b 0\n)\n{}",
             version, script_content
         );
-        fs::write(&binary_path, script).unwrap();
+
+        let mut temp_file = NamedTempFile::new_in(&version_dir).unwrap();
+        temp_file.write_all(script.as_bytes()).unwrap();
+
+        temp_file.persist(&binary_path).unwrap();
     }
 
     binary_path
@@ -93,7 +106,8 @@ exit 0
     // Verify execution succeeded
     assert_eq!(exec_result.exit_code, 0);
     assert!(exec_result.stdout.contains("Hello from Typst"));
-    assert!(exec_result.duration_ms > 0);
+    // Duration can be 0ms on very fast systems/CI (u64 is always >= 0, so no assertion needed)
+    let _ = exec_result.duration_ms;
 
     // TempDir automatically cleans up
 }

@@ -382,11 +382,17 @@ mod tests {
         use super::*;
 
         /// Create a fake typst binary in a temporary directory
+        ///
+        /// Uses NamedTempFile::persist() for atomic file creation to avoid
+        /// race conditions like Linux "Text file busy" (ETXTBSY) errors.
         pub fn create_fake_typst_in_temp(
             temp_dir: &TempDir,
             version: &str,
             script_content: &str,
         ) -> PathBuf {
+            use std::io::Write;
+            use tempfile::NamedTempFile;
+
             let version_dir = temp_dir.path().join(version);
             fs::create_dir_all(&version_dir).unwrap();
 
@@ -398,14 +404,23 @@ mod tests {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
+
                 let script = format!(
                     "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"typst {}\"\n  exit 0\nfi\n{}",
                     version, script_content
                 );
-                fs::write(&binary_path, script).unwrap();
-                let mut perms = fs::metadata(&binary_path).unwrap().permissions();
+
+                // Create temp file in the same directory for atomic operation
+                let mut temp_file = NamedTempFile::new_in(&version_dir).unwrap();
+                temp_file.write_all(script.as_bytes()).unwrap();
+
+                // Set executable permissions before persisting
+                let mut perms = temp_file.as_file().metadata().unwrap().permissions();
                 perms.set_mode(0o755);
-                fs::set_permissions(&binary_path, perms).unwrap();
+                temp_file.as_file().set_permissions(perms).unwrap();
+
+                // Atomically persist to final location (closes file handle)
+                temp_file.persist(&binary_path).unwrap();
             }
 
             #[cfg(windows)]
@@ -414,7 +429,13 @@ mod tests {
                     "@echo off\nif \"%1\"==\"--version\" (\n  echo typst {}\n  exit /b 0\n)\n{}",
                     version, script_content
                 );
-                fs::write(&binary_path, script).unwrap();
+
+                // Create temp file in the same directory for atomic operation
+                let mut temp_file = NamedTempFile::new_in(&version_dir).unwrap();
+                temp_file.write_all(script.as_bytes()).unwrap();
+
+                // Atomically persist to final location (closes file handle)
+                temp_file.persist(&binary_path).unwrap();
             }
 
             binary_path
@@ -727,7 +748,10 @@ mod tests {
         let actual_version = "0.12.0";
         let requested_version = "0.13.1";
 
-        // Create binary that reports different version
+        // Create binary that reports different version (using NamedTempFile for atomicity)
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
         let version_dir = temp_cache.path().join(requested_version);
         fs::create_dir_all(&version_dir).unwrap();
 
@@ -743,10 +767,15 @@ mod tests {
                 "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then\n  echo \"typst {}\"\n  exit 0\nfi",
                 actual_version
             );
-            fs::write(&binary_path, script).unwrap();
-            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
+
+            let mut temp_file = NamedTempFile::new_in(&version_dir).unwrap();
+            temp_file.write_all(script.as_bytes()).unwrap();
+
+            let mut perms = temp_file.as_file().metadata().unwrap().permissions();
             perms.set_mode(0o755);
-            fs::set_permissions(&binary_path, perms).unwrap();
+            temp_file.as_file().set_permissions(perms).unwrap();
+
+            temp_file.persist(&binary_path).unwrap();
         }
 
         #[cfg(windows)]
@@ -755,7 +784,11 @@ mod tests {
                 "@echo off\nif \"%1\"==\"--version\" (\n  echo typst {}\n  exit /b 0\n)",
                 actual_version
             );
-            fs::write(&binary_path, script).unwrap();
+
+            let mut temp_file = NamedTempFile::new_in(&version_dir).unwrap();
+            temp_file.write_all(script.as_bytes()).unwrap();
+
+            temp_file.persist(&binary_path).unwrap();
         }
 
         let result =

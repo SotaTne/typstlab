@@ -25,13 +25,41 @@ pub struct ExecResult {
 // Helper Functions (to be implemented in Commit 9)
 // ============================================================================
 
+/// Execute a binary in a cross-platform way.
+///
+/// On Windows, .bat and .cmd files cannot be executed directly with Command::new().
+/// They must be executed via `cmd /C script.bat`.
+/// This function detects the platform and file extension, then executes appropriately.
+///
+/// This is similar to how Path::join() abstracts cross-platform path operations.
+fn execute_binary(binary_path: &Path, args: &[String]) -> std::io::Result<std::process::Output> {
+    #[cfg(windows)]
+    {
+        // Windows: Check if this is a batch file
+        let extension = binary_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_lowercase());
+
+        if extension == Some("bat".to_string()) || extension == Some("cmd".to_string()) {
+            // Execute batch files via cmd /C
+            return Command::new("cmd")
+                .arg("/C")
+                .arg(binary_path)
+                .args(args)
+                .output();
+        }
+    }
+
+    // Default: execute directly (Unix or Windows .exe)
+    Command::new(binary_path).args(args).output()
+}
+
 /// Execute command and capture output with timing
 fn run_command(path: &Path, args: &[String]) -> Result<ExecResult> {
     let start = Instant::now();
 
-    let output = Command::new(path)
-        .args(args)
-        .output()
+    let output = execute_binary(path, args)
         .map_err(|e| TypstlabError::TypstExecFailed(format!("Failed to execute command: {}", e)))?;
 
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -125,7 +153,39 @@ mod tests {
     use super::*;
     use std::env;
     use std::fs;
-    use tempfile::TempDir;
+    use std::io::Write;
+    use tempfile::{NamedTempFile, TempDir};
+
+    // ========================================================================
+    // Test Helper Functions
+    // ========================================================================
+
+    /// Create a fake binary using NamedTempFile::persist() for atomicity
+    fn create_fake_binary(path: &std::path::Path, script_content: &str) {
+        let parent_dir = path.parent().unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut temp_file = NamedTempFile::new_in(parent_dir).unwrap();
+            temp_file.write_all(script_content.as_bytes()).unwrap();
+
+            let mut perms = temp_file.as_file().metadata().unwrap().permissions();
+            perms.set_mode(0o755);
+            temp_file.as_file().set_permissions(perms).unwrap();
+
+            temp_file.persist(path).unwrap();
+        }
+
+        #[cfg(windows)]
+        {
+            let mut temp_file = NamedTempFile::new_in(parent_dir).unwrap();
+            temp_file.write_all(script_content.as_bytes()).unwrap();
+
+            temp_file.persist(path).unwrap();
+        }
+    }
 
     // ========================================================================
     // Helper Function Tests
@@ -141,18 +201,10 @@ mod tests {
         let fake_binary = temp_dir.path().join("fake_typst_success.bat");
 
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&fake_binary, "#!/bin/sh\necho 'success output'\nexit 0").unwrap();
-            let mut perms = fs::metadata(&fake_binary).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&fake_binary, perms).unwrap();
-        }
+        create_fake_binary(&fake_binary, "#!/bin/sh\necho 'success output'\nexit 0");
 
         #[cfg(windows)]
-        {
-            fs::write(&fake_binary, "@echo success output\r\n@exit /b 0").unwrap();
-        }
+        create_fake_binary(&fake_binary, "@echo success output\r\n@exit /b 0");
 
         let args = vec!["--version".to_string()];
         let result = run_command(&fake_binary, &args);
@@ -177,18 +229,10 @@ mod tests {
         let fake_binary = temp_dir.path().join("fake_typst_failure.bat");
 
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&fake_binary, "#!/bin/sh\necho 'error output' >&2\nexit 1").unwrap();
-            let mut perms = fs::metadata(&fake_binary).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&fake_binary, perms).unwrap();
-        }
+        create_fake_binary(&fake_binary, "#!/bin/sh\necho 'error output' >&2\nexit 1");
 
         #[cfg(windows)]
-        {
-            fs::write(&fake_binary, "@echo error output 1>&2\r\n@exit /b 1").unwrap();
-        }
+        create_fake_binary(&fake_binary, "@echo error output 1>&2\r\n@exit /b 1");
 
         let args = vec!["compile".to_string()];
         let result = run_command(&fake_binary, &args);
@@ -222,26 +266,16 @@ mod tests {
         let fake_binary = temp_dir.path().join("fake_typst_mixed.bat");
 
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(
-                &fake_binary,
-                "#!/bin/sh\necho 'stdout message'\necho 'stderr message' >&2\nexit 0",
-            )
-            .unwrap();
-            let mut perms = fs::metadata(&fake_binary).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&fake_binary, perms).unwrap();
-        }
+        create_fake_binary(
+            &fake_binary,
+            "#!/bin/sh\necho 'stdout message'\necho 'stderr message' >&2\nexit 0",
+        );
 
         #[cfg(windows)]
-        {
-            fs::write(
-                &fake_binary,
-                "@echo stdout message\r\n@echo stderr message 1>&2\r\n@exit /b 0",
-            )
-            .unwrap();
-        }
+        create_fake_binary(
+            &fake_binary,
+            "@echo stdout message\r\n@echo stderr message 1>&2\r\n@exit /b 0",
+        );
 
         let args = vec![];
         let result = run_command(&fake_binary, &args);
@@ -264,18 +298,10 @@ mod tests {
         let fake_binary = temp_dir.path().join("fake_typst_timing.bat");
 
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&fake_binary, "#!/bin/sh\nsleep 0.1\necho 'done'").unwrap();
-            let mut perms = fs::metadata(&fake_binary).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&fake_binary, perms).unwrap();
-        }
+        create_fake_binary(&fake_binary, "#!/bin/sh\nsleep 0.1\necho 'done'");
 
         #[cfg(windows)]
-        {
-            fs::write(&fake_binary, "@timeout /t 1 /nobreak >nul\r\n@echo done").unwrap();
-        }
+        create_fake_binary(&fake_binary, "@timeout /t 1 /nobreak >nul\r\n@echo done");
 
         let args = vec![];
         let result = run_command(&fake_binary, &args);
@@ -309,8 +335,6 @@ mod tests {
 
     #[test]
     fn test_exec_typst_with_resolved_binary() {
-        use tempfile::TempDir;
-
         // Setup: Create temp cache with valid binary
         let temp_cache = TempDir::new().unwrap();
         let version = "0.17.0";
@@ -321,29 +345,19 @@ mod tests {
         #[cfg(unix)]
         let binary_path = version_dir.join("typst");
         #[cfg(windows)]
-        let binary_path = version_dir.join("typst.exe");
+        let binary_path = version_dir.join("typst.bat");
 
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(
-                &binary_path,
-                format!("#!/bin/sh\necho 'typst {}'\nexit 0", version),
-            )
-            .unwrap();
-            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&binary_path, perms).unwrap();
-        }
+        create_fake_binary(
+            &binary_path,
+            &format!("#!/bin/sh\necho 'typst {}'\nexit 0", version),
+        );
 
         #[cfg(windows)]
-        {
-            fs::write(
-                &binary_path,
-                format!("@echo typst {}\r\n@exit /b 0", version),
-            )
-            .unwrap();
-        }
+        create_fake_binary(
+            &binary_path,
+            &format!("@echo typst {}\r\n@exit /b 0", version),
+        );
 
         // Test: exec_typst should execute the command
         let options = ExecOptions {
@@ -364,8 +378,6 @@ mod tests {
 
     #[test]
     fn test_exec_typst_preserves_exit_code() {
-        use tempfile::TempDir;
-
         // Setup: Create binary that exits with specific code
         let temp_cache = TempDir::new().unwrap();
         let version = "0.18.0";
@@ -376,28 +388,25 @@ mod tests {
         #[cfg(unix)]
         let binary_path = version_dir.join("typst");
         #[cfg(windows)]
-        let binary_path = version_dir.join("typst.exe");
+        let binary_path = version_dir.join("typst.bat");
 
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::write(&binary_path, format!("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'typst {}'; exit 0; else exit 42; fi", version)).unwrap();
-            let mut perms = fs::metadata(&binary_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&binary_path, perms).unwrap();
-        }
+        create_fake_binary(
+            &binary_path,
+            &format!(
+                "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo 'typst {}'; exit 0; else exit 42; fi",
+                version
+            ),
+        );
 
         #[cfg(windows)]
-        {
-            fs::write(
-                &binary_path,
-                format!(
-                    "@if \"%1\"==\"--version\" (echo typst {} && exit /b 0) else (exit /b 42)",
-                    version
-                ),
-            )
-            .unwrap();
-        }
+        create_fake_binary(
+            &binary_path,
+            &format!(
+                "@if \"%1\"==\"--version\" (echo typst {} && exit /b 0) else (exit /b 42)",
+                version
+            ),
+        );
 
         // Test: exec_typst with failing command
         let options = ExecOptions {
