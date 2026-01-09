@@ -4,6 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+#[allow(unused_imports)] // Used in next commit
+use url::Url;
 
 /// Errors that can occur during GitHub Release operations
 #[derive(Debug, Error)]
@@ -23,6 +25,14 @@ pub enum ReleaseError {
     /// Invalid JSON response
     #[error("Failed to parse GitHub API response: {0}")]
     InvalidJson(#[from] serde_json::Error),
+
+    /// Invalid URL construction
+    #[error("Failed to construct GitHub API URL: {0}")]
+    InvalidUrl(#[from] url::ParseError),
+
+    /// URL cannot be a base (missing scheme/host)
+    #[error("Base URL cannot be used for joining: {url}")]
+    InvalidBaseUrl { url: String },
 }
 
 /// GitHub Release metadata from API
@@ -65,6 +75,8 @@ pub struct Asset {
 ///
 /// let release = fetch_release_metadata("v0.17.0")?;
 /// assert_eq!(release.tag_name, "v0.17.0");
+///
+/// let latest = fetch_release_metadata("latest")?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn fetch_release_metadata(version: &str) -> Result<Release, ReleaseError> {
@@ -74,17 +86,36 @@ pub fn fetch_release_metadata(version: &str) -> Result<Release, ReleaseError> {
 /// Internal function for fetching release metadata with configurable base URL
 /// (Allows dependency injection for testing)
 fn fetch_release_metadata_from_url(base_url: &str, version: &str) -> Result<Release, ReleaseError> {
-    let url = format!("{}/repos/typst/typst/releases/tags/{}", base_url, version);
-
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("typstlab")
-        .build()?;
-
+    let url = build_release_url(base_url, version);
+    let client = build_http_client()?;
     let response = client.get(&url).send()?;
+    parse_release_response(response, version)
+}
 
+/// Builds the GitHub API URL for the given version
+fn build_release_url(base_url: &str, version: &str) -> String {
+    if version == "latest" {
+        format!("{}/repos/typst/typst/releases/latest", base_url)
+    } else {
+        format!("{}/repos/typst/typst/releases/tags/{}", base_url, version)
+    }
+}
+
+/// Builds HTTP client with appropriate user agent
+fn build_http_client() -> Result<reqwest::blocking::Client, ReleaseError> {
+    reqwest::blocking::Client::builder()
+        .user_agent("typstlab")
+        .build()
+        .map_err(ReleaseError::from)
+}
+
+/// Parses HTTP response into Release or appropriate error
+fn parse_release_response(
+    response: reqwest::blocking::Response,
+    version: &str,
+) -> Result<Release, ReleaseError> {
     match response.status() {
         reqwest::StatusCode::OK => {
-            // Get response text first to handle JSON errors specifically
             let text = response.text()?;
             let release = serde_json::from_str::<Release>(&text)?;
             Ok(release)
@@ -94,7 +125,6 @@ fn fetch_release_metadata_from_url(base_url: &str, version: &str) -> Result<Rele
         }),
         reqwest::StatusCode::FORBIDDEN => Err(ReleaseError::Forbidden),
         _ => {
-            // For any other status code, try to convert to error
             response.error_for_status()?;
             unreachable!()
         }
@@ -105,9 +135,9 @@ fn fetch_release_metadata_from_url(base_url: &str, version: &str) -> Result<Rele
 mod tests {
     use super::*;
 
-    /// Test successful fetch of release metadata
+    /// Test fetch_release_metadata with valid version returns release
     #[test]
-    fn test_fetch_release_metadata_success() {
+    fn test_fetch_release_metadata_valid_version_returns_release() {
         let mut server = mockito::Server::new();
         let mock = server
             .mock("GET", "/repos/typst/typst/releases/tags/v0.17.0")
@@ -136,9 +166,39 @@ mod tests {
         mock.assert();
     }
 
-    /// Test 404 Not Found error
+    /// Test fetch_release_metadata with latest returns release
     #[test]
-    fn test_fetch_release_metadata_not_found() {
+    fn test_fetch_release_metadata_latest_returns_release() {
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock("GET", "/repos/typst/typst/releases/latest")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{
+                "tag_name": "v0.18.0",
+                "assets": [{
+                    "name": "typst-x86_64-apple-darwin.tar.gz",
+                    "browser_download_url": "https://github.com/typst/typst/releases/download/v0.18.0/typst-x86_64-apple-darwin.tar.gz",
+                    "size": 99999999
+                }]
+            }"#,
+            )
+            .create();
+
+        let result = fetch_release_metadata_from_url(&server.url(), "latest");
+        assert!(result.is_ok(), "Expected successful fetch for latest");
+
+        let release = result.unwrap();
+        assert_eq!(release.tag_name, "v0.18.0");
+        assert_eq!(release.assets.len(), 1);
+
+        mock.assert();
+    }
+
+    /// Test fetch_release_metadata with nonexistent version returns not_found_error
+    #[test]
+    fn test_fetch_release_metadata_nonexistent_version_returns_not_found_error() {
         let mut server = mockito::Server::new();
         let mock = server
             .mock("GET", "/repos/typst/typst/releases/tags/v99.99.99")
@@ -158,9 +218,9 @@ mod tests {
         mock.assert();
     }
 
-    /// Test 403 Forbidden error (rate limit)
+    /// Test fetch_release_metadata with rate_limit returns forbidden_error
     #[test]
-    fn test_fetch_release_metadata_forbidden() {
+    fn test_fetch_release_metadata_rate_limit_returns_forbidden_error() {
         let mut server = mockito::Server::new();
         let mock = server
             .mock("GET", "/repos/typst/typst/releases/tags/v0.17.0")
@@ -180,9 +240,9 @@ mod tests {
         mock.assert();
     }
 
-    /// Test invalid JSON response
+    /// Test fetch_release_metadata with invalid_json returns invalid_json_error
     #[test]
-    fn test_fetch_release_metadata_invalid_json() {
+    fn test_fetch_release_metadata_invalid_json_returns_invalid_json_error() {
         let mut server = mockito::Server::new();
         let mock = server
             .mock("GET", "/repos/typst/typst/releases/tags/v0.17.0")
