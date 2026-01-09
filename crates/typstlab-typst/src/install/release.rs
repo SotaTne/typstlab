@@ -4,7 +4,6 @@
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-#[allow(unused_imports)] // Used in next commit
 use url::Url;
 
 /// Errors that can occur during GitHub Release operations
@@ -86,19 +85,49 @@ pub fn fetch_release_metadata(version: &str) -> Result<Release, ReleaseError> {
 /// Internal function for fetching release metadata with configurable base URL
 /// (Allows dependency injection for testing)
 fn fetch_release_metadata_from_url(base_url: &str, version: &str) -> Result<Release, ReleaseError> {
-    let url = build_release_url(base_url, version);
+    let url = build_release_url(base_url, version)?;
     let client = build_http_client()?;
-    let response = client.get(&url).send()?;
+    let response = client.get(url).send()?;
     parse_release_response(response, version)
 }
 
 /// Builds the GitHub API URL for the given version
-fn build_release_url(base_url: &str, version: &str) -> String {
-    if version == "latest" {
-        format!("{}/repos/typst/typst/releases/latest", base_url)
-    } else {
-        format!("{}/repos/typst/typst/releases/tags/{}", base_url, version)
+///
+/// # Security
+///
+/// - Validates base URL format
+/// - Properly encodes version string in URL path
+/// - Prevents path traversal attacks
+///
+/// # Errors
+///
+/// - `ReleaseError::InvalidUrl` if base_url is malformed
+/// - `ReleaseError::InvalidBaseUrl` if base_url cannot be used for joining
+fn build_release_url(base_url: &str, version: &str) -> Result<Url, ReleaseError> {
+    // Validate version is not empty
+    if version.is_empty() {
+        return Err(ReleaseError::InvalidUrl(url::ParseError::EmptyHost));
     }
+
+    // Parse and validate base URL
+    let mut url = Url::parse(base_url)?;
+
+    // Build path based on version
+    let path_segments = if version == "latest" {
+        vec!["repos", "typst", "typst", "releases", "latest"]
+    } else {
+        vec!["repos", "typst", "typst", "releases", "tags", version]
+    };
+
+    // Use path_segments_mut for proper encoding
+    url.path_segments_mut()
+        .map_err(|_| ReleaseError::InvalidBaseUrl {
+            url: base_url.to_string(),
+        })?
+        .clear()
+        .extend(path_segments);
+
+    Ok(url)
 }
 
 /// Builds HTTP client with appropriate user agent
