@@ -3,7 +3,7 @@
 //! This module is under development. Current implementation provides
 //! minimal stubs to allow compilation.
 
-use crate::error::{Result, TypstlabError};
+use crate::error::Result;
 use std::path::{Path, PathBuf};
 
 /// Represents a typstlab project

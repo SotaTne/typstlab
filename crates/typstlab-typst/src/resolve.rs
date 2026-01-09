@@ -591,7 +591,7 @@ mod tests {
 
         // Should return Ok(true) for exact match
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
 
         // TempDir automatically cleans up
     }
@@ -623,7 +623,7 @@ mod tests {
 
         // Should return Ok(false) for version mismatch
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
 
         // TempDir automatically cleans up
     }
@@ -891,9 +891,8 @@ mod tests {
 
         // Should return None since this version is unlikely to exist
         let typst_info = result.unwrap();
-        if typst_info.is_some() {
+        if let Some(info) = typst_info {
             // If somehow found, verify it's not the requested version
-            let info = typst_info.unwrap();
             assert_ne!(info.version, "99.99.99");
         }
     }

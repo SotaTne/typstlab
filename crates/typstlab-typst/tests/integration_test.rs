@@ -500,7 +500,7 @@ mod race_condition_tests {
                 // If lsof succeeds with content, file has open handles (bad)
                 let stdout = String::from_utf8_lossy(&output.stdout);
 
-                if !stdout.is_empty() && stdout.contains(&version) {
+                if !stdout.is_empty() && stdout.contains(version) {
                     panic!(
                         "File handle not closed after persist! lsof output:\n{}",
                         stdout
