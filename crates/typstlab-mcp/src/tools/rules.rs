@@ -416,7 +416,8 @@ pub fn rules_list(input: RulesListInput, project_root: &Path) -> CoreResult<Rule
 
         // Skip hidden files
         if let Some(filename) = path.file_name().and_then(|s| s.to_str())
-            && filename.starts_with('.') {
+            && filename.starts_with('.')
+        {
             continue;
         }
 
@@ -689,7 +690,8 @@ pub fn rules_search(input: RulesSearchInput, project_root: &Path) -> CoreResult<
 
             // Skip hidden files
             if let Some(filename) = path.file_name().and_then(|s| s.to_str())
-                && filename.starts_with('.') {
+                && filename.starts_with('.')
+            {
                 continue;
             }
 
