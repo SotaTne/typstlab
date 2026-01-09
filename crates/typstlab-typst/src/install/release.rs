@@ -363,3 +363,62 @@ mod tests {
         assert_eq!(release.assets.len(), 0);
     }
 }
+
+#[cfg(test)]
+mod url_construction_tests {
+    use super::*;
+
+    /// Test build_release_url with valid_version constructs_correct_url
+    #[test]
+    fn test_build_release_url_valid_version_constructs_correct_url() {
+        let url = build_release_url("https://api.github.com", "v0.17.0")
+            .expect("Should construct valid URL");
+        assert_eq!(
+            url.as_str(),
+            "https://api.github.com/repos/typst/typst/releases/tags/v0.17.0"
+        );
+    }
+
+    /// Test build_release_url with latest constructs_correct_url
+    #[test]
+    fn test_build_release_url_latest_constructs_correct_url() {
+        let url = build_release_url("https://api.github.com", "latest")
+            .expect("Should construct valid URL");
+        assert_eq!(
+            url.as_str(),
+            "https://api.github.com/repos/typst/typst/releases/latest"
+        );
+    }
+
+    /// Test build_release_url with special_chars encodes_properly
+    #[test]
+    fn test_build_release_url_special_chars_encodes_properly() {
+        let url = build_release_url("https://api.github.com", "v0.17.0-beta+metadata")
+            .expect("Should handle special characters");
+        assert!(url.as_str().contains("v0.17.0-beta"));
+    }
+
+    /// Test build_release_url with invalid_base_url returns_error
+    #[test]
+    fn test_build_release_url_invalid_base_url_returns_error() {
+        let result = build_release_url("not a url", "v0.17.0");
+        assert!(result.is_err(), "Should reject invalid base URL");
+    }
+
+    /// Test build_release_url with empty_version returns_error
+    #[test]
+    fn test_build_release_url_empty_version_returns_error() {
+        let result = build_release_url("https://api.github.com", "");
+        assert!(result.is_err(), "Should reject empty version");
+    }
+
+    /// Test build_release_url with path_traversal_attempt encodes_safely
+    #[test]
+    fn test_build_release_url_path_traversal_attempt_encodes_safely() {
+        let url = build_release_url("https://api.github.com", "../../../etc/passwd")
+            .expect("Should encode path traversal characters");
+        // Should be encoded as part of path segment, not interpreted as traversal
+        assert!(!url.as_str().contains("/etc/passwd"));
+        assert!(url.as_str().contains("releases/tags/"));
+    }
+}
