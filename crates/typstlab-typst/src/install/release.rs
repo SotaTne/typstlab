@@ -2,6 +2,7 @@
 //!
 //! This module handles downloading pre-built Typst binaries from GitHub Releases.
 
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
@@ -49,9 +50,19 @@ pub struct Asset {
     /// Asset filename (e.g., "typst-x86_64-apple-darwin.tar.gz")
     pub name: String,
     /// Direct download URL
-    pub browser_download_url: String,
+    #[serde(deserialize_with = "deserialize_url")]
+    pub browser_download_url: Url,
     /// File size in bytes
     pub size: u64,
+}
+
+/// Custom deserializer to convert String to Url with validation
+fn deserialize_url<'de, D>(deserializer: D) -> Result<Url, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let url_str = String::deserialize(deserializer)?;
+    Url::parse(&url_str).map_err(de::Error::custom)
 }
 
 /// Fetches release metadata from GitHub API
@@ -324,7 +335,7 @@ mod tests {
         let asset: Asset = serde_json::from_str(json).expect("Failed to deserialize Asset");
         assert_eq!(asset.name, "typst-x86_64-unknown-linux-gnu.tar.gz");
         assert_eq!(
-            asset.browser_download_url,
+            asset.browser_download_url.as_str(),
             "https://example.com/typst.tar.gz"
         );
         assert_eq!(asset.size, 9876543);
