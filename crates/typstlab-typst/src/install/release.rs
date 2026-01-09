@@ -1,6 +1,17 @@
 //! GitHub Release binary download and installation
 //!
 //! This module handles downloading pre-built Typst binaries from GitHub Releases.
+//!
+//! # URL Safety
+//!
+//! All URLs use `url::Url` type for:
+//! - Automatic URL encoding and validation
+//! - Prevention of path traversal attacks
+//! - Type safety throughout the API
+//! - Validation at construction time, not just at HTTP request time
+//!
+//! Version strings are automatically encoded when constructing GitHub API URLs,
+//! preventing injection attacks from malicious version strings like `../../../etc/passwd`.
 
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
