@@ -93,6 +93,38 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 - Developer chooses whether to commit immediately or review first
 - If uncertain, ask the developer before committing
 
+#### Pre-Commit Verification (Mandatory)
+
+**Before creating any commit, ALWAYS verify all checks pass:**
+
+```bash
+# Run these commands in order before every commit
+cargo fmt --all                                      # Format code
+cargo clippy --workspace --all-targets -- -D warnings  # Check for warnings
+cargo test --workspace                                # Run all tests
+cargo build --workspace                               # Verify build succeeds
+```
+
+**Verification Checklist:**
+
+- ✅ `cargo fmt --all` completes without changes
+- ✅ `cargo clippy` passes with no warnings (treated as errors with `-D warnings`)
+- ✅ `cargo test --workspace` passes all tests
+- ✅ `cargo build --workspace` builds successfully
+
+**Why This Matters:**
+
+- Prevents CI failures from basic issues
+- Ensures code quality before commits
+- Catches errors early in development cycle
+- Maintains clean commit history
+
+**Failure Handling:**
+
+- If any command fails, fix the issues before committing
+- Do not commit with failing tests or warnings
+- Do not use `--no-verify` to bypass checks
+
 #### Example Workflow
 
 ```bash
