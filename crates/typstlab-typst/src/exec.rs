@@ -59,9 +59,8 @@ fn execute_binary(binary_path: &Path, args: &[String]) -> std::io::Result<std::p
 fn run_command(path: &Path, args: &[String]) -> Result<ExecResult> {
     let start = Instant::now();
 
-    let output = execute_with_retry(path, args).map_err(|e| {
-        TypstlabError::TypstExecFailed(format!("Failed to execute command: {}", e))
-    })?;
+    let output = execute_with_retry(path, args)
+        .map_err(|e| TypstlabError::TypstExecFailed(format!("Failed to execute command: {}", e)))?;
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -84,10 +83,7 @@ fn should_retry_exec(err: &std::io::Error) -> bool {
     err.raw_os_error() == Some(26)
 }
 
-fn execute_with_retry(
-    path: &Path,
-    args: &[String],
-) -> std::io::Result<std::process::Output> {
+fn execute_with_retry(path: &Path, args: &[String]) -> std::io::Result<std::process::Output> {
     use std::time::Duration;
     let mut last_err = None;
     for attempt in 0..5 {
@@ -103,9 +99,8 @@ fn execute_with_retry(
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "Unknown exec error")
-    }))
+    Err(last_err
+        .unwrap_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Unknown exec error")))
 }
 
 // ============================================================================
@@ -425,7 +420,11 @@ mod tests {
 
         let result = exec_typst_with_override(options, Some(temp_cache.path().to_path_buf()));
 
-        assert!(result.is_ok(), "exec_typst_with_override failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "exec_typst_with_override failed: {:?}",
+            result.err()
+        );
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 0);
         assert!(exec_result.stdout.contains("typst"));
@@ -474,7 +473,11 @@ mod tests {
 
         let result = exec_typst_with_override(options, Some(temp_cache.path().to_path_buf()));
 
-        assert!(result.is_ok(), "exec_typst_with_override failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "exec_typst_with_override failed: {:?}",
+            result.err()
+        );
         let exec_result = result.unwrap();
         assert_eq!(exec_result.exit_code, 42);
 

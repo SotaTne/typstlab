@@ -112,9 +112,8 @@ fn execute_with_retry(path: &Path) -> std::io::Result<std::process::Output> {
             }
         }
     }
-    Err(last_err.unwrap_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "Unknown exec error")
-    }))
+    Err(last_err
+        .unwrap_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Unknown exec error")))
 }
 
 fn should_retry_exec(err: &std::io::Error) -> bool {
@@ -421,8 +420,8 @@ mod tests {
     }
 
     mod test_helpers {
-        use super::*;
         use super::sync_parent_dir;
+        use super::*;
 
         /// Create a fake typst binary in a temporary directory
         ///
@@ -762,7 +761,11 @@ mod tests {
 
         let result = resolve_managed_with_override(version, Some(temp_cache.path().to_path_buf()));
 
-        assert!(result.is_ok(), "resolve_managed_with_override failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "resolve_managed_with_override failed: {:?}",
+            result.err()
+        );
         let info = result.unwrap().unwrap();
         assert_eq!(info.version, version);
         assert_eq!(info.path, binary_path);
@@ -841,7 +844,11 @@ mod tests {
         let result =
             resolve_managed_with_override(requested_version, Some(temp_cache.path().to_path_buf()));
 
-        assert!(result.is_ok(), "resolve_managed_with_override failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "resolve_managed_with_override failed: {:?}",
+            result.err()
+        );
         assert!(result.unwrap().is_none());
 
         // TempDir automatically cleans up
@@ -940,7 +947,11 @@ mod tests {
 
         let result = resolve_typst_with_override(options, Some(temp_cache.path().to_path_buf()));
 
-        assert!(result.is_ok(), "resolve_typst_with_override failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "resolve_typst_with_override failed: {:?}",
+            result.err()
+        );
 
         match result.unwrap() {
             ResolveResult::Resolved(info) | ResolveResult::Cached(info) => {
