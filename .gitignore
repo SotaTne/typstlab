@@ -54,6 +54,9 @@ tags
 *.tmp
 *.temp
 
+# Test temporary directory
+.tmp/
+
 # Test/coverage artifacts
 *.profraw
 coverage/
