@@ -112,8 +112,7 @@ fn execute_with_retry(path: &Path) -> std::io::Result<std::process::Output> {
             }
         }
     }
-    Err(last_err
-        .unwrap_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Unknown exec error")))
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("Unknown exec error")))
 }
 
 fn should_retry_exec(err: &std::io::Error) -> bool {
@@ -261,10 +260,10 @@ pub fn resolve_typst(options: ResolveOptions) -> Result<ResolveResult> {
     let mut searched_locations = Vec::new();
 
     // Step 1: Check cache (fast path) if not force_refresh
-    if !options.force_refresh {
-        if let Some(cached_info) = check_cache(version) {
-            return Ok(ResolveResult::Cached(cached_info));
-        }
+    if !options.force_refresh
+        && let Some(cached_info) = check_cache(version)
+    {
+        return Ok(ResolveResult::Cached(cached_info));
     }
 
     // Step 2: Try managed cache
@@ -359,10 +358,10 @@ pub fn resolve_typst_with_override(
     let version = &options.required_version;
     let mut searched_locations = Vec::new();
 
-    if !options.force_refresh {
-        if let Some(cached_info) = check_cache(version) {
-            return Ok(ResolveResult::Cached(cached_info));
-        }
+    if !options.force_refresh
+        && let Some(cached_info) = check_cache(version)
+    {
+        return Ok(ResolveResult::Cached(cached_info));
     }
 
     match resolve_managed_with_override(version, cache_dir_override.clone())? {

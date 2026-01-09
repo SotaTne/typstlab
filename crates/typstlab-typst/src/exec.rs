@@ -99,8 +99,7 @@ fn execute_with_retry(path: &Path, args: &[String]) -> std::io::Result<std::proc
             }
         }
     }
-    Err(last_err
-        .unwrap_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Unknown exec error")))
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("Unknown exec error")))
 }
 
 // ============================================================================
