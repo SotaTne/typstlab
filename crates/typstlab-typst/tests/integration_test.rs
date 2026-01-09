@@ -41,8 +41,10 @@ fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: 
         // Ensure filesystem sync before execution to prevent ETXTBSY
         temp_file.as_file().sync_all().unwrap();
 
-        // Persist - file handle will be dropped automatically at end of scope
-        temp_file.persist(&binary_path).unwrap();
+        // Persist and explicitly drop to avoid ETXTBSY on fast exec
+        let persisted = temp_file.persist(&binary_path).unwrap();
+        drop(persisted);
+        sync_parent_dir(&version_dir);
     }
 
     #[cfg(windows)]
@@ -58,11 +60,21 @@ fn create_fake_typst_in_temp(temp_dir: &TempDir, version: &str, script_content: 
         // Ensure filesystem sync before execution to prevent race conditions
         temp_file.as_file().sync_all().unwrap();
 
-        // Persist - file handle will be dropped automatically at end of scope
-        temp_file.persist(&binary_path).unwrap();
+        // Persist and explicitly drop to avoid race on fast exec
+        let persisted = temp_file.persist(&binary_path).unwrap();
+        drop(persisted);
     }
 
     binary_path
+}
+
+fn sync_parent_dir(dir: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        if let Ok(handle) = std::fs::File::open(dir) {
+            let _ = handle.sync_all();
+        }
+    }
 }
 
 /// Test complete flow: resolve managed binary -> execute command

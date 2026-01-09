@@ -69,8 +69,8 @@ fn validate_version(path: &Path, expected: &str) -> Result<bool> {
         ))
     })?;
 
-    // Execute typst --version
-    let output = Command::new(path).arg("--version").output().map_err(|e| {
+    // Execute typst --version (retry on ETXTBSY)
+    let output = execute_with_retry(path).map_err(|e| {
         TypstlabError::TypstExecFailed(format!("Failed to execute typst --version: {}", e))
     })?;
 
@@ -94,6 +94,34 @@ fn validate_version(path: &Path, expected: &str) -> Result<bool> {
     })?;
 
     Ok(version == expected)
+}
+
+fn execute_with_retry(path: &Path) -> std::io::Result<std::process::Output> {
+    use std::time::Duration;
+    let mut last_err = None;
+    for attempt in 0..5 {
+        match Command::new(path).arg("--version").output() {
+            Ok(output) => return Ok(output),
+            Err(e) => {
+                last_err = Some(e);
+                if should_retry_exec(last_err.as_ref().unwrap()) {
+                    std::thread::sleep(Duration::from_millis(5 * (attempt + 1) as u64));
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "Unknown exec error")
+    }))
+}
+
+fn should_retry_exec(err: &std::io::Error) -> bool {
+    if err.kind() == std::io::ErrorKind::PermissionDenied {
+        return true;
+    }
+    err.raw_os_error() == Some(26)
 }
 
 /// Parse version string from typst --version output
@@ -383,8 +411,18 @@ mod tests {
         TempDir::new_in(base).unwrap()
     }
 
+    fn sync_parent_dir(dir: &std::path::Path) {
+        #[cfg(unix)]
+        {
+            if let Ok(handle) = std::fs::File::open(dir) {
+                let _ = handle.sync_all();
+            }
+        }
+    }
+
     mod test_helpers {
         use super::*;
+        use super::sync_parent_dir;
 
         /// Create a fake typst binary in a temporary directory
         ///
@@ -427,8 +465,10 @@ mod tests {
                 // Ensure filesystem sync before execution to prevent ETXTBSY
                 temp_file.as_file().sync_all().unwrap();
 
-                // Atomically persist to final location - file handle will be dropped automatically at end of scope
-                temp_file.persist(&binary_path).unwrap();
+                // Atomically persist and explicitly drop to avoid ETXTBSY on fast exec
+                let persisted = temp_file.persist(&binary_path).unwrap();
+                drop(persisted);
+                sync_parent_dir(&version_dir);
             }
 
             #[cfg(windows)]
@@ -445,8 +485,9 @@ mod tests {
                 // Ensure filesystem sync before execution to prevent race conditions
                 temp_file.as_file().sync_all().unwrap();
 
-                // Atomically persist to final location - file handle will be dropped automatically at end of scope
-                temp_file.persist(&binary_path).unwrap();
+                // Atomically persist and explicitly drop to avoid race on fast exec
+                let persisted = temp_file.persist(&binary_path).unwrap();
+                drop(persisted);
             }
 
             binary_path
@@ -773,8 +814,10 @@ mod tests {
             // Ensure filesystem sync before execution to prevent ETXTBSY
             temp_file.as_file().sync_all().unwrap();
 
-            // Persist - file handle will be dropped automatically at end of scope
-            temp_file.persist(&binary_path).unwrap();
+            // Persist and explicitly drop to avoid ETXTBSY on fast exec
+            let persisted = temp_file.persist(&binary_path).unwrap();
+            drop(persisted);
+            sync_parent_dir(&version_dir);
         }
 
         #[cfg(windows)]
@@ -790,8 +833,9 @@ mod tests {
             // Ensure filesystem sync before execution to prevent race conditions
             temp_file.as_file().sync_all().unwrap();
 
-            // Persist - file handle will be dropped automatically at end of scope
-            temp_file.persist(&binary_path).unwrap();
+            // Persist and explicitly drop to avoid race on fast exec
+            let persisted = temp_file.persist(&binary_path).unwrap();
+            drop(persisted);
         }
 
         let result =

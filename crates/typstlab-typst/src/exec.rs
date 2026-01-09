@@ -59,8 +59,9 @@ fn execute_binary(binary_path: &Path, args: &[String]) -> std::io::Result<std::p
 fn run_command(path: &Path, args: &[String]) -> Result<ExecResult> {
     let start = Instant::now();
 
-    let output = execute_binary(path, args)
-        .map_err(|e| TypstlabError::TypstExecFailed(format!("Failed to execute command: {}", e)))?;
+    let output = execute_with_retry(path, args).map_err(|e| {
+        TypstlabError::TypstExecFailed(format!("Failed to execute command: {}", e))
+    })?;
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -74,6 +75,37 @@ fn run_command(path: &Path, args: &[String]) -> Result<ExecResult> {
         stderr,
         duration_ms,
     })
+}
+
+fn should_retry_exec(err: &std::io::Error) -> bool {
+    if err.kind() == std::io::ErrorKind::PermissionDenied {
+        return true;
+    }
+    err.raw_os_error() == Some(26)
+}
+
+fn execute_with_retry(
+    path: &Path,
+    args: &[String],
+) -> std::io::Result<std::process::Output> {
+    use std::time::Duration;
+    let mut last_err = None;
+    for attempt in 0..5 {
+        match execute_binary(path, args) {
+            Ok(output) => return Ok(output),
+            Err(e) => {
+                last_err = Some(e);
+                if should_retry_exec(last_err.as_ref().unwrap()) {
+                    std::thread::sleep(Duration::from_millis(5 * (attempt + 1) as u64));
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "Unknown exec error")
+    }))
 }
 
 // ============================================================================
@@ -183,8 +215,10 @@ mod tests {
             // Ensure filesystem sync before execution to prevent ETXTBSY
             temp_file.as_file().sync_all().unwrap();
 
-            // Persist - file handle will be dropped automatically at end of scope
-            temp_file.persist(path).unwrap();
+            // Persist and explicitly drop to avoid ETXTBSY on fast exec
+            let persisted = temp_file.persist(path).unwrap();
+            drop(persisted);
+            sync_parent_dir(parent_dir);
         }
 
         #[cfg(windows)]
@@ -195,8 +229,18 @@ mod tests {
             // Ensure filesystem sync before execution to prevent race conditions
             temp_file.as_file().sync_all().unwrap();
 
-            // Persist - file handle will be dropped automatically at end of scope
-            temp_file.persist(path).unwrap();
+            // Persist and explicitly drop to avoid race on fast exec
+            let persisted = temp_file.persist(path).unwrap();
+            drop(persisted);
+        }
+    }
+
+    fn sync_parent_dir(dir: &std::path::Path) {
+        #[cfg(unix)]
+        {
+            if let Ok(handle) = std::fs::File::open(dir) {
+                let _ = handle.sync_all();
+            }
         }
     }
 
