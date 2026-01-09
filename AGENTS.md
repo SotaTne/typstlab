@@ -160,7 +160,11 @@ Claude should **not** offer review for:
 
 #### Review Offer Prompt
 
-When offering review, Claude should say:
+**Language Detection:**
+
+Claude should detect the user's language from recent conversation messages and offer the review prompt in that language.
+
+**English (default):**
 
 > "Pre-commit verification passed ✅
 >
@@ -176,6 +180,44 @@ When offering review, Claude should say:
 > - Adherence to AGENTS.md guidelines
 >
 > Reply 'yes' to review, 'no' to skip."
+
+**Japanese (日本語):**
+
+> "Pre-commit verification passed ✅
+>
+> コミット前にMCPコードレビューを実行しますか？
+>
+> レビュー内容：
+>
+> - TDDコンプライアンス（テストファースト）
+> - Rustの安全性（Path/PathBuf使用、unwrap/panicなし）
+> - コード品質（ファイル・関数サイズ、エラー処理）
+> - クロスプラットフォーム互換性
+> - ドキュメント完全性
+> - AGENTS.mdガイドライン準拠
+>
+> レビューする場合は 'yes'、スキップする場合は 'no' と返信してください。"
+
+**Chinese (中文):**
+
+> "Pre-commit verification passed ✅
+>
+> 是否在提交前运行MCP代码审查？
+>
+> 审查内容：
+>
+> - TDD合规性（测试优先）
+> - Rust安全性（使用Path/PathBuf，无unwrap/panic）
+> - 代码质量（文件/函数大小、错误处理）
+> - 跨平台兼容性
+> - 文档完整性
+> - 遵守AGENTS.md指南
+>
+> 回复 'yes' 进行审查，'no' 跳过。"
+
+**Other languages:**
+
+Claude should translate the prompt to match the user's language while maintaining the same structure and checklist items.
 
 #### MCP Review Process
 
