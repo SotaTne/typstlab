@@ -138,6 +138,125 @@ git commit -m "add tests and fix bug and refactor code"
 
 ---
 
+### 2.5 Optional MCP Code Review
+
+**Claude may offer code review before commits using MCP tools.**
+
+#### When Claude Offers Review
+
+Claude should offer MCP code review:
+
+- **After** pre-commit verification passes (fmt/clippy/test/build)
+- **Before** creating the commit
+- For **non-trivial changes** (>50 lines modified)
+- For **code changes** (skip docs-only, formatting-only)
+
+Claude should **not** offer review for:
+
+- Changes ≤50 lines
+- Documentation-only changes (*.md files only)
+- Formatting-only commits
+- Commits explicitly marked as "WIP"
+
+#### Review Offer Prompt
+
+When offering review, Claude should say:
+
+> "Pre-commit verification passed ✅
+>
+> Would you like me to run an MCP code review before committing?
+>
+> This review will check:
+>
+> - TDD compliance (tests written first)
+> - Rust safety (Path/PathBuf usage, no unwrap/panic)
+> - Code quality (file/function size, error handling)
+> - Cross-platform compatibility
+> - Documentation completeness
+> - Adherence to AGENTS.md guidelines
+>
+> Reply 'yes' to review, 'no' to skip."
+
+#### MCP Review Process
+
+If user approves review:
+
+1. **Gather staged changes**:
+
+   ```bash
+   git diff --cached
+   ```
+
+2. **Invoke MCP review** using `mcp__codex__codex` tool:
+
+   ```text
+   Prompt: "Code review for typstlab commit.
+
+   Review these changes against AGENTS.md guidelines:
+
+   Files changed: [list]
+
+   [git diff output]
+
+   Check:
+   1. TDD - Tests written before implementation?
+   2. Rust Safety - Path/PathBuf used (not String)?
+   3. Error Handling - No unwrap()/panic() in library code?
+   4. Size Limits - Files <800 lines, functions <40 lines?
+   5. Cross-Platform - Path components, not string manipulation?
+   6. Documentation - Public APIs documented?
+   7. Conventional Commits - Format correct?
+
+   Provide:
+   - Issues found (severity: error/warning/info)
+   - Line numbers
+   - Suggested fixes
+   - Overall: approve | approve-with-warnings | needs-work"
+   ```
+
+3. **Present results to user**:
+   - Show issues by severity
+   - Highlight specific lines
+   - Provide suggestions
+   - Ask: "Fix issues / Commit anyway / Abort?"
+
+4. **Respect user decision**:
+   - "fix" → Help address issues
+   - "commit" → Proceed with commit
+   - "abort" → Cancel commit
+
+#### Manual Review Request
+
+User can request review anytime:
+
+> User: "review this code"
+> Claude: [Runs MCP review even for small changes]
+
+#### Handling MCP Failures
+
+If MCP service is unavailable:
+
+> "MCP code review service is unavailable. Would you like to:
+>
+> - Commit without review (proceed)
+> - Abort commit (abort)"
+
+If MCP times out (>60s):
+
+> "Review timed out. Would you like to:
+>
+> - Commit without review (proceed)
+> - Abort commit (abort)"
+
+#### Important Notes
+
+- **Review is advisory, not blocking**: User can always commit anyway
+- **Review does not replace mandatory checks**: fmt/clippy/test/build still required
+- **Review results are not stored**: Each commit reviewed fresh
+- **Only during typstlab development**: This is a workflow tool, not a product feature
+
+---
+
 ### 3. Embrace Rust Safety and Cross-Platform Compatibility
 
 **Use Rust's type system and standard library to guarantee correctness.**
@@ -384,11 +503,23 @@ cargo test --workspace  # Ensure no regressions
 # - Add documentation
 cargo test --workspace  # Keep tests green
 
-# 6. Commit (Atomic Unit)
+# 6. Pre-Commit Verification (Mandatory)
+cargo fmt --all                                      # Format code
+cargo clippy --workspace --all-targets -- -D warnings  # Check for warnings
+cargo test --workspace                                # Run all tests
+cargo build --workspace                               # Verify build succeeds
+
+# 7. Optional MCP Code Review
+# Claude asks: "Would you like me to run an MCP code review?"
+# - If yes: Run mcp__codex__codex with review prompt
+# - Present results and get user decision
+# - Skip for: ≤50 lines, docs-only, formatting-only
+
+# 8. Commit (Atomic Unit)
 git add <files>
 git commit -m "type(scope): description"
 
-# 7. Update DESIGN.md if needed (with approval)
+# 9. Update DESIGN.md if needed (with approval)
 # - Only if specification changed
 # - Get explicit developer approval
 # - Commit spec and implementation together
@@ -586,6 +717,7 @@ Before considering work complete, verify:
 
 - [ ] Tests written before implementation (TDD)
 - [ ] All tests pass: `cargo test --workspace`
+- [ ] MCP code review run (if change >50 lines)
 - [ ] Cross-platform path handling used (`Path`/`PathBuf`)
 - [ ] No files exceed 800 lines
 - [ ] No functions exceed 40 lines
