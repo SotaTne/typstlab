@@ -38,13 +38,15 @@ pub enum ResolveResult {
 /// - Linux: ~/.cache/typstlab/typst
 /// - Windows: %LOCALAPPDATA%\typstlab\typst
 ///
-/// Falls back to temp directory if cache_dir is unavailable (e.g., in containers)
+/// Falls back to .tmp/ directory if cache_dir is unavailable (e.g., in containers)
 pub fn managed_cache_dir() -> Result<PathBuf> {
     let base_cache = match dirs::cache_dir() {
         Some(dir) => dir,
         None => {
-            // Fallback: use temp directory
-            std::env::temp_dir().join(".typstlab-cache")
+            // Fallback: use .tmp in project workspace for development/testing
+            // In production, this typically won't be used as cache_dir() exists
+            let workspace = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+            workspace.join(".tmp").join(".typstlab-cache")
         }
     };
 
