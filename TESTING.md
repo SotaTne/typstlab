@@ -14,9 +14,47 @@ This document outlines best practices for writing tests in the typstlab project.
 
 ## Filesystem Operations in Tests
 
-### ✅ DO: Use `tempfile::TempDir`
+### ✅ DO: Use `temp_dir_in_workspace()` from typstlab-testkit
 
-**Always** use the `tempfile` crate for temporary filesystem operations in tests. `TempDir` provides automatic cleanup when dropped, ensuring no state leakage between tests.
+**Always** use the centralized `temp_dir_in_workspace()` helper for temporary filesystem operations in tests. This helper creates temporary directories in `.tmp/` at the project root, providing automatic cleanup and easier debugging.
+
+```rust
+use typstlab_testkit::temp_dir_in_workspace;
+use std::fs;
+
+#[test]
+fn test_with_temp_directory() {
+    // Create a temporary directory in .tmp/<random-name>
+    let temp_dir = temp_dir_in_workspace();
+
+    // Use temp_dir.path() to get the path
+    let file_path = temp_dir.path().join("test_file.txt");
+    fs::write(&file_path, "test data").unwrap();
+
+    // Perform your test assertions
+    assert!(file_path.exists());
+    assert_eq!(fs::read_to_string(&file_path).unwrap(), "test data");
+
+    // Cleanup happens automatically when temp_dir is dropped
+}
+```
+
+**Benefits of using `temp_dir_in_workspace()`:**
+- All test temporary files centralized in `.tmp/` directory
+- Easy to inspect test artifacts during debugging: `ls -la .tmp/`
+- Manual cleanup if needed: `rm -rf .tmp/`
+- Automatically gitignored
+- Each test still gets unique isolated subdirectory
+- Consistent pattern across all tests in the workspace
+
+**When to use:**
+- All filesystem operations in tests
+- Any temporary file creation during testing
+- Mock binary creation for integration tests
+
+### Alternative: Direct `tempfile::TempDir` usage
+
+If you need temporary directories for non-test code or have specific requirements, you can still use `tempfile::TempDir` directly:
 
 ```rust
 use tempfile::TempDir;

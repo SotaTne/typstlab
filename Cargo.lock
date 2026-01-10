@@ -2047,6 +2047,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "typstlab-core",
+ "typstlab-testkit",
  "walkdir",
 ]
 
@@ -2057,6 +2058,9 @@ version = "0.1.0"
 [[package]]
 name = "typstlab-testkit"
 version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
 
 [[package]]
 name = "typstlab-typst"
@@ -2075,6 +2079,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "typstlab-core",
+ "typstlab-testkit",
  "url",
  "which",
  "zip",
