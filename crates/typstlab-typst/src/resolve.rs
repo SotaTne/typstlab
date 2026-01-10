@@ -399,15 +399,11 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
+    use typstlab_testkit::temp_dir_in_workspace;
 
     // ========================================================================
     // Test Helpers Module
     // ========================================================================
-
-    fn tempdir_in_workspace() -> TempDir {
-        let base = env::current_dir().unwrap();
-        TempDir::new_in(base).unwrap()
-    }
 
     fn sync_parent_dir(dir: &std::path::Path) {
         #[cfg(unix)]
@@ -499,7 +495,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_managed_cache_dir_macos() {
-        let temp_base = tempdir_in_workspace();
+        let temp_base = temp_dir_in_workspace();
 
         let result = managed_cache_dir_with_override(Some(temp_base.path().to_path_buf()));
         assert!(result.is_ok());
@@ -515,7 +511,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn test_managed_cache_dir_linux() {
-        let temp_base = tempdir_in_workspace();
+        let temp_base = temp_dir_in_workspace();
 
         let result = managed_cache_dir_with_override(Some(temp_base.path().to_path_buf()));
         assert!(result.is_ok());
@@ -531,7 +527,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn test_managed_cache_dir_windows() {
-        let temp_base = tempdir_in_workspace();
+        let temp_base = temp_dir_in_workspace();
 
         let result = managed_cache_dir_with_override(Some(temp_base.path().to_path_buf()));
         assert!(result.is_ok());
@@ -546,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_managed_cache_dir_creates_path() {
-        let temp_base = tempdir_in_workspace();
+        let temp_base = temp_dir_in_workspace();
 
         let result = managed_cache_dir_with_override(Some(temp_base.path().to_path_buf()));
         assert!(result.is_ok());
@@ -565,7 +561,7 @@ mod tests {
     #[test]
     fn test_validate_version_exact_match() {
         // Create a fake typst binary for testing
-        let temp_dir = tempdir_in_workspace();
+        let temp_dir = temp_dir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("typst");
@@ -598,7 +594,7 @@ mod tests {
 
     #[test]
     fn test_validate_version_mismatch() {
-        let temp_dir = tempdir_in_workspace();
+        let temp_dir = temp_dir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("typst");
@@ -639,7 +635,7 @@ mod tests {
 
     #[test]
     fn test_validate_version_invalid_output() {
-        let temp_dir = tempdir_in_workspace();
+        let temp_dir = temp_dir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("typst");
@@ -702,7 +698,7 @@ mod tests {
 
     #[test]
     fn test_validate_version_invalid_expected() {
-        let temp_dir = tempdir_in_workspace();
+        let temp_dir = temp_dir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("typst");
@@ -753,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_resolve_managed_found_exact_version() {
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.13.1";
 
         let binary_path = test_helpers::create_fake_typst_in_temp(&temp_cache, version, "");
@@ -782,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_resolve_managed_version_mismatch() {
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
         let actual_version = "0.12.0";
         let requested_version = "0.13.1";
 
@@ -855,7 +851,7 @@ mod tests {
 
     #[test]
     fn test_resolve_managed_binary_not_executable() {
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.13.1";
         let version_dir = temp_cache.path().join(version);
 
@@ -932,7 +928,7 @@ mod tests {
 
     #[test]
     fn test_resolve_typst_from_managed() {
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.14.0";
 
         let binary_path = test_helpers::create_fake_typst_in_temp(&temp_cache, version, "");
@@ -997,7 +993,7 @@ mod tests {
 
     #[test]
     fn test_resolve_typst_not_found() {
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
 
         let options = ResolveOptions {
             required_version: "99.99.99".to_string(),
@@ -1029,7 +1025,7 @@ mod tests {
 
     #[test]
     fn test_resolve_typst_force_refresh() {
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.15.0";
 
         test_helpers::create_fake_typst_in_temp(&temp_cache, version, "");
@@ -1062,7 +1058,7 @@ mod tests {
 
     #[test]
     fn test_resolve_typst_managed_priority_over_system() {
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.16.0";
 
         let binary_path = test_helpers::create_fake_typst_in_temp(&temp_cache, version, "");
@@ -1094,7 +1090,7 @@ mod tests {
 
     #[test]
     fn test_resolve_typst_searched_locations() {
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
 
         let options = ResolveOptions {
             required_version: "98.76.54".to_string(),
@@ -1159,7 +1155,7 @@ mod tests {
 
     #[test]
     fn test_managed_cache_dir_with_override_creates_directory() {
-        let temp_base = tempdir_in_workspace();
+        let temp_base = temp_dir_in_workspace();
         let override_path = temp_base.path().join("custom-cache");
 
         let result = managed_cache_dir_with_override(Some(override_path.clone()));

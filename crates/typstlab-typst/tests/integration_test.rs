@@ -6,6 +6,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use tempfile::{NamedTempFile, TempDir};
+use typstlab_testkit::temp_dir_in_workspace;
 use typstlab_typst::{ExecOptions, ResolveOptions, ResolveResult};
 
 #[cfg(unix)]
@@ -80,7 +81,7 @@ fn sync_parent_dir(dir: &std::path::Path) {
 /// Test complete flow: resolve managed binary -> execute command
 #[test]
 fn test_e2e_resolve_and_exec_managed() {
-    let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+    let temp_cache = temp_dir_in_workspace();
     let version = "0.18.0";
 
     let script_content = r#"echo "Hello from Typst"
@@ -135,7 +136,7 @@ exit 0
 /// Test error case: binary not found
 #[test]
 fn test_e2e_binary_not_found() {
-    let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+    let temp_cache = temp_dir_in_workspace();
     let version = "99.99.99"; // Non-existent version
 
     let exec_options = ExecOptions {
@@ -157,7 +158,7 @@ fn test_e2e_binary_not_found() {
 /// Test error case: binary execution fails
 #[test]
 fn test_e2e_execution_failure() {
-    let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+    let temp_cache = temp_dir_in_workspace();
     let version = "0.19.0";
 
     let script_content = r#"echo "Error: File not found" >&2
@@ -187,7 +188,7 @@ exit 1
 /// Test force_refresh bypasses cache
 #[test]
 fn test_e2e_force_refresh() {
-    let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+    let temp_cache = temp_dir_in_workspace();
     let version = "0.20.0";
 
     create_fake_typst_in_temp(&temp_cache, version, "exit 0");
@@ -226,7 +227,7 @@ fn test_e2e_force_refresh() {
 /// Test execution with different exit codes
 #[test]
 fn test_e2e_various_exit_codes() {
-    let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+    let temp_cache = temp_dir_in_workspace();
     let version = "0.21.0";
 
     // Test exit code 42
@@ -252,7 +253,7 @@ fn test_e2e_various_exit_codes() {
 /// Test stdout and stderr are properly captured
 #[test]
 fn test_e2e_output_capture() {
-    let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+    let temp_cache = temp_dir_in_workspace();
     let version = "0.22.0";
 
     #[cfg(unix)]
@@ -305,7 +306,7 @@ mod race_condition_tests {
     /// this test should fail with ETXTBSY on Linux/macOS.
     #[test]
     fn test_no_etxtbsy_race_condition() {
-        let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let temp_cache = temp_dir_in_workspace();
         let successes = Arc::new(Mutex::new(0));
         let errors = Arc::new(Mutex::new(Vec::new()));
 
@@ -367,7 +368,7 @@ mod race_condition_tests {
     /// with ETXTBSY or resource contention errors.
     #[test]
     fn test_no_race_condition_parallel() {
-        let temp_cache = Arc::new(TempDir::new_in(std::env::current_dir().unwrap()).unwrap());
+        let temp_cache = Arc::new(temp_dir_in_workspace());
         let mut handles = vec![];
 
         // Spawn 4 threads that each create and execute 10 binaries
@@ -432,7 +433,7 @@ mod race_condition_tests {
     /// drop() are missing.
     #[test]
     fn test_immediate_execution_after_creation() {
-        let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.99.0";
 
         #[cfg(unix)]
@@ -476,7 +477,7 @@ mod race_condition_tests {
     fn test_file_handle_closed_after_persist() {
         use std::process::Command;
 
-        let temp_cache = TempDir::new_in(std::env::current_dir().unwrap()).unwrap();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.98.0";
         let script = "echo 'test'\nexit 0";
 

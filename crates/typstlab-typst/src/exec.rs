@@ -180,16 +180,12 @@ mod tests {
     use std::env;
     use std::fs;
     use std::io::Write;
-    use tempfile::{NamedTempFile, TempDir};
+    use tempfile::NamedTempFile;
+    use typstlab_testkit::temp_dir_in_workspace;
 
     // ========================================================================
     // Test Helper Functions
     // ========================================================================
-
-    fn tempdir_in_workspace() -> TempDir {
-        let base = env::current_dir().unwrap();
-        TempDir::new_in(base).unwrap()
-    }
 
     /// Create a fake binary using NamedTempFile::persist() for atomicity
     fn create_fake_binary(path: &std::path::Path, script_content: &str) {
@@ -244,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_run_command_success() {
-        let temp_dir = tempdir_in_workspace();
+        let temp_dir = temp_dir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("fake_typst_success");
@@ -272,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_run_command_failure() {
-        let temp_dir = tempdir_in_workspace();
+        let temp_dir = temp_dir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("fake_typst_failure");
@@ -309,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_run_command_captures_stdout_stderr() {
-        let temp_dir = tempdir_in_workspace();
+        let temp_dir = temp_dir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("fake_typst_mixed");
@@ -341,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_run_command_timing() {
-        let temp_dir = tempdir_in_workspace();
+        let temp_dir = temp_dir_in_workspace();
 
         #[cfg(unix)]
         let fake_binary = temp_dir.path().join("fake_typst_timing");
@@ -387,7 +383,7 @@ mod tests {
     #[test]
     fn test_exec_typst_with_resolved_binary() {
         // Setup: Create temp cache with valid binary
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.17.0";
         let version_dir = temp_cache.path().join(version);
 
@@ -434,7 +430,7 @@ mod tests {
     #[test]
     fn test_exec_typst_preserves_exit_code() {
         // Setup: Create binary that exits with specific code
-        let temp_cache = tempdir_in_workspace();
+        let temp_cache = temp_dir_in_workspace();
         let version = "0.18.0";
         let version_dir = temp_cache.path().join(version);
 

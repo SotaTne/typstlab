@@ -31,3 +31,5 @@ tempfile = "3.24.0"
 [dev-dependencies]
 # HTTP mocking for TDD
 mockito = "1.5"
+# Test utilities
+typstlab-testkit = { path = "../typstlab-testkit" }
