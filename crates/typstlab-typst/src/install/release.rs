@@ -44,6 +44,14 @@ pub enum ReleaseError {
     /// URL cannot be a base (missing scheme/host)
     #[error("Base URL cannot be used for joining: {url}")]
     InvalidBaseUrl { url: String },
+
+    /// No matching asset found for platform
+    #[error("No asset found for {os} {arch} in release '{version}'")]
+    AssetNotFound {
+        version: String,
+        os: String,
+        arch: String,
+    },
 }
 
 /// GitHub Release metadata from API
