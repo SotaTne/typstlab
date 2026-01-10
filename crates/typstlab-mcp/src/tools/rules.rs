@@ -784,11 +784,11 @@ mod tests {
 mod security_tests {
     use super::*;
     use std::fs;
-    use tempfile::TempDir;
+    use typstlab_testkit::temp_dir_in_workspace;
 
     #[test]
     fn test_path_traversal_blocked() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create a secret file outside rules/
@@ -814,7 +814,7 @@ mod security_tests {
 
     #[test]
     fn test_valid_rules_paths() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create rules directory
@@ -832,7 +832,7 @@ mod security_tests {
 
     #[test]
     fn test_papers_directory_allowed() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create papers directory
@@ -849,7 +849,7 @@ mod security_tests {
     fn test_symlink_escape_blocked() {
         use std::os::unix::fs::symlink;
 
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create rules directory and secret file
@@ -870,7 +870,7 @@ mod security_tests {
 
     #[test]
     fn test_rules_get_with_path_validation() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create valid file
@@ -894,7 +894,7 @@ mod security_tests {
 
     #[test]
     fn test_rules_page_with_path_validation() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create valid file
@@ -925,11 +925,11 @@ mod security_tests {
 mod security_tests_v2 {
     use super::*;
     use std::fs;
-    use tempfile::TempDir;
+    use typstlab_testkit::temp_dir_in_workspace;
 
     #[test]
     fn test_papers_direct_access_blocked() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create papers directory with files
@@ -953,7 +953,7 @@ mod security_tests_v2 {
 
     #[test]
     fn test_papers_shallow_path_blocked() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Should block: papers/ (too shallow)
@@ -973,11 +973,11 @@ mod security_tests_v2 {
 mod bounds_tests_v2 {
     use super::*;
     use std::fs;
-    use tempfile::TempDir;
+    use typstlab_testkit::temp_dir_in_workspace;
 
     #[test]
     fn test_cursor_zero_rejected() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -996,7 +996,7 @@ mod bounds_tests_v2 {
 
     #[test]
     fn test_empty_file_cursor_1() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1026,7 +1026,7 @@ mod bounds_tests_v2 {
 
     #[test]
     fn test_empty_file_no_cursor() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1061,11 +1061,11 @@ mod bounds_tests_v2 {
 mod bounds_tests {
     use super::*;
     use std::fs;
-    use tempfile::TempDir;
+    use typstlab_testkit::temp_dir_in_workspace;
 
     #[test]
     fn test_rules_list_offset_exceeds_total() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1086,7 +1086,7 @@ mod bounds_tests {
 
     #[test]
     fn test_rules_list_offset_equals_total() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1109,7 +1109,7 @@ mod bounds_tests {
 
     #[test]
     fn test_rules_page_cursor_exceeds_total() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1128,7 +1128,7 @@ mod bounds_tests {
 
     #[test]
     fn test_rules_page_cursor_equals_total() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1152,7 +1152,7 @@ mod bounds_tests {
 
     #[test]
     fn test_rules_page_cursor_beyond_total() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1171,7 +1171,7 @@ mod bounds_tests {
 
     #[test]
     fn test_read_lines_range_correct_total() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create file with exactly 10 lines
@@ -1193,7 +1193,7 @@ mod bounds_tests {
 
     #[test]
     fn test_read_lines_range_read_all() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Create file with exactly 5 lines
@@ -1219,11 +1219,11 @@ mod security_tests_v3 {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
-    use tempfile::TempDir;
+    use typstlab_testkit::temp_dir_in_workspace;
 
     #[test]
     fn test_empty_paper_id_blocked() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // Should block: papers//rules/file.md (empty paper_id)
@@ -1237,7 +1237,7 @@ mod security_tests_v3 {
 
     #[test]
     fn test_cross_platform_path_handling() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
@@ -1257,7 +1257,7 @@ mod security_tests_v3 {
 
     #[test]
     fn test_curdir_prefix_rules() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1274,7 +1274,7 @@ mod security_tests_v3 {
 
     #[test]
     fn test_curdir_prefix_papers() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("papers/paper1/rules")).unwrap();
@@ -1291,7 +1291,7 @@ mod security_tests_v3 {
 
     #[test]
     fn test_multiple_curdir_normalized() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1304,7 +1304,7 @@ mod security_tests_v3 {
 
     #[test]
     fn test_curdir_does_not_bypass_security() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         // ./../../etc/passwd should still be blocked
@@ -1331,11 +1331,11 @@ mod security_tests_v3 {
 mod correctness_tests_v3 {
     use super::*;
     use std::fs;
-    use tempfile::TempDir;
+    use typstlab_testkit::temp_dir_in_workspace;
 
     #[test]
     fn test_empty_file_with_cursor_1_allowed() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1368,7 +1368,7 @@ mod correctness_tests_v3 {
 
     #[test]
     fn test_empty_file_no_cursor_returns_consistent_range() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1401,7 +1401,7 @@ mod correctness_tests_v3 {
 
     #[test]
     fn test_empty_file_arbitrary_cursor_rejected() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
@@ -1431,7 +1431,7 @@ mod correctness_tests_v3 {
 
     #[test]
     fn test_max_lines_zero_rejected() {
-        let temp = TempDir::new().unwrap();
+        let temp = temp_dir_in_workspace();
         let project_root = temp.path();
 
         fs::create_dir_all(project_root.join("rules")).unwrap();
