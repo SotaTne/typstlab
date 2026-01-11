@@ -52,6 +52,41 @@ pub enum ReleaseError {
         os: String,
         arch: String,
     },
+
+    /// Download failed (network/HTTP error)
+    #[error("Failed to download asset from {url}: {source}")]
+    DownloadFailed {
+        url: Url,
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// Downloaded file size mismatch
+    #[error("Downloaded file size mismatch: expected {expected} bytes, got {actual} bytes")]
+    SizeMismatch { expected: u64, actual: u64 },
+
+    /// I/O error during download/extraction
+    #[error("I/O error during {operation}: {source}")]
+    IoError {
+        operation: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Archive extraction failed
+    #[error("Failed to extract {archive_type} archive: {reason}")]
+    ExtractionFailed {
+        archive_type: String,
+        reason: String,
+    },
+
+    /// Binary not found in extracted archive
+    #[error("Binary '{binary_name}' not found in archive")]
+    BinaryNotFoundInArchive { binary_name: String },
+
+    /// Insufficient disk space
+    #[error("Insufficient disk space for download (required: {required} bytes)")]
+    InsufficientDiskSpace { required: u64 },
 }
 
 /// GitHub Release metadata from API
