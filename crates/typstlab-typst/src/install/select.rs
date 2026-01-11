@@ -60,8 +60,18 @@ use crate::install::release::{Asset, Release, ReleaseError};
 /// println!("Download URL: {}", asset.browser_download_url);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub fn select_asset(_release: &Release, _os: Os, _arch: Arch) -> Result<&Asset, ReleaseError> {
-    unimplemented!("TDD red phase: select_asset not yet implemented")
+pub fn select_asset(release: &Release, os: Os, arch: Arch) -> Result<&Asset, ReleaseError> {
+    let pattern = asset_name_pattern(os, arch);
+
+    release
+        .assets
+        .iter()
+        .find(|asset| asset.name.contains(&pattern))
+        .ok_or_else(|| ReleaseError::AssetNotFound {
+            version: release.tag_name.clone(),
+            os: format!("{:?}", os),
+            arch: format!("{:?}", arch),
+        })
 }
 
 /// Convenience function that automatically detects the current platform
@@ -94,8 +104,11 @@ pub fn select_asset(_release: &Release, _os: Os, _arch: Arch) -> Result<&Asset, 
 /// println!("Download: {}", asset.browser_download_url);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub fn select_asset_for_current_platform(_release: &Release) -> Result<&Asset, ReleaseError> {
-    unimplemented!("TDD red phase: select_asset_for_current_platform not yet implemented")
+pub fn select_asset_for_current_platform(release: &Release) -> typstlab_core::Result<&Asset> {
+    let os = detect_os()?;
+    let arch = detect_arch()?;
+    select_asset(release, os, arch)
+        .map_err(|e| typstlab_core::TypstlabError::TypstInstallFailed(e.to_string()))
 }
 
 #[cfg(test)]
@@ -104,29 +117,30 @@ mod tests {
     use url::Url;
 
     /// Helper: Creates a mock release with assets for all major platforms
+    /// Matches actual Typst release structure (v0.14.2+)
     fn create_mock_release_multiplatform() -> Release {
         Release {
             tag_name: "v0.18.0".to_string(),
             assets: vec![
                 Asset {
-                    name: "typst-x86_64-apple-darwin.tar.gz".to_string(),
-                    browser_download_url: Url::parse("https://example.com/darwin.tar.gz").unwrap(),
+                    name: "typst-x86_64-apple-darwin.tar.xz".to_string(),
+                    browser_download_url: Url::parse("https://example.com/darwin.tar.xz").unwrap(),
                     size: 10000000,
                 },
                 Asset {
-                    name: "typst-aarch64-apple-darwin.tar.gz".to_string(),
-                    browser_download_url: Url::parse("https://example.com/darwin-arm.tar.gz")
+                    name: "typst-aarch64-apple-darwin.tar.xz".to_string(),
+                    browser_download_url: Url::parse("https://example.com/darwin-arm.tar.xz")
                         .unwrap(),
                     size: 10000000,
                 },
                 Asset {
-                    name: "typst-x86_64-unknown-linux-gnu.tar.gz".to_string(),
-                    browser_download_url: Url::parse("https://example.com/linux.tar.gz").unwrap(),
+                    name: "typst-x86_64-unknown-linux-musl.tar.xz".to_string(),
+                    browser_download_url: Url::parse("https://example.com/linux.tar.xz").unwrap(),
                     size: 11000000,
                 },
                 Asset {
-                    name: "typst-aarch64-unknown-linux-gnu.tar.gz".to_string(),
-                    browser_download_url: Url::parse("https://example.com/linux-arm.tar.gz")
+                    name: "typst-aarch64-unknown-linux-musl.tar.xz".to_string(),
+                    browser_download_url: Url::parse("https://example.com/linux-arm.tar.xz")
                         .unwrap(),
                     size: 11000000,
                 },
@@ -222,8 +236,8 @@ mod tests {
         let release = Release {
             tag_name: "v0.18.0".to_string(),
             assets: vec![Asset {
-                name: "typst-x86_64-unknown-linux-gnu.tar.gz".to_string(),
-                browser_download_url: Url::parse("https://example.com/linux.tar.gz").unwrap(),
+                name: "typst-x86_64-unknown-linux-musl.tar.xz".to_string(),
+                browser_download_url: Url::parse("https://example.com/linux.tar.xz").unwrap(),
                 size: 11000000,
             }],
         };
@@ -265,13 +279,13 @@ mod tests {
             tag_name: "v0.18.0".to_string(),
             assets: vec![
                 Asset {
-                    name: "typst-x86_64-apple-darwin.tar.gz".to_string(),
-                    browser_download_url: Url::parse("https://example.com/first.tar.gz").unwrap(),
+                    name: "typst-x86_64-apple-darwin.tar.xz".to_string(),
+                    browser_download_url: Url::parse("https://example.com/first.tar.xz").unwrap(),
                     size: 10000000,
                 },
                 Asset {
-                    name: "typst-x86_64-apple-darwin-alternative.tar.gz".to_string(),
-                    browser_download_url: Url::parse("https://example.com/second.tar.gz").unwrap(),
+                    name: "typst-x86_64-apple-darwin-alternative.tar.xz".to_string(),
+                    browser_download_url: Url::parse("https://example.com/second.tar.xz").unwrap(),
                     size: 10000001,
                 },
             ],
@@ -281,7 +295,7 @@ mod tests {
         // Should return first match
         assert_eq!(
             asset.browser_download_url.as_str(),
-            "https://example.com/first.tar.gz"
+            "https://example.com/first.tar.xz"
         );
         assert_eq!(asset.size, 10000000);
     }
@@ -386,40 +400,40 @@ mod tests {
 
     #[test]
     fn test_select_asset_with_real_typst_release_schema() {
-        // Mimics actual GitHub Release JSON structure
+        // Mimics actual Typst v0.14.2 GitHub Release structure
         let release = Release {
-            tag_name: "v0.17.0".to_string(),
+            tag_name: "v0.14.2".to_string(),
             assets: vec![
                 Asset {
-                    name: "typst-x86_64-apple-darwin.tar.gz".to_string(),
+                    name: "typst-x86_64-apple-darwin.tar.xz".to_string(),
                     browser_download_url: Url::parse(
-                        "https://github.com/typst/typst/releases/download/v0.17.0/typst-x86_64-apple-darwin.tar.gz",
+                        "https://github.com/typst/typst/releases/download/v0.14.2/typst-x86_64-apple-darwin.tar.xz",
                     )
                     .unwrap(),
-                    size: 8675309,
+                    size: 13400000,
                 },
                 Asset {
-                    name: "typst-x86_64-unknown-linux-gnu.tar.gz".to_string(),
+                    name: "typst-x86_64-unknown-linux-musl.tar.xz".to_string(),
                     browser_download_url: Url::parse(
-                        "https://github.com/typst/typst/releases/download/v0.17.0/typst-x86_64-unknown-linux-gnu.tar.gz",
+                        "https://github.com/typst/typst/releases/download/v0.14.2/typst-x86_64-unknown-linux-musl.tar.xz",
                     )
                     .unwrap(),
-                    size: 8765432,
+                    size: 15100000,
                 },
                 Asset {
                     name: "typst-x86_64-pc-windows-msvc.zip".to_string(),
                     browser_download_url: Url::parse(
-                        "https://github.com/typst/typst/releases/download/v0.17.0/typst-x86_64-pc-windows-msvc.zip",
+                        "https://github.com/typst/typst/releases/download/v0.14.2/typst-x86_64-pc-windows-msvc.zip",
                     )
                     .unwrap(),
-                    size: 9123456,
+                    size: 19600000,
                 },
             ],
         };
 
         // Test each platform
         let macos_asset = select_asset(&release, Os::MacOS, Arch::X86_64).unwrap();
-        assert_eq!(macos_asset.name, "typst-x86_64-apple-darwin.tar.gz");
+        assert_eq!(macos_asset.name, "typst-x86_64-apple-darwin.tar.xz");
         assert!(
             macos_asset
                 .browser_download_url
@@ -428,7 +442,7 @@ mod tests {
         );
 
         let linux_asset = select_asset(&release, Os::Linux, Arch::X86_64).unwrap();
-        assert_eq!(linux_asset.name, "typst-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(linux_asset.name, "typst-x86_64-unknown-linux-musl.tar.xz");
 
         let windows_asset = select_asset(&release, Os::Windows, Arch::X86_64).unwrap();
         assert_eq!(windows_asset.name, "typst-x86_64-pc-windows-msvc.zip");
@@ -442,7 +456,7 @@ mod tests {
         // Url type is already validated by deserializer
         assert_eq!(
             asset.browser_download_url.as_str(),
-            "https://example.com/darwin.tar.gz"
+            "https://example.com/darwin.tar.xz"
         );
 
         // Verify it's a valid URL
