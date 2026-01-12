@@ -595,6 +595,7 @@ fn atomic_move(from: &Path, to: &Path) -> Result<(), ReleaseError> {
 mod tests {
     use super::*;
     use crate::install::platform::binary_name;
+    use mockito::Server;
     use std::fs;
     use std::io::Write;
     use tempfile::TempDir;
@@ -719,12 +720,37 @@ mod tests {
 
     #[test]
     fn test_download_to_temp_success_with_size_verification() {
-        // This test will verify successful download with correct size
-        // Currently fails with unimplemented!()
-        let url = Url::parse("https://example.com/typst.tar.xz").unwrap();
+        // This test verifies successful download with correct size using mockito
+        let mut server = Server::new();
+
+        // Create body of exactly 1000 bytes
+        let body = vec![b'x'; 1000];
+
+        // Set up mock response
+        let mock = server
+            .mock("GET", "/typst.tar.xz")
+            .with_status(200)
+            .with_header("content-type", "application/x-xz")
+            .with_body(&body)
+            .create();
+
+        // Use mock server URL
+        let url = Url::parse(&format!("{}/typst.tar.xz", server.url())).unwrap();
         let expected_size = 1000;
         let result = download_to_temp(&url, expected_size, None);
+
+        mock.assert();
         assert!(result.is_ok(), "Should successfully download file");
+
+        // Verify downloaded file exists and has correct size
+        let path = result.unwrap();
+        assert!(path.exists(), "Downloaded file should exist");
+        let metadata = fs::metadata(&path).unwrap();
+        assert_eq!(
+            metadata.len(),
+            expected_size,
+            "File should have correct size"
+        );
     }
 
     #[test]
@@ -750,25 +776,58 @@ mod tests {
 
     #[test]
     fn test_download_to_temp_progress_callback() {
-        // This test will verify progress callback invocation
-        // Currently fails with unimplemented!()
-        // Note: Full implementation will use mockito for HTTP mocking
-        // and Arc<Mutex<Vec>> for tracking progress calls
-        let url = Url::parse("https://example.com/typst.tar.xz").unwrap();
+        // This test verifies progress callback invocation using mockito
+        use std::sync::{Mutex, OnceLock};
 
-        // TODO: In green phase, use Arc<Mutex<Vec>> to track calls:
-        // let progress_calls = Arc::new(Mutex::new(Vec::new()));
-        // let progress_calls_clone = progress_calls.clone();
-        // let progress_fn = move |downloaded: u64, total: u64| {
-        //     progress_calls_clone.lock().unwrap().push((downloaded, total));
-        // };
+        // Static storage for tracking progress calls (required for fn pointer)
+        static PROGRESS_CALLS: OnceLock<Mutex<Vec<(u64, u64)>>> = OnceLock::new();
 
-        let progress_fn = |_downloaded: u64, _total: u64| {
-            // Placeholder for TDD red phase
-        };
-        let result = download_to_temp(&url, 1000, Some(progress_fn));
-        // In green phase: assert!(!progress_calls.lock().unwrap().is_empty());
+        fn track_progress(downloaded: u64, total: u64) {
+            PROGRESS_CALLS
+                .get_or_init(|| Mutex::new(Vec::new()))
+                .lock()
+                .unwrap()
+                .push((downloaded, total));
+        }
+
+        let mut server = Server::new();
+
+        // Create body of exactly 1000 bytes to ensure progress tracking
+        let body = vec![b'x'; 1000];
+
+        // Set up mock response
+        let mock = server
+            .mock("GET", "/typst.tar.xz")
+            .with_status(200)
+            .with_header("content-type", "application/x-xz")
+            .with_body(&body)
+            .create();
+
+        // Use mock server URL
+        let url = Url::parse(&format!("{}/typst.tar.xz", server.url())).unwrap();
+        let result = download_to_temp(&url, 1000, Some(track_progress));
+
+        mock.assert();
         assert!(result.is_ok(), "Should successfully download with progress");
+
+        // Verify progress callback was invoked
+        let calls = PROGRESS_CALLS
+            .get()
+            .expect("Progress callback should have initialized storage")
+            .lock()
+            .unwrap();
+        assert!(
+            !calls.is_empty(),
+            "Progress callback should be invoked at least once"
+        );
+
+        // Verify final call has correct total
+        let (final_downloaded, final_total) = calls.last().unwrap();
+        assert_eq!(
+            *final_downloaded, 1000,
+            "Final downloaded should equal expected size"
+        );
+        assert_eq!(*final_total, 1000, "Final total should equal expected size");
     }
 
     // ============================================================================
@@ -812,20 +871,28 @@ mod tests {
 
     #[test]
     fn test_extract_empty_archive() {
-        // This test will verify empty archive error handling
-        // Currently fails with unimplemented!()
+        // This test verifies empty archive extraction
         let temp = typstlab_testkit::temp_dir_in_workspace();
         let empty_archive = temp.path().join("empty.tar.xz");
 
         // Create valid but empty tar.xz with proper XZ compression
-        let file = std::fs::File::create(&empty_archive).unwrap();
-        let enc = xz2::write::XzEncoder::new(file, 6);
-        let mut tar = tar::Builder::new(enc);
-        tar.finish().unwrap();
+        {
+            let file = std::fs::File::create(&empty_archive).unwrap();
+            let enc = xz2::write::XzEncoder::new(file, 6);
+            let tar = tar::Builder::new(enc);
+            // Finish tar builder (writes tar footer)
+            let enc = tar.into_inner().unwrap();
+            // Finish XZ encoder (writes XZ footer and flushes)
+            enc.finish().unwrap();
+        }
 
         let result = extract_to_temp(&empty_archive, "empty.tar.xz");
-        // Should extract successfully but finding binary will fail
-        assert!(result.is_ok(), "Should extract empty archive successfully");
+        // Should extract successfully (empty archive is valid, just has no files)
+        assert!(
+            result.is_ok(),
+            "Should extract empty archive successfully: {:?}",
+            result.err()
+        );
     }
 
     // ============================================================================
@@ -996,14 +1063,26 @@ mod tests {
 
     #[test]
     fn test_download_and_install_complete_flow() {
-        // This test will verify complete download and install flow
-        // Currently fails with unimplemented!()
+        // This test verifies complete download and install flow with mockito
+        let mut server = Server::new();
+
+        // Create a real tar.xz archive with a binary for testing
+        let archive_temp = create_fake_tar_xz_with_binary(binary_name(), true);
+        let archive_path = archive_temp.path().join("archive.tar.xz");
+        let archive_bytes = fs::read(&archive_path).unwrap();
+        let archive_size = archive_bytes.len() as u64;
+
+        // Set up mock response
+        let mock = server
+            .mock("GET", "/typst.tar.xz")
+            .with_status(200)
+            .with_header("content-type", "application/x-xz")
+            .with_body(&archive_bytes)
+            .create();
+
         let cache_dir = typstlab_testkit::temp_dir_in_workspace();
-        let asset = mock_asset(
-            "typst-x86_64-apple-darwin.tar.xz",
-            "https://example.com/typst.tar.xz",
-            1000,
-        );
+        let mock_url = format!("{}/typst.tar.xz", server.url());
+        let asset = mock_asset("typst-x86_64-apple-darwin.tar.xz", &mock_url, archive_size);
 
         let options = DownloadOptions {
             cache_dir: cache_dir.path().to_path_buf(),
@@ -1012,9 +1091,12 @@ mod tests {
         };
 
         let result = download_and_install(&asset, options);
+        mock.assert();
+
         assert!(
             result.is_ok(),
-            "Should successfully complete download and install"
+            "Should successfully complete download and install: {:?}",
+            result.err()
         );
 
         let binary_path = result.unwrap();
@@ -1031,14 +1113,26 @@ mod tests {
 
     #[test]
     fn test_download_and_install_creates_version_directory() {
-        // This test will verify version directory creation
-        // Currently fails with unimplemented!()
+        // This test verifies version directory creation
+        let mut server = Server::new();
+
+        // Create a real tar.xz archive with a binary for testing
+        let archive_temp = create_fake_tar_xz_with_binary(binary_name(), true);
+        let archive_path = archive_temp.path().join("archive.tar.xz");
+        let archive_bytes = fs::read(&archive_path).unwrap();
+        let archive_size = archive_bytes.len() as u64;
+
+        // Set up mock response
+        let mock = server
+            .mock("GET", "/typst.tar.xz")
+            .with_status(200)
+            .with_header("content-type", "application/x-xz")
+            .with_body(&archive_bytes)
+            .create();
+
         let cache_dir = typstlab_testkit::temp_dir_in_workspace();
-        let asset = mock_asset(
-            "typst-x86_64-apple-darwin.tar.xz",
-            "https://example.com/typst.tar.xz",
-            1000,
-        );
+        let mock_url = format!("{}/typst.tar.xz", server.url());
+        let asset = mock_asset("typst-x86_64-apple-darwin.tar.xz", &mock_url, archive_size);
 
         let options = DownloadOptions {
             cache_dir: cache_dir.path().to_path_buf(),
@@ -1047,13 +1141,20 @@ mod tests {
         };
 
         let result = download_and_install(&asset, options);
-        assert!(result.is_ok(), "Should successfully install");
+        mock.assert();
+
+        assert!(
+            result.is_ok(),
+            "Should successfully install: {:?}",
+            result.err()
+        );
 
         let binary_path = result.unwrap();
         let version_dir = binary_path.parent().unwrap();
         assert!(
             version_dir.ends_with("0.18.0"),
-            "Binary should be in version-specific directory"
+            "Binary should be in version-specific directory: {}",
+            version_dir.display()
         );
     }
 
@@ -1088,32 +1189,75 @@ mod tests {
 
     #[test]
     fn test_download_and_install_with_progress_callback() {
-        // This test will verify progress callback during download
-        // Currently fails with unimplemented!()
-        // Note: Full implementation will use Arc<Mutex<Vec>> for tracking
-        let cache_dir = typstlab_testkit::temp_dir_in_workspace();
-        let asset = mock_asset(
-            "typst-x86_64-apple-darwin.tar.xz",
-            "https://example.com/typst.tar.xz",
-            1000,
-        );
+        // This test verifies progress callback during download
+        use std::sync::{Mutex, OnceLock};
 
-        // TODO: In green phase, use Arc<Mutex<Vec>> to track calls
-        fn progress_callback(_downloaded: u64, _total: u64) {
-            // Placeholder for TDD red phase
+        // Static storage for tracking progress calls (required for fn pointer)
+        static INSTALL_PROGRESS_CALLS: OnceLock<Mutex<Vec<(u64, u64)>>> = OnceLock::new();
+
+        fn track_install_progress(downloaded: u64, total: u64) {
+            INSTALL_PROGRESS_CALLS
+                .get_or_init(|| Mutex::new(Vec::new()))
+                .lock()
+                .unwrap()
+                .push((downloaded, total));
         }
+
+        let mut server = Server::new();
+
+        // Create a real tar.xz archive with a binary for testing
+        let archive_temp = create_fake_tar_xz_with_binary(binary_name(), true);
+        let archive_path = archive_temp.path().join("archive.tar.xz");
+        let archive_bytes = fs::read(&archive_path).unwrap();
+        let archive_size = archive_bytes.len() as u64;
+
+        // Set up mock response
+        let mock = server
+            .mock("GET", "/typst.tar.xz")
+            .with_status(200)
+            .with_header("content-type", "application/x-xz")
+            .with_body(&archive_bytes)
+            .create();
+
+        let cache_dir = typstlab_testkit::temp_dir_in_workspace();
+        let mock_url = format!("{}/typst.tar.xz", server.url());
+        let asset = mock_asset("typst-x86_64-apple-darwin.tar.xz", &mock_url, archive_size);
 
         let options = DownloadOptions {
             cache_dir: cache_dir.path().to_path_buf(),
             version: "0.18.0".to_string(),
-            progress: Some(progress_callback),
+            progress: Some(track_install_progress),
         };
 
         let result = download_and_install(&asset, options);
-        // In green phase: verify progress_callback was invoked
+        mock.assert();
+
         assert!(
             result.is_ok(),
-            "Should successfully download with progress tracking"
+            "Should successfully download with progress tracking: {:?}",
+            result.err()
+        );
+
+        // Verify progress callback was invoked
+        let calls = INSTALL_PROGRESS_CALLS
+            .get()
+            .expect("Progress callback should have initialized storage")
+            .lock()
+            .unwrap();
+        assert!(
+            !calls.is_empty(),
+            "Progress callback should be invoked at least once"
+        );
+
+        // Verify final call has correct total
+        let (final_downloaded, final_total) = calls.last().unwrap();
+        assert_eq!(
+            *final_downloaded, archive_size,
+            "Final downloaded should equal archive size"
+        );
+        assert_eq!(
+            *final_total, archive_size,
+            "Final total should equal archive size"
         );
     }
 
