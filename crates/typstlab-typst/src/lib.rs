@@ -99,6 +99,7 @@
 
 // Core modules
 pub mod exec;
+pub mod github;
 pub mod info;
 pub mod install;
 pub mod resolve;
