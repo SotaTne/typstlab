@@ -386,10 +386,7 @@ fn test_docs_clear_updates_state_json() {
         .and_then(|p| p.as_bool())
         .expect("present should be a boolean");
 
-    assert!(
-        !present,
-        "docs.typst.present should be false after clear"
-    );
+    assert!(!present, "docs.typst.present should be false after clear");
 }
 
 #[test]

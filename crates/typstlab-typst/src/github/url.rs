@@ -35,9 +35,7 @@ pub fn add_path_segments(url: &mut Url, segments: &[&str]) -> Result<(), UrlErro
     // Clone URL before mutable borrow to avoid borrow checker error
     let url_for_error = url.clone();
     url.path_segments_mut()
-        .map_err(|_| UrlError::CannotBeABase {
-            url: url_for_error,
-        })?
+        .map_err(|_| UrlError::CannotBeABase { url: url_for_error })?
         .clear()
         .extend(segments);
     Ok(())

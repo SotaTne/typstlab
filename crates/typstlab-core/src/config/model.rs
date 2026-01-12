@@ -146,8 +146,7 @@ impl Config {
         let content = toml::to_string_pretty(self)
             .map_err(|e| crate::error::TypstlabError::ConfigParseError(e.to_string()))?;
 
-        std::fs::write(path.as_ref(), content)
-            .map_err(crate::error::TypstlabError::IoError)?;
+        std::fs::write(path.as_ref(), content).map_err(crate::error::TypstlabError::IoError)?;
 
         Ok(())
     }

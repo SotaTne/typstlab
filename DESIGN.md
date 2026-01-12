@@ -1310,6 +1310,8 @@ typstlab typst docs sync
 
 1. 要求バージョンを取得
 2. Typst 公式リポジトリの docs を取得（`source: "official"` は typst/typst の docs/ を指す）
+   - 取得方法（推奨）：GitHub タグのソースアーカイブ（`refs/tags/vX.Y.Z.tar.gz`）をダウンロードし、`docs/` だけを抽出
+   - 例: `https://github.com/typst/typst/archive/refs/tags/v0.12.0.tar.gz`
 3. `.typstlab/kb/typst/docs/` に保存
 4. state.json を更新
 
@@ -1318,6 +1320,7 @@ typstlab typst docs sync
 - docs は optional（存在しない場合は `status`/`doctor` で warning とし、actions に `sync_docs` を提示）
 - `source: "official"` の定義：typst/typst リポジトリの docs（Markdown 形式）
 - エージェントが Typst の型情報・関数情報を取得できることが目的
+  - GitHub API の多用は避け、アーカイブ取得を基本とする（負荷と実装コストの最小化）
 
 **Safety classification (v0.1)**：
 
