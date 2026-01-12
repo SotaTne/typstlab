@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// typstlab.toml schema - プロジェクト全体の規約
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,7 +147,7 @@ impl Config {
             .map_err(|e| crate::error::TypstlabError::ConfigParseError(e.to_string()))?;
 
         std::fs::write(path.as_ref(), content)
-            .map_err(|e| crate::error::TypstlabError::IoError(e))?;
+            .map_err(crate::error::TypstlabError::IoError)?;
 
         Ok(())
     }
@@ -208,7 +207,7 @@ ignore = ["*.bak"]
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.project.name, "my-research");
         assert_eq!(config.network.policy, NetworkPolicy::Never);
-        assert_eq!(config.build.parallel, false);
+        assert!(!config.build.parallel);
         assert_eq!(config.watch.debounce_ms, 1000);
     }
 }

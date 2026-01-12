@@ -1,4 +1,27 @@
+mod cli;
+mod commands;
+mod context;
 mod output;
+
+use clap::Parser;
+use cli::{Cli, Commands, DocsCommands, TypstCommands};
+
 fn main() {
-    println!("Hello, world!");
+    let cli = Cli::parse();
+
+    let result = match cli.command {
+        Commands::Doctor { json } => commands::doctor::run(json, cli.verbose),
+        Commands::Typst(typst_cmd) => match typst_cmd {
+            TypstCommands::Docs(docs_cmd) => match docs_cmd {
+                DocsCommands::Sync => commands::typst::docs::sync(cli.verbose),
+                DocsCommands::Clear => commands::typst::docs::clear(cli.verbose),
+                DocsCommands::Status { json } => commands::typst::docs::status(json, cli.verbose),
+            },
+        },
+    };
+
+    if let Err(e) = result {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    }
 }
