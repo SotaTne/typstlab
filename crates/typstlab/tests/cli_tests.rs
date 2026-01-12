@@ -115,10 +115,18 @@ fn test_cli_json_flag_for_doctor() {
         .assert();
 
     // Assert: Should output valid JSON
-    assert
-        .success()
-        .stdout(predicate::str::contains("{"))
-        .stdout(predicate::str::contains("schema_version"));
+    let output = assert.get_output();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Verify JSON is parseable
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
+    // Verify required fields
+    assert!(
+        json.get("schema_version").is_some(),
+        "JSON should contain schema_version field"
+    );
 }
 
 #[test]

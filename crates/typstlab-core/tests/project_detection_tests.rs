@@ -169,10 +169,10 @@ fn test_find_root_with_symlink() {
         );
     }
 
-    // On Windows, this test is a no-op
+    // On Windows, this test is skipped
     #[cfg(windows)]
     {
-        // Symlink support on Windows requires admin privileges
-        // Skip this test on Windows
+        println!("SKIPPED: Symlink test requires admin privileges on Windows");
+        println!("Cross-platform path handling is already tested in other tests");
     }
 }
