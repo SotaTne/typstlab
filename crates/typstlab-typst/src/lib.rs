@@ -98,6 +98,7 @@
 //! - **Windows**: `%LOCALAPPDATA%\typstlab\typst\{version}\typst.exe`
 
 // Core modules
+pub mod docs;
 pub mod exec;
 pub mod github;
 pub mod info;
