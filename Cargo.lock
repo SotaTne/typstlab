@@ -2081,7 +2081,9 @@ dependencies = [
  "typstlab-core",
  "typstlab-testkit",
  "url",
+ "walkdir",
  "which",
+ "xz2",
  "zip",
 ]
 

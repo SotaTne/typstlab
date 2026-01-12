@@ -20,7 +20,9 @@ reqwest = { version = "0.12", default-features = false, features = ["blocking", 
 # Archive extraction
 tar = "0.4"
 flate2 = "1.0"
+xz2 = "0.1"
 zip = "2.2"
+walkdir = "2.5"
 
 # SHA256 verification
 sha2 = "0.10"
@@ -31,7 +33,5 @@ tempfile = "3.24.0"
 [dev-dependencies]
 # HTTP mocking for TDD
 mockito = "1.5"
-# XZ compression for test archives
-xz2 = "0.1"
 # Test utilities
 typstlab-testkit = { path = "../typstlab-testkit" }

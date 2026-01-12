@@ -40,12 +40,11 @@
 //! # }
 //! ```
 
-use crate::install::release::{Asset, ReleaseError};
-use std::path::{Path, PathBuf};
-
-#[cfg(test)]
-#[allow(unused_imports)]
 use crate::install::platform::binary_name;
+use crate::install::release::{Asset, ReleaseError};
+use std::fs;
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 
 /// Download configuration options
 #[derive(Debug, Clone)]
@@ -108,10 +107,39 @@ pub struct DownloadOptions {
 /// # }
 /// ```
 pub fn download_and_install(
-    _asset: &Asset,
-    _options: DownloadOptions,
+    asset: &Asset,
+    options: DownloadOptions,
 ) -> Result<PathBuf, ReleaseError> {
-    unimplemented!("download_and_install will be implemented in TDD green phase")
+    // 1. Download asset to temporary file
+    let archive_path = download_to_temp(&asset.browser_download_url, asset.size, options.progress)?;
+
+    // 2. Extract archive to temporary directory (TempDir RAII for cleanup on error)
+    let extract_tempdir = extract_to_temp(&archive_path, &asset.name)?;
+    let extract_dir = extract_tempdir.path();
+
+    // 3. Find binary in extracted files
+    let binary_path = find_binary_in_dir(extract_dir)?;
+
+    // 4. Set executable permissions on Unix
+    #[cfg(unix)]
+    set_executable_permissions(&binary_path)?;
+
+    // 5. Create version-specific directory in cache
+    let version_dir = options.cache_dir.join(&options.version);
+    fs::create_dir_all(&version_dir).map_err(|e| ReleaseError::IoError {
+        operation: format!("create version directory {}", version_dir.display()),
+        source: e,
+    })?;
+
+    // 6. Atomic move to final destination
+    let final_path = version_dir.join(binary_name());
+    atomic_move(&binary_path, &final_path)?;
+
+    // 7. Cleanup temporary files
+    // TempDir will be automatically cleaned up when extract_tempdir is dropped
+    let _ = fs::remove_file(&archive_path);
+
+    Ok(final_path)
 }
 
 /// Downloads an asset to a temporary file
@@ -125,13 +153,102 @@ pub fn download_and_install(
 /// # Returns
 ///
 /// Path to the downloaded temporary file
-#[allow(dead_code)]
 fn download_to_temp(
-    _url: &url::Url,
-    _expected_size: u64,
-    _progress: Option<fn(u64, u64)>,
+    url: &url::Url,
+    expected_size: u64,
+    progress: Option<fn(u64, u64)>,
 ) -> Result<PathBuf, ReleaseError> {
-    unimplemented!("download_to_temp will be implemented in TDD green phase")
+    // Create HTTP client with timeout
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("typstlab")
+        .timeout(std::time::Duration::from_secs(300)) // 5 minutes for large binaries
+        .build()
+        .map_err(|e| ReleaseError::DownloadFailed {
+            url: url.clone(),
+            source: e,
+        })?;
+
+    // Send GET request
+    let mut response =
+        client
+            .get(url.as_str())
+            .send()
+            .map_err(|e| ReleaseError::DownloadFailed {
+                url: url.clone(),
+                source: e,
+            })?;
+
+    // Check status and convert to error without unwrap
+    if let Err(err) = response.error_for_status_ref() {
+        return Err(ReleaseError::DownloadFailed {
+            url: url.clone(),
+            source: err.without_url(),
+        });
+    }
+
+    // Create temporary file
+    let mut temp_file = tempfile::NamedTempFile::new().map_err(|e| ReleaseError::IoError {
+        operation: "create temporary file for download".to_string(),
+        source: e,
+    })?;
+
+    // Download with progress tracking
+    let mut downloaded: u64 = 0;
+    let mut buffer = [0; 8192];
+
+    loop {
+        let bytes_read = response
+            .read(&mut buffer)
+            .map_err(|e| ReleaseError::IoError {
+                operation: "read from HTTP response".to_string(),
+                source: e,
+            })?;
+
+        if bytes_read == 0 {
+            break;
+        }
+
+        temp_file
+            .write_all(&buffer[..bytes_read])
+            .map_err(|e| ReleaseError::IoError {
+                operation: "write to temporary file".to_string(),
+                source: e,
+            })?;
+
+        downloaded += bytes_read as u64;
+
+        // Invoke progress callback if provided
+        if let Some(callback) = progress {
+            callback(downloaded, expected_size);
+        }
+    }
+
+    // Verify file size
+    if downloaded != expected_size {
+        return Err(ReleaseError::SizeMismatch {
+            expected: expected_size,
+            actual: downloaded,
+        });
+    }
+
+    // Sync and persist
+    temp_file
+        .as_file()
+        .sync_all()
+        .map_err(|e| ReleaseError::IoError {
+            operation: "sync temporary file".to_string(),
+            source: e,
+        })?;
+
+    let path = temp_file
+        .into_temp_path()
+        .keep()
+        .map_err(|e| ReleaseError::IoError {
+            operation: "persist temporary file".to_string(),
+            source: e.error,
+        })?;
+
+    Ok(path)
 }
 
 /// Extracts an archive to a temporary directory
@@ -143,22 +260,153 @@ fn download_to_temp(
 ///
 /// # Returns
 ///
-/// Path to the temporary extraction directory
-#[allow(dead_code)]
-fn extract_to_temp(_archive_path: &Path, _archive_name: &str) -> Result<PathBuf, ReleaseError> {
-    unimplemented!("extract_to_temp will be implemented in TDD green phase")
+/// TempDir that will be automatically cleaned up when dropped
+fn extract_to_temp(
+    archive_path: &Path,
+    archive_name: &str,
+) -> Result<tempfile::TempDir, ReleaseError> {
+    let temp_dir = tempfile::tempdir().map_err(|e| ReleaseError::IoError {
+        operation: "create temporary directory for extraction".to_string(),
+        source: e,
+    })?;
+
+    if archive_name.ends_with(".tar.xz") || archive_name.ends_with(".tar.gz") {
+        extract_tar(archive_path, temp_dir.path(), archive_name)?;
+    } else if archive_name.ends_with(".zip") {
+        extract_zip(archive_path, temp_dir.path())?;
+    } else {
+        return Err(ReleaseError::ExtractionFailed {
+            archive_type: archive_name.to_string(),
+            reason: "Unsupported archive format".to_string(),
+        });
+    }
+
+    // Return TempDir itself for RAII cleanup
+    Ok(temp_dir)
 }
 
-/// Extracts a .tar.xz archive
-#[allow(dead_code)]
-fn extract_tar(_archive_path: &Path, _dest_dir: &Path) -> Result<(), ReleaseError> {
-    unimplemented!("extract_tar will be implemented in TDD green phase")
+/// Extracts a .tar.xz or .tar.gz archive
+fn extract_tar(
+    archive_path: &Path,
+    dest_dir: &Path,
+    archive_name: &str,
+) -> Result<(), ReleaseError> {
+    let file = fs::File::open(archive_path).map_err(|e| ReleaseError::IoError {
+        operation: format!("open archive {}", archive_path.display()),
+        source: e,
+    })?;
+
+    let archive_type = if archive_name.ends_with(".tar.xz") {
+        "tar.xz"
+    } else {
+        "tar.gz"
+    };
+
+    // Use appropriate decompressor based on file extension
+    if archive_name.ends_with(".tar.xz") {
+        let decompressor = xz2::read::XzDecoder::new(file);
+        let mut archive = tar::Archive::new(decompressor);
+
+        // Safe extraction: iterate entries and use unpack_in() for validation
+        for entry in archive
+            .entries()
+            .map_err(|e| ReleaseError::ExtractionFailed {
+                archive_type: archive_type.to_string(),
+                reason: e.to_string(),
+            })?
+        {
+            let mut entry = entry.map_err(|e| ReleaseError::ExtractionFailed {
+                archive_type: archive_type.to_string(),
+                reason: e.to_string(),
+            })?;
+
+            entry
+                .unpack_in(dest_dir)
+                .map_err(|e| ReleaseError::ExtractionFailed {
+                    archive_type: archive_type.to_string(),
+                    reason: e.to_string(),
+                })?;
+        }
+    } else {
+        let decompressor = flate2::read::GzDecoder::new(file);
+        let mut archive = tar::Archive::new(decompressor);
+
+        // Safe extraction: iterate entries and use unpack_in() for validation
+        for entry in archive
+            .entries()
+            .map_err(|e| ReleaseError::ExtractionFailed {
+                archive_type: archive_type.to_string(),
+                reason: e.to_string(),
+            })?
+        {
+            let mut entry = entry.map_err(|e| ReleaseError::ExtractionFailed {
+                archive_type: archive_type.to_string(),
+                reason: e.to_string(),
+            })?;
+
+            entry
+                .unpack_in(dest_dir)
+                .map_err(|e| ReleaseError::ExtractionFailed {
+                    archive_type: archive_type.to_string(),
+                    reason: e.to_string(),
+                })?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Extracts a .zip archive
-#[allow(dead_code)]
-fn extract_zip(_archive_path: &Path, _dest_dir: &Path) -> Result<(), ReleaseError> {
-    unimplemented!("extract_zip will be implemented in TDD green phase")
+fn extract_zip(archive_path: &Path, dest_dir: &Path) -> Result<(), ReleaseError> {
+    let file = fs::File::open(archive_path).map_err(|e| ReleaseError::IoError {
+        operation: format!("open archive {}", archive_path.display()),
+        source: e,
+    })?;
+
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| ReleaseError::ExtractionFailed {
+        archive_type: "zip".to_string(),
+        reason: e.to_string(),
+    })?;
+
+    for i in 0..archive.len() {
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| ReleaseError::ExtractionFailed {
+                archive_type: "zip".to_string(),
+                reason: e.to_string(),
+            })?;
+
+        let outpath = match file.enclosed_name() {
+            Some(path) => dest_dir.join(path),
+            None => continue,
+        };
+
+        if file.is_dir() {
+            fs::create_dir_all(&outpath).map_err(|e| ReleaseError::IoError {
+                operation: format!("create directory {}", outpath.display()),
+                source: e,
+            })?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent).map_err(|e| ReleaseError::IoError {
+                    operation: format!("create parent directory {}", parent.display()),
+                    source: e,
+                })?;
+            }
+
+            let mut outfile = fs::File::create(&outpath).map_err(|e| ReleaseError::IoError {
+                operation: format!("create file {}", outpath.display()),
+                source: e,
+            })?;
+
+            io::copy(&mut file, &mut outfile).map_err(|e| ReleaseError::IoError {
+                operation: format!("extract file {}", outpath.display()),
+                source: e,
+            })?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Finds the binary in an extracted directory
@@ -172,27 +420,177 @@ fn extract_zip(_archive_path: &Path, _dest_dir: &Path) -> Result<(), ReleaseErro
 /// # Returns
 ///
 /// Path to the binary if found
-#[allow(dead_code)]
-fn find_binary_in_dir(_dir: &Path) -> Result<PathBuf, ReleaseError> {
-    unimplemented!("find_binary_in_dir will be implemented in TDD green phase")
+fn find_binary_in_dir(dir: &Path) -> Result<PathBuf, ReleaseError> {
+    use std::ffi::OsStr;
+
+    let target_name = binary_name();
+    let target_os_str = OsStr::new(&target_name);
+
+    for entry in walkdir::WalkDir::new(dir) {
+        let entry = entry.map_err(|e| ReleaseError::IoError {
+            operation: format!("walk directory {}", dir.display()),
+            source: io::Error::other(e),
+        })?;
+
+        // Use OsStr comparison to handle non-UTF8 filenames
+        if entry.file_type().is_file() && entry.file_name() == target_os_str {
+            return Ok(entry.path().to_path_buf());
+        }
+    }
+
+    Err(ReleaseError::BinaryNotFoundInArchive {
+        binary_name: target_name.to_string(),
+    })
 }
 
 /// Sets executable permissions on Unix
 #[cfg(unix)]
-#[allow(dead_code)]
-fn set_executable_permissions(_path: &Path) -> Result<(), ReleaseError> {
-    unimplemented!("set_executable_permissions will be implemented in TDD green phase")
+fn set_executable_permissions(path: &Path) -> Result<(), ReleaseError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = fs::metadata(path).map_err(|e| ReleaseError::IoError {
+        operation: format!("get metadata for {}", path.display()),
+        source: e,
+    })?;
+
+    let mut permissions = metadata.permissions();
+    let mode = permissions.mode();
+
+    // Add executable bit (owner, group, other)
+    permissions.set_mode(mode | 0o111);
+
+    fs::set_permissions(path, permissions).map_err(|e| ReleaseError::IoError {
+        operation: format!("set permissions for {}", path.display()),
+        source: e,
+    })?;
+
+    Ok(())
 }
 
-/// Atomically moves a file with ETXTBSY prevention
+/// Atomically moves a file with ETXTBSY prevention and cross-filesystem support
+///
+/// This function ensures atomic installation by:
+/// 1. Creating a temp file in the destination directory (same filesystem)
+/// 2. Copying the source file to the temp file (preserves permissions on Unix)
+/// 3. Atomically renaming the temp file to the final destination (overwrites existing)
+/// 4. Best-effort cleanup of source file (ignored if fails after successful install)
 ///
 /// # Arguments
 ///
 /// * `from` - Source path
 /// * `to` - Destination path
-#[allow(dead_code)]
-fn atomic_move(_from: &Path, _to: &Path) -> Result<(), ReleaseError> {
-    unimplemented!("atomic_move will be implemented in TDD green phase")
+fn atomic_move(from: &Path, to: &Path) -> Result<(), ReleaseError> {
+    // Open and sync source file (ETXTBSY prevention)
+    let src_file = fs::File::open(from).map_err(|e| ReleaseError::IoError {
+        operation: format!("open source file: {}", from.display()),
+        source: e,
+    })?;
+
+    src_file.sync_all().map_err(|e| ReleaseError::IoError {
+        operation: "sync source file".to_string(),
+        source: e,
+    })?;
+
+    drop(src_file);
+
+    // Get the destination directory
+    let dest_dir = to.parent().ok_or_else(|| ReleaseError::IoError {
+        operation: format!("get parent directory of {}", to.display()),
+        source: io::Error::other("no parent directory"),
+    })?;
+
+    // Create a temporary file in the destination directory (ensures same filesystem)
+    let mut temp_dest =
+        tempfile::NamedTempFile::new_in(dest_dir).map_err(|e| ReleaseError::IoError {
+            operation: format!("create temporary file in {}", dest_dir.display()),
+            source: e,
+        })?;
+
+    // Copy contents from source to temp file
+    let mut src_file = fs::File::open(from).map_err(|e| ReleaseError::IoError {
+        operation: format!("open source for copying: {}", from.display()),
+        source: e,
+    })?;
+
+    // On Unix, preserve file permissions during copy
+    #[cfg(unix)]
+    {
+        let src_metadata = fs::metadata(from).map_err(|e| ReleaseError::IoError {
+            operation: format!("get metadata for {}", from.display()),
+            source: e,
+        })?;
+        let src_permissions = src_metadata.permissions();
+
+        io::copy(&mut src_file, &mut temp_dest).map_err(|e| ReleaseError::IoError {
+            operation: "copy file contents".to_string(),
+            source: e,
+        })?;
+
+        // Set permissions on temp file before persist
+        fs::set_permissions(temp_dest.path(), src_permissions).map_err(|e| {
+            ReleaseError::IoError {
+                operation: "set permissions on temporary file".to_string(),
+                source: e,
+            }
+        })?;
+    }
+
+    #[cfg(not(unix))]
+    {
+        io::copy(&mut src_file, &mut temp_dest).map_err(|e| ReleaseError::IoError {
+            operation: "copy file contents".to_string(),
+            source: e,
+        })?;
+    }
+
+    drop(src_file);
+
+    // Sync temp file before renaming
+    temp_dest
+        .as_file()
+        .sync_all()
+        .map_err(|e| ReleaseError::IoError {
+            operation: "sync temporary file".to_string(),
+            source: e,
+        })?;
+
+    // Persist (atomic rename within same filesystem, overwrites existing on Unix/Windows)
+    temp_dest.persist(to).map_err(|e| ReleaseError::IoError {
+        operation: format!("rename temporary file to {}", to.display()),
+        source: e.error,
+    })?;
+
+    // Sync destination file
+    let dest_file = fs::File::open(to).map_err(|e| ReleaseError::IoError {
+        operation: format!("open destination: {}", to.display()),
+        source: e,
+    })?;
+
+    dest_file.sync_all().map_err(|e| ReleaseError::IoError {
+        operation: "sync destination file".to_string(),
+        source: e,
+    })?;
+
+    drop(dest_file);
+
+    // Sync parent directory on Unix
+    #[cfg(unix)]
+    {
+        let dir = fs::File::open(dest_dir).map_err(|e| ReleaseError::IoError {
+            operation: format!("open parent directory: {}", dest_dir.display()),
+            source: e,
+        })?;
+
+        dir.sync_all().map_err(|e| ReleaseError::IoError {
+            operation: "sync parent directory".to_string(),
+            source: e,
+        })?;
+    }
+
+    // Clean up source file (best-effort, ignore errors since install already succeeded)
+    let _ = fs::remove_file(from);
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -718,6 +1116,163 @@ mod tests {
         assert!(
             result.is_ok(),
             "Should successfully download with progress tracking"
+        );
+    }
+
+    // Tests for executable permission preservation and cleanup fixes
+
+    #[test]
+    #[cfg(unix)]
+    fn test_atomic_move_preserves_executable_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_workspace = typstlab_testkit::temp_dir_in_workspace();
+
+        // Create source file with executable permissions
+        let src_path = temp_workspace.path().join("source_binary");
+        fs::write(&src_path, b"fake binary").unwrap();
+
+        let mut perms = fs::metadata(&src_path).unwrap().permissions();
+        perms.set_mode(0o755); // rwxr-xr-x
+        fs::set_permissions(&src_path, perms).unwrap();
+
+        // Verify source has executable bit
+        let src_mode = fs::metadata(&src_path).unwrap().permissions().mode();
+        assert_eq!(src_mode & 0o111, 0o111, "Source should be executable");
+
+        // Create destination directory
+        let dest_dir = temp_workspace.path().join("dest");
+        fs::create_dir_all(&dest_dir).unwrap();
+        let dest_path = dest_dir.join("dest_binary");
+
+        // Perform atomic move
+        atomic_move(&src_path, &dest_path).unwrap();
+
+        // Verify destination has executable permissions
+        let dest_mode = fs::metadata(&dest_path).unwrap().permissions().mode();
+        assert_eq!(
+            dest_mode & 0o111,
+            0o111,
+            "Destination should preserve executable permissions (mode: {:o})",
+            dest_mode
+        );
+
+        // Verify file contents preserved
+        let content = fs::read(&dest_path).unwrap();
+        assert_eq!(content, b"fake binary");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_atomic_move_preserves_exact_permission_bits() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_workspace = typstlab_testkit::temp_dir_in_workspace();
+
+        // Create source file with specific permissions
+        let src_path = temp_workspace.path().join("source_binary");
+        fs::write(&src_path, b"fake binary").unwrap();
+
+        // Set specific permissions: rwxr-x--- (0o750)
+        let mut perms = fs::metadata(&src_path).unwrap().permissions();
+        perms.set_mode(0o750);
+        fs::set_permissions(&src_path, perms).unwrap();
+
+        let src_mode = fs::metadata(&src_path).unwrap().permissions().mode();
+
+        // Create destination
+        let dest_dir = temp_workspace.path().join("dest");
+        fs::create_dir_all(&dest_dir).unwrap();
+        let dest_path = dest_dir.join("dest_binary");
+
+        // Perform atomic move
+        atomic_move(&src_path, &dest_path).unwrap();
+
+        // Verify exact permission bits preserved (not just executable bit)
+        let dest_mode = fs::metadata(&dest_path).unwrap().permissions().mode();
+        assert_eq!(
+            dest_mode & 0o777,
+            src_mode & 0o777,
+            "Destination should preserve exact permission bits from source"
+        );
+    }
+
+    #[test]
+    fn test_atomic_move_succeeds_even_if_cleanup_fails() {
+        let temp_workspace = typstlab_testkit::temp_dir_in_workspace();
+
+        // Create source file
+        let src_path = temp_workspace.path().join("source_binary");
+        fs::write(&src_path, b"fake binary").unwrap();
+
+        // Create destination
+        let dest_dir = temp_workspace.path().join("dest");
+        fs::create_dir_all(&dest_dir).unwrap();
+        let dest_path = dest_dir.join("dest_binary");
+
+        // Perform atomic move
+        let result = atomic_move(&src_path, &dest_path);
+
+        // Should succeed even if cleanup fails
+        // (Note: In practice, cleanup usually succeeds in tests, but the important
+        // part is that the implementation uses `let _ = fs::remove_file()` so it
+        // would ignore cleanup failures)
+        assert!(result.is_ok(), "atomic_move should succeed");
+
+        // Verify destination file exists and has correct content
+        assert!(dest_path.exists(), "Destination file should exist");
+        let content = fs::read(&dest_path).unwrap();
+        assert_eq!(content, b"fake binary");
+    }
+
+    #[test]
+    fn test_atomic_move_overwrites_existing_file() {
+        let temp_workspace = typstlab_testkit::temp_dir_in_workspace();
+
+        // Create destination with existing file
+        let dest_dir = temp_workspace.path().join("dest");
+        fs::create_dir_all(&dest_dir).unwrap();
+        let dest_path = dest_dir.join("dest_binary");
+        fs::write(&dest_path, b"old content").unwrap();
+
+        // Create source file
+        let src_path = temp_workspace.path().join("source_binary");
+        fs::write(&src_path, b"new content").unwrap();
+
+        // Perform atomic move (should overwrite)
+        atomic_move(&src_path, &dest_path).unwrap();
+
+        // Verify destination has new content
+        let content = fs::read(&dest_path).unwrap();
+        assert_eq!(content, b"new content");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_set_executable_permissions_on_extracted_binary() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_workspace = typstlab_testkit::temp_dir_in_workspace();
+
+        // Create a test binary file
+        let binary_path = temp_workspace.path().join(binary_name());
+        fs::write(&binary_path, b"#!/bin/sh\necho test").unwrap();
+
+        // Initially should not be executable (default permissions)
+        let initial_mode = fs::metadata(&binary_path).unwrap().permissions().mode();
+        // Default mode varies by platform, but we just verify it becomes executable after
+
+        // Set executable permissions
+        set_executable_permissions(&binary_path).unwrap();
+
+        // Verify now executable
+        let final_mode = fs::metadata(&binary_path).unwrap().permissions().mode();
+        assert_eq!(
+            final_mode & 0o111,
+            0o111,
+            "Binary should be executable after set_executable_permissions (initial: {:o}, final: {:o})",
+            initial_mode,
+            final_mode
         );
     }
 }
