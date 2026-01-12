@@ -158,15 +158,13 @@ fn download_to_temp(
     expected_size: u64,
     progress: Option<fn(u64, u64)>,
 ) -> Result<PathBuf, ReleaseError> {
-    // Create HTTP client with timeout
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("typstlab")
-        .timeout(std::time::Duration::from_secs(300)) // 5 minutes for large binaries
-        .build()
-        .map_err(|e| ReleaseError::DownloadFailed {
+    // Create HTTP client with timeout (5 minutes for large binaries)
+    let client = crate::github::build_client(std::time::Duration::from_secs(300)).map_err(|e| {
+        ReleaseError::DownloadFailed {
             url: url.clone(),
             source: e,
-        })?;
+        }
+    })?;
 
     // Send GET request
     let mut response =

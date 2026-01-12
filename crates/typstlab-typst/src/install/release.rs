@@ -197,10 +197,7 @@ fn build_release_url(base_url: &str, version: &str) -> Result<Url, ReleaseError>
 
 /// Builds HTTP client with appropriate user agent
 fn build_http_client() -> Result<reqwest::blocking::Client, ReleaseError> {
-    reqwest::blocking::Client::builder()
-        .user_agent("typstlab")
-        .build()
-        .map_err(ReleaseError::from)
+    crate::github::build_default_client().map_err(ReleaseError::from)
 }
 
 /// Parses HTTP response into Release or appropriate error
