@@ -1,5 +1,7 @@
 //! Integration tests for typst docs commands
 
+#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
+
 use assert_cmd::assert::OutputAssertExt;
 use assert_cmd::cargo::CommandCargoExt;
 use std::fs;
@@ -200,10 +202,7 @@ fn test_docs_clear_removes_docs() {
         .assert()
         .success();
 
-    assert!(
-        docs_dir.exists(),
-        "Docs directory should exist after sync"
-    );
+    assert!(docs_dir.exists(), "Docs directory should exist after sync");
 
     // Act: Run docs clear
     let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
@@ -387,8 +386,8 @@ fn test_docs_clear_updates_state_json() {
         .and_then(|p| p.as_bool())
         .expect("present should be a boolean");
 
-    assert_eq!(
-        present, false,
+    assert!(
+        !present,
         "docs.typst.present should be false after clear"
     );
 }
