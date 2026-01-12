@@ -18,3 +18,7 @@ thiserror = "1"
 
 # File system
 walkdir = "2"
+
+[dev-dependencies]
+# Testing
+tempfile = "3"
