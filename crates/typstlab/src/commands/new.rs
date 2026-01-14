@@ -200,7 +200,7 @@ fn output_papers_human(papers: &[Paper], verbose: bool) {
 
             if verbose {
                 println!("    Path: {}", paper.root().display());
-                println!("    Layout: {}", paper.config().layout.name);
+                println!("    Theme: {}", paper.config().layout.theme);
             }
 
             println!();

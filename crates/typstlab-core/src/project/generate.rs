@@ -45,8 +45,8 @@ pub fn generate_paper(project: &Project, paper_id: &str) -> Result<()> {
     let context = TemplateContext::new(data);
 
     // Resolve layout (user layout or builtin)
-    let layout_name = &paper.config().layout.name;
-    let layout = resolve_layout(&project.root, layout_name)?;
+    let layout_theme = &paper.config().layout.theme;
+    let layout = resolve_layout(&project.root, layout_theme)?;
 
     // Create temp directory for atomic generation
     let temp_dir = TempDir::new_in(&project.root)?;
@@ -172,7 +172,7 @@ language = "en"
 date = "2026-01-15"
 
 [layout]
-name = "minimal"
+theme = "minimal"
 
 [output]
 name = "paper2"
@@ -262,7 +262,7 @@ language = "en"
 date = "2026-01-15"
 
 [layout]
-name = "custom"
+theme = "custom"
 
 [output]
 name = "paper3"
@@ -382,7 +382,7 @@ language = "en"
 date = "2026-01-15"
 
 [layout]
-name = "nonexistent"
+theme = "nonexistent"
 
 [output]
 name = "paper_bad"

@@ -279,7 +279,15 @@ affiliation = "Company"
 
 # レイアウト設定
 [layout]
-name = "ieee"  # layouts/ieee/ を使う（省略時は "default"）
+theme = "ieee"  # layouts/ieee/ を使う（省略時は "default"）
+
+# 将来の拡張例（v0.2以降）:
+# variant = "two-column"      # テーマのバリエーション
+# colors = "dark"              # カラースキーム
+# version = "2.0"              # レイアウトバージョン
+# [layout.options]             # テーマ固有のオプション
+# header_height = "2cm"
+# line_spacing = 1.5
 
 # 出力設定
 [output]
@@ -847,19 +855,19 @@ paper.toml から動的生成される。paper のメタ情報を Typst の dict
 1. paper.toml を読む
    ↓
 2. layout 解決
-   - paper.toml の [layout] name を取得
-   - layouts/<name>/ を探す
+   - paper.toml の [layout] theme を取得
+   - layouts/<theme>/ を探す
    - なければ builtin を使う
    ↓
 3. _generated/meta.typ を生成
-   - layouts/<name>/meta.typ をテンプレートとして使用
+   - layouts/<theme>/meta.typ をテンプレートとして使用
    - paper.toml の値で {{ PLACEHOLDERS }} を置換
    ↓
 4. _generated/header.typ をコピー
-   - layouts/<name>/header.typ をそのままコピー
+   - layouts/<theme>/header.typ をそのままコピー
    ↓
 5. _generated/refs.typ を生成
-   - layouts/<name>/refs.typ をテンプレートとして使用
+   - layouts/<theme>/refs.typ をテンプレートとして使用
    - paper.toml の [refs].sets から bibliography 呼び出し列を生成し {{ BIBLIOGRAPHY }} を置換
    ↓
 6. ビルド時に typst compile を実行
@@ -969,7 +977,7 @@ typstlab paper new report
 **Options** (v0.2 予定):
 
 - `--title <title>`: paper のタイトル
-- `--layout <name>`: レイアウト名（省略時は default）
+- `--theme <name>`: テーマ名（省略時は default）
 - `--author <name>`: 著者名
 
 **動作** (v0.1):

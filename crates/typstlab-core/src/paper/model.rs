@@ -33,19 +33,20 @@ pub struct Author {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
-    #[serde(default = "default_layout_name")]
-    pub name: String,
+    /// Theme name (corresponds to directory in layouts/)
+    #[serde(default = "default_layout_theme")]
+    pub theme: String,
 }
 
 impl Default for LayoutConfig {
     fn default() -> Self {
         Self {
-            name: "default".to_string(),
+            theme: "default".to_string(),
         }
     }
 }
 
-fn default_layout_name() -> String {
+fn default_layout_theme() -> String {
     "default".to_string()
 }
 
@@ -235,7 +236,7 @@ name = "report"
         let config: PaperConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.paper.id, "report");
         assert_eq!(config.paper.title, "My Report");
-        assert_eq!(config.layout.name, "default");
+        assert_eq!(config.layout.theme, "default");
         assert_eq!(config.build.targets, vec!["pdf"]);
     }
 
@@ -259,7 +260,7 @@ email = "bob@example.com"
 affiliation = "Company"
 
 [layout]
-name = "ieee"
+theme = "ieee"
 
 [output]
 name = "report"
@@ -273,7 +274,7 @@ sets = ["core", "report-2026q1"]
         let config: PaperConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.paper.id, "report");
         assert_eq!(config.paper.authors.len(), 2);
-        assert_eq!(config.layout.name, "ieee");
+        assert_eq!(config.layout.theme, "ieee");
         assert_eq!(
             config.refs.as_ref().unwrap().sets,
             vec!["core", "report-2026q1"]

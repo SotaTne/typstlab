@@ -6,8 +6,8 @@ use std::path::Path;
 /// Layout structure holding template and static files
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
-    /// Layout name
-    pub name: String,
+    /// Theme name (corresponds to directory in layouts/)
+    pub theme: String,
     /// meta.tmp.typ template content (if exists)
     pub meta_template: Option<String>,
     /// header.typ static content (if exists)
@@ -17,10 +17,10 @@ pub struct Layout {
 }
 
 impl Layout {
-    /// Create a new layout
-    pub fn new(name: impl Into<String>) -> Self {
+    /// Create a new layout with theme name
+    pub fn new(theme: impl Into<String>) -> Self {
         Self {
-            name: name.into(),
+            theme: theme.into(),
             meta_template: None,
             header_static: None,
             refs_template: None,
@@ -124,7 +124,7 @@ mod tests {
             .with_header_static("header content")
             .with_refs_template("refs content");
 
-        assert_eq!(layout.name, "test");
+        assert_eq!(layout.theme, "test");
         assert_eq!(layout.meta_template.as_deref(), Some("meta content"));
         assert_eq!(layout.header_static.as_deref(), Some("header content"));
         assert_eq!(layout.refs_template.as_deref(), Some("refs content"));
@@ -136,7 +136,7 @@ mod tests {
         let root = temp.path();
 
         let layout = resolve_layout(root, "default").unwrap();
-        assert_eq!(layout.name, "default");
+        assert_eq!(layout.theme, "default");
         assert!(layout.meta_template.is_some());
         assert!(layout.header_static.is_some());
         assert!(layout.refs_template.is_some());
@@ -148,7 +148,7 @@ mod tests {
         let root = temp.path();
 
         let layout = resolve_layout(root, "minimal").unwrap();
-        assert_eq!(layout.name, "minimal");
+        assert_eq!(layout.theme, "minimal");
         assert!(layout.meta_template.is_some());
         assert!(layout.refs_template.is_some());
     }
@@ -179,7 +179,7 @@ mod tests {
         .unwrap();
 
         let layout = resolve_layout(root, "default").unwrap();
-        assert_eq!(layout.name, "default");
+        assert_eq!(layout.theme, "default");
         assert_eq!(
             layout.meta_template.as_deref(),
             Some("= Custom Default Layout\n")

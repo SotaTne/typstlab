@@ -84,7 +84,7 @@ date = "{}"
 
 # Uncomment to specify custom layout
 # [layout]
-# name = "default"  # or "minimal", or custom layout name
+# theme = "default"  # or "minimal", or custom layout name
 
 [build]
 targets = ["pdf"]

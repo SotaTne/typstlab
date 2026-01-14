@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn test_get_builtin_default() {
         let layout = get_builtin_layout("default").unwrap();
-        assert_eq!(layout.name, "default");
+        assert_eq!(layout.theme, "default");
         assert!(layout.meta_template.is_some());
         assert!(layout.header_static.is_some());
         assert!(layout.refs_template.is_some());
@@ -42,7 +42,7 @@ mod tests {
     #[test]
     fn test_get_builtin_minimal() {
         let layout = get_builtin_layout("minimal").unwrap();
-        assert_eq!(layout.name, "minimal");
+        assert_eq!(layout.theme, "minimal");
         assert!(layout.meta_template.is_some());
         assert!(layout.refs_template.is_some());
         // Minimal layout doesn't have header
