@@ -473,23 +473,52 @@ fn set_executable_permissions(path: &Path) -> Result<(), ReleaseError> {
 /// 3. Atomically renaming the temp file to the final destination (overwrites existing)
 /// 4. Best-effort cleanup of source file (ignored if fails after successful install)
 ///
+/// # Platform-Specific Behavior
+///
+/// **Unix (ETXTBSY Prevention)**:
+/// - Opens and syncs the source file before moving to prevent ETXTBSY errors
+/// - ETXTBSY occurs when trying to overwrite a running executable
+/// - This pre-sync ensures the file can be safely replaced
+///
+/// **Windows**:
+/// - Skips source file sync (ETXTBSY doesn't exist on Windows)
+/// - Running executables are locked and cannot be overwritten regardless
+/// - Source file sync on Windows causes "Access denied" errors
+///
+/// # Durability Guarantees
+///
+/// Data durability is ensured by syncing the temporary file before persist().
+/// The pre-persist sync flushes all data to disk, and the persist() operation
+/// is an atomic rename (metadata-only, no data writes).
+///
+/// We do NOT re-open and sync the destination file after persist() because:
+/// - The pre-persist sync has already flushed data to disk
+/// - The persist() operation is an atomic rename (metadata-only)
+/// - Re-opening immediately can fail on Windows due to exclusive locks
+///
+/// This follows the pattern used by rustup and cargo for atomic binary installation.
+///
 /// # Arguments
 ///
 /// * `from` - Source path
 /// * `to` - Destination path
 fn atomic_move(from: &Path, to: &Path) -> Result<(), ReleaseError> {
-    // Open and sync source file (ETXTBSY prevention)
-    let src_file = fs::File::open(from).map_err(|e| ReleaseError::IoError {
-        operation: format!("open source file: {}", from.display()),
-        source: e,
-    })?;
+    // Open and sync source file (ETXTBSY prevention - Unix only)
+    // On Windows, this is unnecessary and causes "Access denied" errors
+    #[cfg(unix)]
+    {
+        let src_file = fs::File::open(from).map_err(|e| ReleaseError::IoError {
+            operation: format!("open source file: {}", from.display()),
+            source: e,
+        })?;
 
-    src_file.sync_all().map_err(|e| ReleaseError::IoError {
-        operation: "sync source file".to_string(),
-        source: e,
-    })?;
+        src_file.sync_all().map_err(|e| ReleaseError::IoError {
+            operation: "sync source file".to_string(),
+            source: e,
+        })?;
 
-    drop(src_file);
+        drop(src_file);
+    }
 
     // Get the destination directory
     let dest_dir = to.parent().ok_or_else(|| ReleaseError::IoError {
@@ -557,19 +586,6 @@ fn atomic_move(from: &Path, to: &Path) -> Result<(), ReleaseError> {
         operation: format!("rename temporary file to {}", to.display()),
         source: e.error,
     })?;
-
-    // Sync destination file
-    let dest_file = fs::File::open(to).map_err(|e| ReleaseError::IoError {
-        operation: format!("open destination: {}", to.display()),
-        source: e,
-    })?;
-
-    dest_file.sync_all().map_err(|e| ReleaseError::IoError {
-        operation: "sync destination file".to_string(),
-        source: e,
-    })?;
-
-    drop(dest_file);
 
     // Sync parent directory on Unix
     #[cfg(unix)]
