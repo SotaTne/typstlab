@@ -332,3 +332,198 @@ fn test_sync_output_format() {
         "Output should contain progress messages"
     );
 }
+
+#[test]
+fn test_sync_apply_mode_basic() {
+    let temp = temp_dir_in_workspace();
+    let root = temp.path();
+
+    // Create project
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(root)
+        .arg("new")
+        .arg("test-project")
+        .assert()
+        .success();
+
+    let project_dir = root.join("test-project");
+
+    // Create paper
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(&project_dir)
+        .arg("paper")
+        .arg("new")
+        .arg("paper1")
+        .assert()
+        .success();
+
+    // Run sync --apply
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(&project_dir)
+        .arg("sync")
+        .arg("--apply")
+        .assert()
+        .success();
+
+    // Verify state.json updated
+    let state_path = project_dir.join(".typstlab/state.json");
+    assert!(state_path.exists(), "state.json should exist");
+
+    let state_content = fs::read_to_string(&state_path).unwrap();
+    let state: serde_json::Value = serde_json::from_str(&state_content).unwrap();
+
+    assert!(
+        state["sync"]["last_sync"].is_string(),
+        "sync.last_sync should be updated by --apply mode"
+    );
+
+    // Verify _generated/ exists
+    let generated_dir = project_dir.join("papers/paper1/_generated");
+    assert!(
+        generated_dir.exists(),
+        "_generated/ should be created by sync --apply"
+    );
+}
+
+#[test]
+fn test_sync_apply_with_resolved_typst() {
+    let temp = temp_dir_in_workspace();
+    let root = temp.path();
+
+    // Create project
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(root)
+        .arg("new")
+        .arg("test-project")
+        .assert()
+        .success();
+
+    let project_dir = root.join("test-project");
+
+    // Run sync first to resolve Typst
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(&project_dir)
+        .arg("sync")
+        .assert()
+        .success();
+
+    // Run sync --apply (Typst already resolved)
+    let output = Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(&project_dir)
+        .arg("sync")
+        .arg("--apply")
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    // Should not see "Installing Typst" because already resolved
+    // But should see sync complete
+    assert!(
+        stdout.contains("Sync") || stdout.contains("complete"),
+        "Should complete successfully even when Typst already resolved"
+    );
+}
+
+#[test]
+fn test_sync_apply_idempotency() {
+    let temp = temp_dir_in_workspace();
+    let root = temp.path();
+
+    // Create project
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(root)
+        .arg("new")
+        .arg("test-project")
+        .assert()
+        .success();
+
+    let project_dir = root.join("test-project");
+
+    // Run sync --apply first time
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(&project_dir)
+        .arg("sync")
+        .arg("--apply")
+        .assert()
+        .success();
+
+    // Run sync --apply second time
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(&project_dir)
+        .arg("sync")
+        .arg("--apply")
+        .assert()
+        .success();
+
+    // Should succeed both times (idempotent - verified by .success() above)
+}
+
+#[test]
+fn test_sync_apply_exit_code() {
+    let temp = temp_dir_in_workspace();
+    let root = temp.path();
+
+    // Create valid project
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(root)
+        .arg("new")
+        .arg("test-project")
+        .assert()
+        .success();
+
+    let project_dir = root.join("test-project");
+
+    // Sync --apply should succeed (exit 0)
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(&project_dir)
+        .arg("sync")
+        .arg("--apply")
+        .assert()
+        .success();
+}
+
+#[test]
+fn test_sync_apply_output_contains_status() {
+    let temp = temp_dir_in_workspace();
+    let root = temp.path();
+
+    // Create project
+    Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(root)
+        .arg("new")
+        .arg("test-project")
+        .assert()
+        .success();
+
+    let project_dir = root.join("test-project");
+
+    // Run sync --apply and check output
+    let output = Command::cargo_bin("typstlab")
+        .unwrap()
+        .current_dir(&project_dir)
+        .arg("sync")
+        .arg("--apply")
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+
+    // --apply mode should run default sync workflow
+    assert!(
+        stdout.contains("Resolving") || stdout.contains("Generating") || stdout.contains("Sync"),
+        "Output should contain sync workflow messages"
+    );
+}

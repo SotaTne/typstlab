@@ -65,7 +65,11 @@ pub enum Commands {
     },
 
     /// Synchronize project to build-ready state
-    Sync,
+    Sync {
+        /// Apply doctor actions automatically (network, installs)
+        #[arg(long)]
+        apply: bool,
+    },
 }
 
 #[derive(Subcommand)]

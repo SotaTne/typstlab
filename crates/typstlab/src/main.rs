@@ -19,7 +19,7 @@ fn main() {
         },
         Commands::Build { paper, full } => commands::build::run(paper, full, cli.verbose),
         Commands::Status { paper, json } => commands::status::run(paper, json, cli.verbose),
-        Commands::Sync => commands::sync::run(cli.verbose),
+        Commands::Sync { apply } => commands::sync::run(apply, cli.verbose),
         Commands::Typst(typst_cmd) => match typst_cmd {
             TypstCommands::Link { force } => commands::typst::link::execute_link(force),
             TypstCommands::Install {
