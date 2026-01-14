@@ -52,6 +52,17 @@ pub enum Commands {
     /// Typst toolchain management
     #[command(subcommand)]
     Typst(TypstCommands),
+
+    /// Show project status
+    Status {
+        /// Paper ID to filter status check
+        #[arg(short, long)]
+        paper: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
