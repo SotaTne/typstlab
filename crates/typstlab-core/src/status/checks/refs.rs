@@ -1,4 +1,10 @@
 //! References check - validates bibliography setup
+//!
+//! NOTE: v0.2で完全実装予定。v0.1ではスタブとして基本チェックのみ実装。
+//! v0.2では以下の機能を追加:
+//! - refs/sets/ の構造検証
+//! - sources.lock の検証
+//! - DOI/URL フェッチ機能の統合
 
 use crate::status::engine::{CheckContext, CheckResult, StatusCheck};
 

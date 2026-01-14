@@ -69,13 +69,19 @@ typstlab は人間だけでなく **コードエージェントが操作する�
 
 **含むもの**：
 
-- PDF ビルドのみ
-- watch 最適化
+- PDF ビルド（`build` コマンド）
 - プロジェクト / paper / status の骨格
 - Typst バージョン固定（プロジェクト単位）
-- Typst docs（MD）取得（MCP提供用）
-- MCP サーバ（最小）
-- uv は「リンク（解決）と診断」まで（自動インストール/自動実行はしない）
+- Typst 管理（link, install, docs, sync）
+- Layout 生成システム（`generate` コマンド、`_generated/`）
+- プロジェクト管理（`new` コマンド）
+- 診断機能（`doctor`, `status` コマンド）
+- MCP サーバ（rules tools）
+
+**v0.2以降に延期**：
+
+- watch 最適化（`watch` コマンド）
+- uv 統合（link, exec）
 - refs 管理（fetch/check/touch）と sources.lock
 
 **含まないもの**：
@@ -104,8 +110,8 @@ typstlab は人間だけでなく **コードエージェントが操作する�
 ```
 project/
   typstlab.toml          # プロジェクト全体の規約（正）
-  pyproject.toml         # Python環境宣言（正）
-  uv.lock                # Python依存ロック（正）
+  pyproject.toml         # Python環境宣言（正）（v0.2以降）
+  uv.lock                # Python依存ロック（正）（v0.2以降）
 
   layouts/               # プロジェクトレベルのレイアウト定義
     default/
@@ -117,7 +123,7 @@ project/
       header.typ
       refs.typ
 
-  refs/
+  refs/                  # （v0.2以降で実装予定）
     sets/
       <set-id>/
         library.bib
@@ -218,16 +224,15 @@ name = "default"
 [typst]
 version = "0.13.1"  # 完全一致要求
 
-# 外部ツール
-[tools]
-uv = { required = true }  # バージョン指定なし = any
-# 将来的に拡張可能
+# 外部ツール（v0.2以降で実装予定）
+# [tools]
+# uv = { required = false }  # v0.2で実装予定
 
-# v0.1 で uv を required とする理由：
-# - pyproject.toml / uv.lock は「正（SOT）」として git commit される
-# - つまり Python 環境は「再現性の正」の一部
-# - scripts 実行は v0.2 以降だが、環境の宣言自体は v0.1 から必須
-# - doctor/sync は uv が存在することを前提に動作する
+# 注: v0.1では uv 統合を延期
+# v0.2で以下の機能を実装予定：
+# - uv link（Python環境の解決と診断）
+# - uv exec（スクリプト実行）
+# - pyproject.toml / uv.lock の管理
 
 # ネットワークポリシー
 [network]
@@ -237,10 +242,10 @@ policy = "auto"  # "auto" | "never"
 [build]
 parallel = true  # 複数 paper の並行ビルド（将来）
 
-# watch のデフォルト設定
-[watch]
-debounce_ms = 500
-ignore = ["*.tmp", ".DS_Store", "*.swp"]
+# watch のデフォルト設定（v0.2以降で実装予定）
+# [watch]
+# debounce_ms = 500
+# ignore = ["*.tmp", ".DS_Store", "*.swp"]
 ```
 
 **重要な原則**：
@@ -1006,6 +1011,8 @@ typstlab build --paper report --full
 
 #### 5.3.2 `typstlab watch --paper <id>`
 
+> **Note**: v0.2で実装予定。v0.1では未実装。
+
 指定した paper の変更を監視して自動ビルドする。
 
 **Usage**:
@@ -1357,6 +1364,8 @@ typstlab typst docs status --json
 
 ### 5.8 Link Command
 
+> **Note**: v0.2で実装予定。v0.1では未実装。
+
 #### 5.8.1 `typstlab link uv [-f]`
 
 system の uv を探索して bin/uv shim を生成する。
@@ -1419,6 +1428,8 @@ bin/uv pip install numpy
 **Exit code**: uv の exit code をそのまま返す（未解決時は exit 1）
 
 ### 5.9 Refs Commands
+
+> **Note**: v0.2で実装予定。v0.1では未実装。
 
 refs コマンドは、参考文献の取得と履歴管理を担当する。
 論文用途を尊重し、**アクセス日時を first-class** に扱う。
@@ -2356,39 +2367,53 @@ typstlab/
     - _generated/ 生成
     - テンプレート置換
 
-#### Phase 4: ビルドシステム（Week 4-5）
+#### Phase 4: CLI統合とポリッシュ（Week 4-6）
 
 1. **build コマンド**
     - generate 統合
     - typst compile 実行
     - state.json 更新
 
-2. **watch コマンド**
-    - typstlab-watch 実装
-    - notify crate 統合
-    - debounce
-
-#### Phase 5: その他（Week 5-6）
-
-1. **link コマンド**
-    - typst link 実装
-    - uv link 実装
-    - shim 生成
-
-2. **refs コマンド**
-    - DOI 取得（CrossRef API）
-    - URL 取得（スクレイピング）
-    - library.bib 更新
-
-3. **sync コマンド**
-    - link 統合
+2. **sync コマンド**
+    - link typst 統合
     - generate 統合
     - doctor actions 実行
 
-4. **MCP サーバ**
-    - typstlab-mcp 実装
-    - tools 提供
+3. **CLI統合**
+    - doctor コマンド統合
+    - status コマンド統合
+    - エラーハンドリング
+
+4. **MCP サーバ完成**
+    - rules tools（read_rules, search_rules）
+    - status tool（v0.1では基本機能）
     - --offline モード
+
+5. **E2Eテスト**
+    - 統合テスト完成
+    - ドキュメント整備
+
+#### v0.2で実装予定
+
+1. **watch コマンド**
+    - typstlab-watch 実装
+    - notify crate 統合
+    - debounce とファイル監視
+
+2. **uv 統合**
+    - link uv 実装
+    - uv exec 実装
+    - pyproject.toml / uv.lock 管理
+
+3. **refs コマンド**
+    - DOI 取得（CrossRef API）
+    - URL 取得（スクレイピング）
+    - library.bib 更新
+    - sources.lock 管理
+
+4. **MCP 追加ツール**
+    - build tool
+    - watch tool
 
 ### 7.3 Key Dependencies
 
