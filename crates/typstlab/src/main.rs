@@ -12,6 +12,11 @@ fn main() {
     let result = match cli.command {
         Commands::Doctor { json } => commands::doctor::run(json, cli.verbose),
         Commands::Typst(typst_cmd) => match typst_cmd {
+            TypstCommands::Link { force } => commands::typst::link::execute_link(force),
+            TypstCommands::Install {
+                version,
+                from_cargo,
+            } => commands::typst::install::execute_install(version, from_cargo),
             TypstCommands::Docs(docs_cmd) => match docs_cmd {
                 DocsCommands::Sync => commands::typst::docs::sync(cli.verbose),
                 DocsCommands::Clear => commands::typst::docs::clear(cli.verbose),

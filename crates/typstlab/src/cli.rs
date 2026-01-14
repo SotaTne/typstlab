@@ -28,6 +28,23 @@ pub enum Commands {
 
 #[derive(Subcommand)]
 pub enum TypstCommands {
+    /// Link to system or managed Typst
+    Link {
+        /// Force re-resolution even if cached
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Install Typst version
+    Install {
+        /// Version to install (e.g., "0.12.0")
+        version: String,
+
+        /// Install from cargo instead of GitHub
+        #[arg(long)]
+        from_cargo: bool,
+    },
+
     /// Documentation management
     #[command(subcommand)]
     Docs(DocsCommands),
