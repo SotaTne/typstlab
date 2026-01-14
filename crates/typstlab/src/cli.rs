@@ -63,6 +63,9 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Synchronize project to build-ready state
+    Sync,
 }
 
 #[derive(Subcommand)]

@@ -15,6 +15,8 @@ pub struct State {
     pub uv: Option<UvState>,
     #[serde(default)]
     pub build: Option<BuildState>,
+    #[serde(default)]
+    pub sync: Option<SyncState>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +77,11 @@ pub struct LastBuild {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncState {
+    pub last_sync: Option<DateTime<Utc>>,
+}
+
 impl State {
     /// 空の State を作成
     pub fn empty() -> Self {
@@ -85,6 +92,7 @@ impl State {
             docs: None,
             uv: None,
             build: None,
+            sync: None,
         }
     }
 
@@ -151,6 +159,7 @@ mod tests {
         assert_eq!(state.schema_version, "1.0");
         assert!(state.typst.is_none());
         assert!(state.uv.is_none());
+        assert!(state.sync.is_none());
     }
 
     #[test]
