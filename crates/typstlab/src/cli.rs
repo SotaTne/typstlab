@@ -28,6 +28,16 @@ pub enum Commands {
         paper: Option<String>,
     },
 
+    /// Create new project
+    New {
+        /// Project name (becomes directory name)
+        name: String,
+    },
+
+    /// Paper management
+    #[command(subcommand)]
+    Paper(PaperCommands),
+
     /// Build paper to PDF
     Build {
         /// Paper ID to build (required)
@@ -93,6 +103,22 @@ pub enum DocsCommands {
 
     /// Show documentation status
     Status {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PaperCommands {
+    /// Create a new paper (must be inside a project)
+    New {
+        /// Paper ID (becomes directory name)
+        id: String,
+    },
+
+    /// List all papers in the project
+    List {
+        /// Output as JSON
         #[arg(long)]
         json: bool,
     },

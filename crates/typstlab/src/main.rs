@@ -4,7 +4,7 @@ mod context;
 mod output;
 
 use clap::Parser;
-use cli::{Cli, Commands, DocsCommands, TypstCommands};
+use cli::{Cli, Commands, DocsCommands, PaperCommands, TypstCommands};
 
 fn main() {
     let cli = Cli::parse();
@@ -12,6 +12,11 @@ fn main() {
     let result = match cli.command {
         Commands::Doctor { json } => commands::doctor::run(json, cli.verbose),
         Commands::Generate { paper } => commands::generate::run(paper, cli.verbose),
+        Commands::New { name } => commands::new::run_new_project(name, cli.verbose),
+        Commands::Paper(paper_cmd) => match paper_cmd {
+            PaperCommands::New { id } => commands::new::run_new_paper(id, cli.verbose),
+            PaperCommands::List { json } => commands::new::run_list_papers(json, cli.verbose),
+        },
         Commands::Build { paper, full } => commands::build::run(paper, full, cli.verbose),
         Commands::Typst(typst_cmd) => match typst_cmd {
             TypstCommands::Link { force } => commands::typst::link::execute_link(force),

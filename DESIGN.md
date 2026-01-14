@@ -952,23 +952,27 @@ typstlab new my-research
 
 **Exit code**: 成功 0, 失敗 1
 
-#### 5.2.2 `typstlab new paper <paper-id>`
+#### 5.2.2 `typstlab paper new <paper-id>`
 
 新しい paper を作成する。
 
 **Usage**:
 
 ```bash
-typstlab new paper report --title "My Report" --layout ieee
+typstlab paper new report
 ```
 
-**Options**:
+**Options** (v0.1):
 
-- `--title <title>`: paper のタイトル（必須または対話的入力）
+- None (basic paper creation only)
+
+**Options** (v0.2 予定):
+
+- `--title <title>`: paper のタイトル
 - `--layout <name>`: レイアウト名（省略時は default）
-- `--author <name>`: 著者名（省略時は project.default_author）
+- `--author <name>`: 著者名
 
-**動作**:
+**動作** (v0.1):
 
 1. `papers/<paper-id>/` を作成
 2. `paper.toml` を生成
@@ -983,6 +987,74 @@ typstlab new paper report --title "My Report" --layout ieee
 - `writes`: true
 - `writes_sot`: true（papers/<id>/paper.toml, papers/<id>/main.typ を作成）
   - ただし `_generated/` は派生物なので、それ自体は SOT ではない
+
+**Exit code**: 成功 0, 失敗 1
+
+#### 5.2.3 `typstlab paper list`
+
+プロジェクト内のすべての paper を一覧表示する。
+
+**Usage**:
+
+```bash
+typstlab paper list
+typstlab paper list --json
+typstlab paper list --verbose
+```
+
+**Options** (v0.1):
+
+- `--json`: JSON 形式で出力
+
+**動作**:
+
+1. プロジェクトルートを検索
+2. `papers/` ディレクトリをスキャン
+3. 各 paper の情報を表示:
+   - ID
+   - Title (paper.toml から)
+   - Language
+   - Date
+   - Path (--verbose 時)
+   - Layout (--verbose 時)
+
+**Output format**:
+
+Human-readable (default):
+
+```plaintext
+→ Papers in project:
+
+  • paper1
+    Title: My Paper
+    Language: en
+    Date: 2026-01-15
+
+→ Total: 1 paper(s)
+```
+
+JSON (--json):
+
+```json
+{
+  "papers": [
+    {
+      "id": "paper1",
+      "title": "My Paper",
+      "language": "en",
+      "date": "2026-01-15",
+      "path": "/path/to/papers/paper1"
+    }
+  ],
+  "count": 1
+}
+```
+
+**Safety classification (v0.1)**：
+
+- `network`: false
+- `reads`: true (papers/, paper.toml)
+- `writes`: false
 
 **Exit code**: 成功 0, 失敗 1
 
