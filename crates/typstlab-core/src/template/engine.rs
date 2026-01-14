@@ -185,14 +185,41 @@ impl TemplateEngine {
     }
 }
 
-/// Find matching {{/each}} considering nested loops, return (position, length)
+/// Find matching {{/each}} considering nested loops and escape sequences
+///
+/// Returns (position, length) of the closing {{/each}}.
+/// Respects backslash escaping: \{{/each}} is treated as literal, not a closing tag.
 fn find_each_end(text: &str) -> Option<(usize, usize)> {
     let mut pos = 0;
     let mut depth = 0;
 
     while pos < text.len() {
-        if let Some(start) = text[pos..].find("{{") {
-            pos += start;
+        let remaining = &text[pos..];
+
+        if let Some(placeholder_start) = remaining.find("{{") {
+            // Count backslashes before {{
+            let mut backslash_count = 0;
+            let mut check_pos = placeholder_start;
+            while check_pos > 0 && remaining.as_bytes()[check_pos - 1] == b'\\' {
+                backslash_count += 1;
+                check_pos -= 1;
+            }
+
+            // If odd number of backslashes, this {{ is escaped - skip it
+            if backslash_count % 2 == 1 {
+                // Find closing }} and skip the entire escaped placeholder
+                if let Some(close) = remaining[placeholder_start + 2..].find("}}") {
+                    pos += placeholder_start + 2 + close + 2;
+                } else {
+                    // Malformed escaped placeholder, stop searching
+                    break;
+                }
+                continue;
+            }
+
+            // Even number of backslashes (or zero) - this is a real placeholder
+            pos += placeholder_start;
+
             if let Some(close) = text[pos + 2..].find("}}") {
                 let expr = text[pos + 2..pos + 2 + close].trim();
                 if expr.starts_with("each ") {
@@ -590,5 +617,88 @@ Author: {{ author.name }}
         let template = "This is plain text with no placeholders.";
         let result = render(template, &context).unwrap();
         assert_eq!(result, "This is plain text with no placeholders.");
+    }
+
+    #[test]
+    fn test_render_escaped_each_in_loop_body() {
+        // \{{each nested}} inside loop body should be treated as literal
+        let data = toml! {
+            [[items]]
+            name = "Item1"
+            [[items]]
+            name = "Item2"
+        };
+        let context = TemplateContext::new(Value::Table(data));
+        let template = r#"{{each items |item|}}{{item.name}}: \{{each nested}}
+{{/each}}"#;
+        let result = render(template, &context).unwrap();
+        assert!(result.contains("Item1: {{each nested}}"));
+        assert!(result.contains("Item2: {{each nested}}"));
+    }
+
+    #[test]
+    fn test_render_escaped_end_each_in_loop_body() {
+        // \{{/each}} inside loop body should be treated as literal, not loop closing
+        let data = toml! {
+            [[items]]
+            name = "Item1"
+            [[items]]
+            name = "Item2"
+        };
+        let context = TemplateContext::new(Value::Table(data));
+        let template = r#"{{each items |item|}}{{item.name}}: \{{/each}} more content
+{{/each}}"#;
+        let result = render(template, &context).unwrap();
+        // \{{/each}} should appear as literal in output
+        assert!(result.contains("Item1: {{/each}} more content"));
+        assert!(result.contains("Item2: {{/each}} more content"));
+        // And the loop should have closed properly (both items rendered)
+        let line_count = result.lines().count();
+        assert_eq!(line_count, 2, "Loop should render for both items");
+    }
+
+    #[test]
+    fn test_render_triple_backslash_each() {
+        // \\\{{each}} → \ + {{each}} (backslash + literal)
+        let data = toml! {
+            [[items]]
+            name = "Item1"
+        };
+        let context = TemplateContext::new(Value::Table(data));
+        let template = r#"{{each items |item|}}\\\{{each nested}}{{/each}}"#;
+        let result = render(template, &context).unwrap();
+        // Should output: \ + {{each nested}}
+        assert_eq!(result, r#"\{{each nested}}"#);
+    }
+
+    #[test]
+    fn test_render_quadruple_backslash_each() {
+        // \\\\{{each}} → \\ + start nested each (should error: undefined key)
+        let data = toml! {
+            [[items]]
+            name = "Item1"
+            [[items.nested]]
+            value = "Nested1"
+        };
+        let context = TemplateContext::new(Value::Table(data));
+        let template =
+            r#"{{each items |item|}}\\\\{{each item.nested |n|}}{{n.value}}{{/each}}{{/each}}"#;
+        let result = render(template, &context).unwrap();
+        // Should output: \\ + nested loop result
+        assert!(result.contains(r#"\\Nested1"#));
+    }
+
+    #[test]
+    fn test_render_escaped_end_each_with_spaces() {
+        // \{{ /each }} with spaces should also be treated as literal
+        let data = toml! {
+            [[items]]
+            name = "Item1"
+        };
+        let context = TemplateContext::new(Value::Table(data));
+        let template = r#"{{each items |item|}}{{item.name}}: \{{ /each }}
+{{/each}}"#;
+        let result = render(template, &context).unwrap();
+        assert!(result.contains("Item1: {{ /each }}"));
     }
 }
