@@ -45,6 +45,21 @@ pub enum TypstCommands {
         from_cargo: bool,
     },
 
+    /// Show Typst version information
+    Version {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Execute Typst binary with arguments
+    #[command(trailing_var_arg = true)]
+    Exec {
+        /// Arguments to pass to Typst (after --)
+        #[arg(allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+
     /// Documentation management
     #[command(subcommand)]
     Docs(DocsCommands),

@@ -17,6 +17,8 @@ fn main() {
                 version,
                 from_cargo,
             } => commands::typst::install::execute_install(version, from_cargo),
+            TypstCommands::Version { json } => commands::typst::version::execute_version(json),
+            TypstCommands::Exec { args } => commands::typst::exec::execute_exec(args),
             TypstCommands::Docs(docs_cmd) => match docs_cmd {
                 DocsCommands::Sync => commands::typst::docs::sync(cli.verbose),
                 DocsCommands::Clear => commands::typst::docs::clear(cli.verbose),
