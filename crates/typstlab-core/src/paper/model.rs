@@ -58,18 +58,32 @@ pub struct OutputConfig {
 pub struct PaperBuildConfig {
     #[serde(default = "default_targets")]
     pub targets: Vec<String>,
+
+    /// Main file to compile (default: "main.typ")
+    #[serde(default = "default_main_file")]
+    pub main_file: String,
+
+    /// Root directory for Typst --root option (optional)
+    /// If specified, this becomes the base for absolute path resolution
+    pub root: Option<String>,
 }
 
 impl Default for PaperBuildConfig {
     fn default() -> Self {
         Self {
             targets: vec!["pdf".to_string()],
+            main_file: "main.typ".to_string(),
+            root: None,
         }
     }
 }
 
 fn default_targets() -> Vec<String> {
     vec!["pdf".to_string()]
+}
+
+fn default_main_file() -> String {
+    "main.typ".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,9 +130,50 @@ impl Paper {
         &self.config.paper.id
     }
 
-    /// Check if main.typ exists
+    /// Get main file path (relative to paper root)
+    ///
+    /// This combines the build.root directory (if specified) with the build.main_file.
+    ///
+    /// # Examples
+    ///
+    /// - If build.root is None and build.main_file is "main.typ": returns "main.typ"
+    /// - If build.root is "src" and build.main_file is "index.typ": returns "src/index.typ"
+    pub fn main_file_path(&self) -> std::path::PathBuf {
+        use std::path::Path;
+
+        if let Some(root) = &self.config.build.root {
+            Path::new(root).join(&self.config.build.main_file)
+        } else {
+            std::path::PathBuf::from(&self.config.build.main_file)
+        }
+    }
+
+    /// Get absolute main file path
+    ///
+    /// Returns the full path to the main file by joining the paper root
+    /// with the result of main_file_path().
+    pub fn absolute_main_file_path(&self) -> std::path::PathBuf {
+        self.root.join(self.main_file_path())
+    }
+
+    /// Get root directory for Typst --root option (absolute)
+    ///
+    /// Returns the absolute path to the root directory if build.root is specified.
+    /// This is used as the argument to Typst's --root option.
+    ///
+    /// # Returns
+    ///
+    /// - Some(path) if build.root is specified
+    /// - None if build.root is not specified
+    pub fn typst_root_dir(&self) -> Option<std::path::PathBuf> {
+        self.config.build.root.as_ref().map(|r| self.root.join(r))
+    }
+
+    /// Check if main file exists
+    ///
+    /// Uses absolute_main_file_path() to check if the configured main file exists.
     pub fn has_main_file(&self) -> bool {
-        self.root.join("main.typ").exists()
+        self.absolute_main_file_path().exists()
     }
 
     /// Get the path to the _generated directory
@@ -385,5 +440,158 @@ name = "report"
         let paper = Paper::load(paper_dir.clone()).unwrap();
         let generated = paper.generated_dir();
         assert_eq!(generated, paper_dir.join("_generated"));
+    }
+
+    #[test]
+    fn test_paper_config_with_default_main_file() {
+        let toml = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[output]
+name = "report"
+"#;
+        let config: PaperConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.build.main_file, "main.typ");
+    }
+
+    #[test]
+    fn test_paper_config_with_custom_main_file() {
+        let toml = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[build]
+main_file = "src/index.typ"
+
+[output]
+name = "report"
+"#;
+        let config: PaperConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.build.main_file, "src/index.typ");
+    }
+
+    #[test]
+    fn test_paper_config_with_root() {
+        let toml = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[build]
+main_file = "src/index.typ"
+root = "src"
+
+[output]
+name = "report"
+"#;
+        let config: PaperConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.build.main_file, "src/index.typ");
+        assert_eq!(config.build.root, Some("src".to_string()));
+    }
+
+    #[test]
+    fn test_paper_main_file_path_calculation() {
+        use typstlab_testkit::temp_dir_in_workspace;
+
+        let temp = temp_dir_in_workspace();
+        let paper_dir = temp.path().join("report");
+        std::fs::create_dir_all(&paper_dir).unwrap();
+
+        // Test 1: Default main_file (no root)
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        let paper = Paper::load(paper_dir.clone()).unwrap();
+        assert_eq!(paper.main_file_path(), std::path::PathBuf::from("main.typ"));
+        assert_eq!(paper.absolute_main_file_path(), paper_dir.join("main.typ"));
+
+        // Test 2: Custom main_file with root
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[build]
+main_file = "index.typ"
+root = "src"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        let paper = Paper::load(paper_dir.clone()).unwrap();
+        assert_eq!(
+            paper.main_file_path(),
+            std::path::PathBuf::from("src").join("index.typ")
+        );
+        assert_eq!(
+            paper.absolute_main_file_path(),
+            paper_dir.join("src").join("index.typ")
+        );
+    }
+
+    #[test]
+    fn test_paper_root_path_calculation() {
+        use typstlab_testkit::temp_dir_in_workspace;
+
+        let temp = temp_dir_in_workspace();
+        let paper_dir = temp.path().join("report");
+        std::fs::create_dir_all(&paper_dir).unwrap();
+
+        // Test 1: No root specified
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        let paper = Paper::load(paper_dir.clone()).unwrap();
+        assert_eq!(paper.typst_root_dir(), None);
+
+        // Test 2: root specified
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[build]
+root = "src"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        let paper = Paper::load(paper_dir.clone()).unwrap();
+        assert_eq!(paper.typst_root_dir(), Some(paper_dir.join("src")));
     }
 }
