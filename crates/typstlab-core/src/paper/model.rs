@@ -78,17 +78,64 @@ pub struct RefsConfig {
     pub sets: Vec<String>,
 }
 
+/// Represents a paper in a typstlab project
+#[derive(Debug)]
+pub struct Paper {
+    root: std::path::PathBuf,
+    config: PaperConfig,
+}
+
+impl Paper {
+    /// Load a paper from a directory
+    ///
+    /// Reads `paper.toml` from the directory and validates that the paper ID
+    /// matches the directory name.
+    pub fn load(root: std::path::PathBuf) -> crate::error::Result<Self> {
+        let config = PaperConfig::from_file(root.join("paper.toml"))?;
+
+        // Validate that paper ID matches directory name
+        if let Some(dir_name) = root.file_name().and_then(|n| n.to_str()) {
+            config.validate_id(dir_name)?;
+        }
+
+        Ok(Self { root, config })
+    }
+
+    /// Get the root directory path
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+
+    /// Get the paper configuration
+    pub fn config(&self) -> &PaperConfig {
+        &self.config
+    }
+
+    /// Get the paper ID
+    pub fn id(&self) -> &str {
+        &self.config.paper.id
+    }
+
+    /// Check if main.typ exists
+    pub fn has_main_file(&self) -> bool {
+        self.root.join("main.typ").exists()
+    }
+
+    /// Get the path to the _generated directory
+    pub fn generated_dir(&self) -> std::path::PathBuf {
+        self.root.join("_generated")
+    }
+}
+
 impl PaperConfig {
     /// paper.toml を読み込む
     pub fn from_file(path: impl AsRef<std::path::Path>) -> crate::error::Result<Self> {
         let content = std::fs::read_to_string(path.as_ref())
             .map_err(|e| crate::error::TypstlabError::ConfigParseError(e.to_string()))?;
 
-        toml::from_str(&content).map_err(|e| {
-            crate::error::TypstlabError::PaperConfigInvalid {
-                paper_id: "unknown".to_string(),
-                reason: e.to_string(),
-            }
+        toml::from_str(&content).map_err(|e| crate::error::TypstlabError::PaperConfigInvalid {
+            paper_id: "unknown".to_string(),
+            reason: e.to_string(),
         })
     }
 
@@ -97,8 +144,7 @@ impl PaperConfig {
         let content = toml::to_string_pretty(self)
             .map_err(|e| crate::error::TypstlabError::ConfigParseError(e.to_string()))?;
 
-        std::fs::write(path.as_ref(), content)
-            .map_err(|e| crate::error::TypstlabError::IoError(e))?;
+        std::fs::write(path.as_ref(), content).map_err(crate::error::TypstlabError::IoError)?;
 
         Ok(())
     }
@@ -173,7 +219,10 @@ sets = ["core", "report-2026q1"]
         assert_eq!(config.paper.id, "report");
         assert_eq!(config.paper.authors.len(), 2);
         assert_eq!(config.layout.name, "ieee");
-        assert_eq!(config.refs.as_ref().unwrap().sets, vec!["core", "report-2026q1"]);
+        assert_eq!(
+            config.refs.as_ref().unwrap().sets,
+            vec!["core", "report-2026q1"]
+        );
     }
 
     #[test]
@@ -206,5 +255,135 @@ name = "report"
 "#;
         let config: PaperConfig = toml::from_str(toml).unwrap();
         assert!(config.validate_id("thesis").is_err());
+    }
+
+    // Phase 2 tests: Paper struct
+
+    #[test]
+    fn test_paper_load_from_directory() {
+        use typstlab_testkit::temp_dir_in_workspace;
+
+        let temp = temp_dir_in_workspace();
+        let paper_dir = temp.path().join("report");
+        std::fs::create_dir(&paper_dir).unwrap();
+
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        let paper = Paper::load(paper_dir).unwrap();
+        assert_eq!(paper.id(), "report");
+        assert_eq!(paper.config().paper.title, "My Report");
+    }
+
+    #[test]
+    fn test_paper_load_validates_id_matches_dir() {
+        use typstlab_testkit::temp_dir_in_workspace;
+
+        let temp = temp_dir_in_workspace();
+        let paper_dir = temp.path().join("report");
+        std::fs::create_dir(&paper_dir).unwrap();
+
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        // Should succeed because ID matches directory name
+        assert!(Paper::load(paper_dir).is_ok());
+    }
+
+    #[test]
+    fn test_paper_load_fails_on_id_mismatch() {
+        use typstlab_testkit::temp_dir_in_workspace;
+
+        let temp = temp_dir_in_workspace();
+        let paper_dir = temp.path().join("thesis");
+        std::fs::create_dir(&paper_dir).unwrap();
+
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        // Should fail because ID "report" doesn't match directory name "thesis"
+        let result = Paper::load(paper_dir);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_paper_has_main_file() {
+        use typstlab_testkit::temp_dir_in_workspace;
+
+        let temp = temp_dir_in_workspace();
+        let paper_dir = temp.path().join("report");
+        std::fs::create_dir(&paper_dir).unwrap();
+
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        let paper = Paper::load(paper_dir.clone()).unwrap();
+        assert!(!paper.has_main_file());
+
+        // Create main.typ
+        std::fs::write(paper_dir.join("main.typ"), "// main").unwrap();
+        let paper = Paper::load(paper_dir).unwrap();
+        assert!(paper.has_main_file());
+    }
+
+    #[test]
+    fn test_paper_generated_dir_path() {
+        use typstlab_testkit::temp_dir_in_workspace;
+
+        let temp = temp_dir_in_workspace();
+        let paper_dir = temp.path().join("report");
+        std::fs::create_dir(&paper_dir).unwrap();
+
+        let toml_content = r#"
+[paper]
+id = "report"
+title = "My Report"
+language = "en"
+date = "2026-01-05"
+
+[output]
+name = "report"
+"#;
+        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
+
+        let paper = Paper::load(paper_dir.clone()).unwrap();
+        let generated = paper.generated_dir();
+        assert_eq!(generated, paper_dir.join("_generated"));
     }
 }

@@ -1,5 +1,6 @@
 //! Status and health check system
 
+pub mod checks;
 pub mod engine;
 pub mod schema;
 

@@ -2452,6 +2452,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "toml",
+ "typstlab-testkit",
  "walkdir",
 ]
 

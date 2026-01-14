@@ -22,3 +22,4 @@ walkdir = "2"
 [dev-dependencies]
 # Testing
 tempfile = "3"
+typstlab-testkit = { path = "../typstlab-testkit" }
