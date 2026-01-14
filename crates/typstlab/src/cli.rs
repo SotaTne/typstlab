@@ -28,6 +28,17 @@ pub enum Commands {
         paper: Option<String>,
     },
 
+    /// Build paper to PDF
+    Build {
+        /// Paper ID to build (required)
+        #[arg(short, long)]
+        paper: String,
+
+        /// Force regenerate _generated/ before build
+        #[arg(long)]
+        full: bool,
+    },
+
     /// Typst toolchain management
     #[command(subcommand)]
     Typst(TypstCommands),

@@ -12,6 +12,7 @@ fn main() {
     let result = match cli.command {
         Commands::Doctor { json } => commands::doctor::run(json, cli.verbose),
         Commands::Generate { paper } => commands::generate::run(paper, cli.verbose),
+        Commands::Build { paper, full } => commands::build::run(paper, full, cli.verbose),
         Commands::Typst(typst_cmd) => match typst_cmd {
             TypstCommands::Link { force } => commands::typst::link::execute_link(force),
             TypstCommands::Install {
