@@ -98,6 +98,13 @@ pub enum TypstCommands {
         json: bool,
     },
 
+    /// List all installed Typst versions
+    Versions {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Execute Typst binary with arguments
     #[command(trailing_var_arg = true)]
     Exec {

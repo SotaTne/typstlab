@@ -18,6 +18,8 @@ flate2 = "1"
 colored = "2"
 url = { version = "2.5", features = ["serde"] }
 dirs = "5"
+semver = "1.0"
+which = "6.0"
 
 [dev-dependencies]
 # Testing

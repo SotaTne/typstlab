@@ -2432,6 +2432,7 @@ dependencies = [
  "flate2",
  "predicates",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "tar",
@@ -2441,6 +2442,7 @@ dependencies = [
  "typstlab-testkit",
  "typstlab-typst",
  "url",
+ "which",
 ]
 
 [[package]]
