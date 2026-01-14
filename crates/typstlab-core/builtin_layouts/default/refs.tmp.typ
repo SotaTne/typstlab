@@ -3,6 +3,6 @@
 
 #heading(level: 1, numbering: none)[References]
 
-{{ each paper.refs_sets |set| }}
+{{ each refs.sets |set| }}
 #bibliography("../../refs/sets/{{ set }}/library.bib", style: "apa")
 {{ /each }}

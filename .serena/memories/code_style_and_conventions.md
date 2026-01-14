@@ -1,0 +1,2 @@
+Conventions from AGENTS.md: TDD mandatory for features/bug fixes; tests first. Use Path/PathBuf and Component for paths; no unwrap/panic in library code. Functions target 10-20 lines, max 40; files target 300-500 lines, split at 800. Doc comments for public APIs. DESIGN.md is source of truth; update only with explicit approval.
+Testing guidance from TESTING.md: Use typstlab-testkit::temp_dir_in_workspace() for filesystem tests; avoid std::env::temp_dir(); prefer TempDir RAII cleanup.

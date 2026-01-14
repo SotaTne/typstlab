@@ -1,0 +1,1 @@
+Before committing (AGENTS.md): run cargo fmt --all, cargo clippy --workspace --all-targets -- -D warnings, cargo test --workspace, cargo build --workspace; fix failures before commit. Use atomic commits. Offer MCP review if >50 lines changed (code changes), after checks pass.

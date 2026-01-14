@@ -107,4 +107,10 @@ impl From<serde_json::Error> for TypstlabError {
     }
 }
 
+impl From<crate::template::error::TemplateError> for TypstlabError {
+    fn from(err: crate::template::error::TemplateError) -> Self {
+        TypstlabError::Generic(format!("Template error: {}", err))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, TypstlabError>;

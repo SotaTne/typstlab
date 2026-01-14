@@ -21,6 +21,13 @@ pub enum Commands {
         json: bool,
     },
 
+    /// Generate _generated/ directories with rendered templates
+    Generate {
+        /// Paper ID to generate (if not specified, generates all papers)
+        #[arg(short, long)]
+        paper: Option<String>,
+    },
+
     /// Typst toolchain management
     #[command(subcommand)]
     Typst(TypstCommands),
