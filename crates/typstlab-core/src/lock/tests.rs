@@ -33,7 +33,7 @@ fn test_lock_blocks_concurrent_access() {
         let _lock = acquire_lock(&lock_path_clone, Duration::from_secs(5), "thread1").unwrap();
         barrier_clone.wait(); // Signal that lock is acquired
         thread::sleep(Duration::from_millis(300)); // Hold lock longer than thread2's timeout
-                                                    // Lock released when _lock drops
+                                                   // Lock released when _lock drops
     });
 
     // Wait for thread 1 to acquire lock

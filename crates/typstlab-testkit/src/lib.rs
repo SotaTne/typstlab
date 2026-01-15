@@ -172,6 +172,52 @@ where
     result
 }
 
+/// Get platform-specific archive name for typst
+fn get_archive_name() -> &'static str {
+    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
+    {
+        "typst-x86_64-apple-darwin.tar.xz"
+    }
+
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    {
+        "typst-aarch64-apple-darwin.tar.xz"
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
+    {
+        "typst-x86_64-pc-windows-msvc.zip"
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+    {
+        "typst-x86_64-unknown-linux-musl.tar.xz"
+    }
+
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    {
+        "typst-aarch64-unknown-linux-musl.tar.xz"
+    }
+
+    #[cfg(not(any(
+        all(target_arch = "x86_64", target_os = "macos"),
+        all(target_arch = "aarch64", target_os = "macos"),
+        all(target_arch = "x86_64", target_os = "windows"),
+        all(target_arch = "x86_64", target_os = "linux"),
+        all(target_arch = "aarch64", target_os = "linux")
+    )))]
+    {
+        compile_error!(
+            "Unsupported platform for typst fixtures. \
+             Supported platforms: \
+             x86_64-apple-darwin, aarch64-apple-darwin, \
+             x86_64-pc-windows-msvc, \
+             x86_64-unknown-linux-musl, aarch64-unknown-linux-musl"
+        );
+        ""
+    }
+}
+
 /// Extract typst binary from fixtures to cache directory
 ///
 /// This helper extracts the pre-downloaded typst binary from fixtures
@@ -183,40 +229,26 @@ where
 ///
 /// # Returns
 ///
-/// Path to extracted binary
+/// Ok(PathBuf) to extracted binary, or Err(String) if extraction fails
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics if:
+/// Returns Err if:
 /// - Unable to determine platform
 /// - Fixtures archive not found
 /// - Archive extraction fails
 /// - Binary not found in archive
-fn setup_typst_from_fixtures(cache_dir: &Path) -> PathBuf {
-    // Determine platform-specific archive name
-    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
-    let archive_name = "typst-x86_64-apple-darwin.tar.xz";
-
-    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-    let archive_name = "typst-aarch64-apple-darwin.tar.xz";
-
-    #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
-    let archive_name = "typst-x86_64-pc-windows-msvc.zip";
-
-    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
-    let archive_name = "typst-x86_64-unknown-linux-musl.tar.xz";
-
-    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
-    let archive_name = "typst-aarch64-unknown-linux-musl.tar.xz";
+fn setup_typst_from_fixtures(cache_dir: &Path) -> Result<PathBuf, String> {
+    let archive_name = get_archive_name();
 
     // Path to fixtures in project root
-    let manifest_dir =
-        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map_err(|_| "CARGO_MANIFEST_DIR not set".to_string())?;
     let fixtures_path = PathBuf::from(manifest_dir)
         .parent() // crates/typstlab-testkit -> crates
-        .expect("Failed to get crates directory")
+        .ok_or("Failed to get crates directory")?
         .parent() // crates -> project root
-        .expect("Failed to get project root")
+        .ok_or("Failed to get project root")?
         .join("fixtures")
         .join("typst")
         .join("v0.12.0")
@@ -224,14 +256,97 @@ fn setup_typst_from_fixtures(cache_dir: &Path) -> PathBuf {
 
     // Read archive
     let archive_bytes = std::fs::read(&fixtures_path)
-        .unwrap_or_else(|e| panic!("Failed to read {} from fixtures: {}", archive_name, e));
+        .map_err(|e| format!("Failed to read {} from fixtures: {}", archive_name, e))?;
 
     // Create version directory
     let version_dir = cache_dir.join("0.12.0");
-    std::fs::create_dir_all(&version_dir).expect("Failed to create version dir");
+    std::fs::create_dir_all(&version_dir)
+        .map_err(|e| format!("Failed to create version dir: {}", e))?;
 
     // Extract binary based on platform
     extract_binary_from_archive(&archive_bytes, &version_dir, archive_name)
+}
+
+/// Extract binary from tar.xz archive (Unix)
+#[cfg(not(target_os = "windows"))]
+fn extract_from_tar_xz(
+    archive_bytes: &[u8],
+    version_dir: &Path,
+    archive_name: &str,
+) -> Result<PathBuf, String> {
+    use tar::Archive;
+    use xz2::read::XzDecoder;
+
+    let decoder = XzDecoder::new(archive_bytes);
+    let mut archive = Archive::new(decoder);
+
+    let entries = archive
+        .entries()
+        .map_err(|e| format!("Failed to read archive entries: {}", e))?;
+
+    for entry_result in entries {
+        let mut entry = entry_result.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry
+            .path()
+            .map_err(|e| format!("Failed to get entry path: {}", e))?;
+
+        // Find binary (typst-{arch}-{os}/typst)
+        if path.file_name().map(|n| n == "typst").unwrap_or(false) {
+            let binary_path = version_dir.join("typst");
+            let mut output = std::fs::File::create(&binary_path)
+                .map_err(|e| format!("Failed to create binary file: {}", e))?;
+            std::io::copy(&mut entry, &mut output)
+                .map_err(|e| format!("Failed to extract binary: {}", e))?;
+
+            // Make executable on Unix
+            make_executable(&binary_path)?;
+
+            return Ok(binary_path);
+        }
+    }
+
+    Err(format!("Failed to find typst binary in {}", archive_name))
+}
+
+/// Make file executable (Unix only)
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(path)
+        .map_err(|e| format!("Failed to get metadata: {}", e))?
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(path, perms).map_err(|e| format!("Failed to set permissions: {}", e))
+}
+
+/// Extract binary from zip archive (Windows)
+#[cfg(target_os = "windows")]
+fn extract_from_zip(
+    archive_bytes: &[u8],
+    version_dir: &Path,
+    archive_name: &str,
+) -> Result<PathBuf, String> {
+    use std::io::Cursor;
+    use zip::ZipArchive;
+
+    let reader = Cursor::new(archive_bytes);
+    let mut archive = ZipArchive::new(reader).map_err(|e| format!("Failed to read zip: {}", e))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to get zip entry: {}", e))?;
+        if file.name().ends_with("typst.exe") {
+            let binary_path = version_dir.join("typst.exe");
+            let mut output = std::fs::File::create(&binary_path)
+                .map_err(|e| format!("Failed to create binary file: {}", e))?;
+            std::io::copy(&mut file, &mut output)
+                .map_err(|e| format!("Failed to extract binary: {}", e))?;
+            return Ok(binary_path);
+        }
+    }
+
+    Err(format!("Failed to find typst.exe in {}", archive_name))
 }
 
 /// Extract binary from archive (tar.xz or zip)
@@ -239,67 +354,15 @@ fn extract_binary_from_archive(
     archive_bytes: &[u8],
     version_dir: &Path,
     archive_name: &str,
-) -> PathBuf {
-    // Handle tar.xz archives (Unix)
+) -> Result<PathBuf, String> {
     #[cfg(not(target_os = "windows"))]
     {
-        use tar::Archive;
-        use xz2::read::XzDecoder;
-
-        let decoder = XzDecoder::new(archive_bytes);
-        let mut archive = Archive::new(decoder);
-
-        for entry in archive.entries().expect("Failed to read archive entries") {
-            let mut entry = entry.expect("Failed to read entry");
-            let path = entry.path().expect("Failed to get entry path");
-
-            // Find binary (typst-{arch}-{os}/typst)
-            if path.file_name().map(|n| n == "typst").unwrap_or(false) {
-                let binary_path = version_dir.join("typst");
-                let mut output =
-                    std::fs::File::create(&binary_path).expect("Failed to create binary file");
-                std::io::copy(&mut entry, &mut output).expect("Failed to extract binary");
-
-                // Make executable
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mut perms = std::fs::metadata(&binary_path)
-                        .expect("Failed to get metadata")
-                        .permissions();
-                    perms.set_mode(0o755);
-                    std::fs::set_permissions(&binary_path, perms)
-                        .expect("Failed to set permissions");
-                }
-
-                return binary_path;
-            }
-        }
-
-        panic!("Failed to find typst binary in {}", archive_name);
+        extract_from_tar_xz(archive_bytes, version_dir, archive_name)
     }
 
-    // Handle zip archives (Windows)
     #[cfg(target_os = "windows")]
     {
-        use std::io::Cursor;
-        use zip::ZipArchive;
-
-        let reader = Cursor::new(archive_bytes);
-        let mut archive = ZipArchive::new(reader).expect("Failed to read zip");
-
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).expect("Failed to get zip entry");
-            if file.name().ends_with("typst.exe") {
-                let binary_path = version_dir.join("typst.exe");
-                let mut output =
-                    std::fs::File::create(&binary_path).expect("Failed to create binary file");
-                std::io::copy(&mut file, &mut output).expect("Failed to extract binary");
-                return binary_path;
-            }
-        }
-
-        panic!("Failed to find typst.exe in {}", archive_name);
+        extract_from_zip(archive_bytes, version_dir, archive_name)
     }
 }
 
@@ -356,6 +419,7 @@ pub fn setup_test_typst(_typstlab_bin: &Path, _project_dir: &Path) -> PathBuf {
 
     // Extract binary from fixtures to cache directory (no GitHub API)
     setup_typst_from_fixtures(&cache_path)
+        .expect("Failed to setup typst from fixtures - ensure fixtures/typst/v0.12.0/ exists")
 }
 
 /// Get the path to a compiled example binary
@@ -433,6 +497,16 @@ lazy_static! {
 /// The server is protected by a Mutex to ensure thread-safe access
 /// when creating/removing mocks.
 ///
+/// # Best Practices for Avoiding Mock Collisions
+///
+/// When writing parallel tests that use the shared server:
+///
+/// 1. **Use unique paths per test**: Different tests should mock different URLs
+///    to avoid conflicts (e.g., `/v0.12.0/...`, `/v0.13.0/...`, `/v0.14.0/...`)
+/// 2. **Mock cleanup is automatic**: Mocks are removed when the Mock object drops
+/// 3. **Lock scope matters**: Acquire the server lock only during mock setup/teardown,
+///    not during the entire test execution
+///
 /// # Examples
 ///
 /// ```no_run
@@ -440,10 +514,16 @@ lazy_static! {
 ///
 /// // Example test function (not executed in doctest)
 /// fn test_with_shared_server() {
-///     let mut server = get_shared_mock_server();
-///     let mock = server.mock("GET", "/path").with_status(200).create();
+///     // Acquire lock only for mock setup
+///     let mock = {
+///         let mut server = get_shared_mock_server();
+///         server.mock("GET", "/unique-path-v1/resource")  // Use unique path
+///             .with_status(200)
+///             .create()
+///     }; // Lock released here
 ///
-///     // Test code here
+///     // Test logic runs with server unlocked (parallel execution!)
+///     // ...
 ///
 ///     // Mock automatically cleaned up when dropped
 /// }
@@ -457,13 +537,20 @@ pub fn get_shared_mock_server() -> std::sync::MutexGuard<'static, ServerGuard> {
 /// Initialize shared mock GitHub base URL
 ///
 /// Sets the GITHUB_BASE_URL environment variable to point to the shared
-/// mock server. This should be called once before running tests that need
-/// GitHub mocking.
+/// mock server. This is **idempotent** - calling multiple times is safe and
+/// efficient (no-op if already set).
 ///
-/// # Safety
+/// # Important Notes
 ///
-/// This modifies a global environment variable. However, since the shared
-/// server's URL never changes, this is safe to call multiple times.
+/// - **Persistent**: GITHUB_BASE_URL remains set for the entire process lifetime
+/// - **Shared**: All tests use the same mock server URL (intentional design)
+/// - **Mock Isolation**: Individual mocks are automatically cleaned up when dropped
+/// - **No Restoration**: The original GITHUB_BASE_URL value is not restored
+///   (by design, as all tests share the same mock server)
+///
+/// # Thread Safety
+///
+/// This function is thread-safe and can be called concurrently from multiple tests.
 ///
 /// # Examples
 ///
@@ -472,11 +559,16 @@ pub fn get_shared_mock_server() -> std::sync::MutexGuard<'static, ServerGuard> {
 ///
 /// // Example test function (not executed in doctest)
 /// fn test_github_interaction() {
-///     init_shared_mock_github_url();
+///     init_shared_mock_github_url();  // Safe to call in every test
 ///     // Test code that uses github_base_url()
 /// }
 /// ```
 pub fn init_shared_mock_github_url() {
+    // Check if already initialized (idempotent)
+    if std::env::var("GITHUB_BASE_URL").is_ok() {
+        return; // Already set, no-op
+    }
+
     let server = get_shared_mock_server();
     let url = server.url();
     unsafe {

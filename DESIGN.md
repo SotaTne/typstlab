@@ -2432,6 +2432,135 @@ fn validate_path(project_root: &Path, requested: &Path) -> Result<PathBuf> {
 - Directory traversal with `walkdir` uses `follow_links = false`
 - Direct file access via symlinks is validated with canonicalization
 
+### 6.9 Process Synchronization (File Locking)
+
+#### 6.9.1 Overview
+
+typstlab uses **advisory file locks** (via `fs2` crate) to prevent race conditions when multiple processes access shared resources concurrently. This ensures safe parallel execution of commands like `typst install`, `docs sync`, and `build`.
+
+**Key Design Principles**:
+
+- **RAII pattern**: Locks are automatically released when guard goes out of scope
+- **Advisory locks**: Processes cooperate voluntarily (not enforced by OS)
+- **Cross-platform**: Works on Unix (flock) and Windows (LockFileEx)
+- **Timeouts**: All lock acquisitions have timeouts (30-120 seconds)
+- **Early exit optimization**: Operations check for completion before acquiring locks
+
+#### 6.9.2 Lock Targets and Placement
+
+| Resource               | Lock File                                | Scope       | Timeout |
+| ---------------------- | ---------------------------------------- | ----------- | ------- |
+| **state.json updates** | `.typstlab/state.lock`                   | Per-project | 30s     |
+| **Docs sync**          | `.typstlab/kb/docs.lock`                 | Per-project | 120s    |
+| **Typst install**      | `{managed_cache}/{version}/install.lock` | Per-version | 60s     |
+
+**Lock File Naming Convention**:
+
+- Descriptive names (not just `.lock`)
+- Purpose-specific: `state.lock`, `docs.lock`, `install.lock`
+- Hidden (start with `.`) to avoid clutter
+- Added to `.gitignore` (auto-cleaned on process exit)
+
+#### 6.9.3 Implementation Pattern
+
+```rust
+use std::time::Duration;
+use typstlab_core::lock::acquire_lock;
+
+// Example: Protecting state.json updates
+pub fn save_state(&self, path: &Path) -> Result<()> {
+    let lock_path = path.parent()
+        .ok_or("Invalid state.json path")?
+        .join("state.lock");
+
+    // Acquire lock with timeout (RAII guard)
+    let _guard = acquire_lock(
+        &lock_path,
+        Duration::from_secs(30),
+        "Updating state.json"
+    )?;
+
+    // Critical section: atomic write
+    let temp_file = NamedTempFile::new_in(path.parent().unwrap())?;
+    temp_file.write_all(self.to_json_bytes())?;
+    temp_file.persist(path)?;  // Atomic rename
+
+    Ok(())  // Lock auto-released via Drop
+}
+```
+
+#### 6.9.4 Lock Acquisition Strategy
+
+**Retry with Exponential Backoff**:
+
+- Initial retry delay: 10ms
+- Max retry delay: 500ms
+- Progress message after 2 seconds: "Waiting for lock on ..."
+
+**Timeout Behavior**:
+
+- If lock cannot be acquired within timeout → `LockError::Timeout`
+- Error message includes lock description for debugging
+
+**Early Exit Optimization**:
+
+- **Docs sync**: Check if docs directory exists with files → early exit (no lock needed)
+- **Typst install**: Check if binary exists → early exit (idempotency)
+- This reduces lock contention for common cases
+
+#### 6.9.5 Lock Scope Design Rationale
+
+**Per-Project Locks** (state.json, docs):
+
+- Different projects can run simultaneously without conflict
+- Example: `project-a/` and `project-b/` can both run `docs sync` in parallel
+
+**Per-Version Locks** (typst install):
+
+- Different versions can install simultaneously: `typst install 0.12.0` and `typst install 0.13.0` in parallel
+- Same version serializes: second process waits for first to complete, then exits early
+
+#### 6.9.6 Limitations and Considerations
+
+**Known Limitations**:
+
+- **Network filesystems (NFS, SMB)**: Advisory locks may be slower or unreliable
+  - Workaround: Use local cache directories when possible
+- **Stale locks**: If process crashes, OS automatically releases locks
+  - No manual cleanup needed (advisory locks are process-bound)
+
+**Not Covered**:
+
+- **Thread-level locking**: Rust's type system prevents most intra-process races
+- **Git operations**: Handled by Git's own locking mechanisms
+- **Typst compilation**: Read-only operations, no locking needed
+
+**Future Enhancements** (v0.2+):
+
+- **Lock metadata**: Store PID, hostname, purpose in lock file content
+- **NFS fallback**: Detect network FS and use alternative strategies
+- **Distributed locks**: For multi-machine environments (research phase)
+
+#### 6.9.7 Testing Requirements
+
+**Unit Tests** (crates/typstlab-core/src/lock/tests.rs):
+
+- Lock acquisition success
+- Concurrent access blocking (thread-level)
+- Timeout behavior
+- RAII cleanup on drop
+
+**Integration Tests** (crates/typstlab/tests/*):
+
+- Parallel installs (same version) → second waits, both succeed
+- Parallel docs sync (same project) → one downloads, others early exit
+- Concurrent builds (different papers) → parallel execution
+
+**CI Requirements**:
+
+- All tests must pass on macOS, Linux, Windows
+- Tests run in parallel by default (no --test-threads=1)
+
 ---
 
 ## 7. Implementation Guide
