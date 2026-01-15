@@ -246,6 +246,15 @@ parallel = true  # 複数 paper の並行ビルド（将来）
 # [watch]
 # debounce_ms = 500
 # ignore = ["*.tmp", ".DS_Store", "*.swp"]
+
+# test 設定（v0.1 では compile のみ）
+[test]
+out = ".typstlab/test-out"  # optional
+
+[[test.cases]]
+name = "components"
+type = "compile"
+file-patterns = ["tests/components/*.typ"]
 ```
 
 **重要な原則**：
@@ -301,6 +310,15 @@ targets = ["pdf"]  # v0.1 では pdf のみ
 [refs]
 sets = ["core", "report-2026q1"]  # refs/sets/<set-id>/ を参照
 # 空配列可能。空なら _generated/refs.typ は "No bibliography specified"
+
+# test 設定（optional, v0.1 では compile のみ）
+[test]
+out = ".typstlab/test-out"  # optional
+
+[[test.cases]]
+name = "paper-template"
+type = "compile"
+file-patterns = ["paper/report.typ"]
 ```
 
 **重要な原則**：
@@ -1908,6 +1926,102 @@ Full-text search across all rules files.
   }
 }
 ```
+
+---
+
+### 5.11 Test Commands
+
+#### 5.11.1 `typstlab test run [options]`
+
+Typst テンプレートをコンパイルして検証する。
+
+**Usage**:
+
+```bash
+typstlab test
+typstlab test run
+typstlab test run --paper report
+typstlab test run --only-paper report
+typstlab test run --only-project
+typstlab test run --name report
+```
+
+**Options (v0.1)**:
+
+- `--paper <paper-id>`: project + 指定 paper を対象にする
+- `--only-paper <paper-id>`: 指定 paper のみ
+- `--only-project`: project のみ
+- `--name <name>`: test case 名でフィルタ（スコープ指定と併用可能）
+
+**動作 (v0.1)**:
+
+1. project と paper の test 定義を読み取る
+   - デフォルトは **project + paper のマージ**
+   - 同名 case は **paper が上書き**
+2. `file-patterns` を展開（glob / 直パス）
+3. 展開結果をソートして再現性を固定
+4. 同一 case 内の重複を検出
+   - `allow-duplicate = false` → warning
+   - `allow-duplicate = true` → warning なし
+5. `typst compile --root <project-root> <input> <output>` を実行
+6. 出力先は `.typstlab/test-out/<case-name>/<file>.pdf`
+
+**file-patterns ルール**:
+
+- `!` が先頭の場合は除外（negation）
+- `\!` はエスケープ（`!` を含むパスとして扱う）
+- `"!"` 単体はエラー
+
+**type (v0.1)**:
+
+- `type = "compile"` のみ許可
+- 未知の type はエラー
+
+**Safety classification (v0.1)**:
+
+- `network`: false
+- `reads`: true
+- `writes`: true（.typstlab/test-out の生成）
+- `writes_sot`: false
+
+**Exit code**: 成功 0, 失敗 1
+
+#### 5.11.2 `typstlab test list [options]`
+
+test case の一覧を表示する。
+
+**Usage**:
+
+```bash
+typstlab test list
+typstlab test list --paper report
+typstlab test list --only-project
+typstlab test list --name report
+typstlab test list --detail
+```
+
+**Options (v0.1)**:
+
+- `--paper <paper-id>`: project + 指定 paper を対象にする
+- `--only-paper <paper-id>`: 指定 paper のみ
+- `--only-project`: project のみ
+- `--name <name>`: test case 名でフィルタ
+- `--detail`: `file-patterns` と出力先を表示
+
+**Safety classification (v0.1)**:
+
+- `network`: false
+- `reads`: true
+- `writes`: false
+- `writes_sot`: false
+
+**Exit code**: 成功 0, 失敗 1
+
+#### 5.11.3 Future Extensions (v0.2+)
+
+- `type = "cmd"`: 任意コマンドの実行
+- `type = "validate"`: 高速な PDF 検証（破損検出 + テキスト確認）
+  - 画像 PDF は対象外（必要なら cmd で実行）
 
 ---
 
