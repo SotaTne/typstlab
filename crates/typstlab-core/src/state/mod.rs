@@ -115,21 +115,22 @@ impl State {
         }
     }
 
-    /// state.json に書き込む
+    /// state.json に書き込む（原子的更新）
+    ///
+    /// This method uses atomic file updates to prevent corruption:
+    /// 1. Acquire exclusive lock on .typstlab/.lock
+    /// 2. Write to temporary file (using tempfile crate)
+    /// 3. Fsync temporary file and parent directory
+    /// 4. Atomic persist (cross-platform, Windows compatible)
+    /// 5. Release lock (automatic via RAII)
     pub fn save(&self, path: impl AsRef<Path>) -> crate::error::Result<()> {
-        // 親ディレクトリを作成
-        if let Some(parent) = path.as_ref().parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
+        let path = path.as_ref();
+        let parent = ensure_parent_dir(path)?;
+        let _lock = acquire_state_lock(parent)?;
         let content = serde_json::to_string_pretty(self).map_err(|e| {
             crate::error::TypstlabError::StateWriteError(format!("Failed to serialize: {}", e))
         })?;
-
-        std::fs::write(path.as_ref(), content).map_err(|e| {
-            crate::error::TypstlabError::StateWriteError(format!("Failed to write: {}", e))
-        })?;
-
+        atomic_write_json(&content, path, parent)?;
         Ok(())
     }
 
@@ -137,6 +138,74 @@ impl State {
     pub fn load_or_empty(path: impl AsRef<Path>) -> Self {
         Self::load(&path).unwrap_or_else(|_| Self::empty())
     }
+}
+
+/// Ensure parent directory exists and return it
+fn ensure_parent_dir(path: &Path) -> crate::error::Result<&Path> {
+    let parent = path.parent().ok_or_else(|| {
+        crate::error::TypstlabError::StateWriteError(
+            "State path has no parent directory".to_string(),
+        )
+    })?;
+    std::fs::create_dir_all(parent).map_err(|e| {
+        crate::error::TypstlabError::StateWriteError(format!("Failed to create parent dir: {}", e))
+    })?;
+    Ok(parent)
+}
+
+/// Acquire exclusive lock on .typstlab/.lock
+fn acquire_state_lock(parent: &Path) -> crate::error::Result<crate::lock::LockGuard> {
+    let lock_path = parent.join(".lock");
+    crate::lock::acquire_lock(
+        &lock_path,
+        std::time::Duration::from_secs(30),
+        "state update",
+    )
+    .map_err(|e| {
+        crate::error::TypstlabError::StateWriteError(format!("Failed to acquire lock: {}", e))
+    })
+}
+
+/// Write JSON atomically using NamedTempFile + persist (Windows compatible)
+fn atomic_write_json(content: &str, path: &Path, parent: &Path) -> crate::error::Result<()> {
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    let mut temp_file = NamedTempFile::new_in(parent).map_err(|e| {
+        crate::error::TypstlabError::StateWriteError(format!("Failed to create temp file: {}", e))
+    })?;
+
+    temp_file.write_all(content.as_bytes()).map_err(|e| {
+        crate::error::TypstlabError::StateWriteError(format!("Failed to write temp file: {}", e))
+    })?;
+
+    temp_file.as_file().sync_all().map_err(|e| {
+        crate::error::TypstlabError::StateWriteError(format!("Failed to sync temp file: {}", e))
+    })?;
+
+    temp_file.persist(path).map_err(|e| {
+        crate::error::TypstlabError::StateWriteError(format!("Failed to persist temp file: {}", e))
+    })?;
+
+    // Fsync parent directory for durability (Unix only)
+    #[cfg(unix)]
+    {
+        let parent_file = File::open(parent).map_err(|e| {
+            crate::error::TypstlabError::StateWriteError(format!(
+                "Failed to open parent dir: {}",
+                e
+            ))
+        })?;
+        parent_file.sync_all().map_err(|e| {
+            crate::error::TypstlabError::StateWriteError(format!(
+                "Failed to sync parent dir: {}",
+                e
+            ))
+        })?;
+    }
+
+    Ok(())
 }
 
 impl MachineInfo {

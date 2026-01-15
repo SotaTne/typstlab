@@ -1,6 +1,7 @@
 // Core modules
 pub mod config;
 pub mod error;
+pub mod lock;
 pub mod paper;
 pub mod project;
 pub mod state;

@@ -19,6 +19,7 @@ thiserror = "1"
 # File system
 walkdir = "2"
 tempfile = "3"
+fs2 = "0.4"
 
 [dev-dependencies]
 # Testing
