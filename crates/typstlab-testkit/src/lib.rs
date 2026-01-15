@@ -123,18 +123,29 @@ where
     let original_cache_dir = std::env::var("TYPSTLAB_CACHE_DIR").ok();
     let original_typst_binary = std::env::var("TYPST_BINARY").ok();
 
-    // Create isolated directories
+    // Create isolated directories and convert to String immediately
+    // This ensures no Path references remain when TempDir is dropped
     let fake_home = TempDir::new().unwrap();
-    let fake_cache = fake_home.path().join(".cache/typstlab");
-    std::fs::create_dir_all(&fake_cache).unwrap();
+    let fake_home_str = fake_home
+        .path()
+        .to_str()
+        .expect("TempDir path is not valid UTF-8")
+        .to_string();
 
-    // Set environment variables for COMPLETE isolation
+    let fake_cache_path = fake_home.path().join(".cache/typstlab");
+    std::fs::create_dir_all(&fake_cache_path).unwrap();
+    let fake_cache_str = fake_cache_path
+        .to_str()
+        .expect("Cache path is not valid UTF-8")
+        .to_string();
+
+    // Set environment variables using String values (safe across platforms)
     // SAFETY: We hold ENV_LOCK, ensuring no other test is modifying env vars concurrently.
     // Environment variable modification is inherently unsafe in multi-threaded contexts,
     // but the mutex guarantees exclusive access, making this safe.
     unsafe {
-        std::env::set_var("HOME", fake_home.path());
-        std::env::set_var("TYPSTLAB_CACHE_DIR", &fake_cache);
+        std::env::set_var("HOME", &fake_home_str);
+        std::env::set_var("TYPSTLAB_CACHE_DIR", &fake_cache_str);
 
         if let Some(binary_path) = typst_binary {
             std::env::set_var("TYPST_BINARY", binary_path);
@@ -144,8 +155,13 @@ where
         }
     }
 
-    // Run test
-    let result = f(fake_cache.as_path());
+    // Run test (pass PathBuf derived from String, not TempDir)
+    let fake_cache_for_test = PathBuf::from(&fake_cache_str);
+    let result = f(&fake_cache_for_test);
+
+    // Drop fake_home BEFORE restoring environment
+    // This ensures TempDir cleanup happens before restoration
+    drop(fake_home);
 
     // Restore environment (important for test isolation)
     // SAFETY: We still hold ENV_LOCK, ensuring exclusive access to env vars.
