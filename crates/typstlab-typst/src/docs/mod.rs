@@ -102,3 +102,115 @@ fn count_files_recursively(dir: &Path) -> Result<usize, DocsError> {
     }
     Ok(count)
 }
+
+/// Test helpers for docs module
+pub mod test_helpers {
+    use std::path::PathBuf;
+
+    /// Load docs archive from fixtures
+    ///
+    /// Reads the pre-downloaded typst-0.12.0.tar.gz archive from project fixtures.
+    /// This archive contains the actual Typst documentation.
+    ///
+    /// # Returns
+    ///
+    /// Binary content of the docs archive
+    ///
+    /// # Panics
+    ///
+    /// Panics if the fixture file cannot be read
+    pub fn load_docs_archive_from_fixtures() -> Vec<u8> {
+        let manifest_dir =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set");
+        let fixtures_path = PathBuf::from(manifest_dir)
+            .parent() // crates/typstlab-typst -> crates
+            .expect("Failed to get crates directory")
+            .parent() // crates -> project root
+            .expect("Failed to get project root")
+            .join("fixtures")
+            .join("typst")
+            .join("v0.12.0")
+            .join("typst-0.12.0.tar.gz");
+
+        std::fs::read(&fixtures_path).expect("Failed to read typst-0.12.0.tar.gz from fixtures")
+    }
+
+    /// Create a mock GitHub server with release archive response
+    ///
+    /// # Arguments
+    ///
+    /// * `server` - mockito Server instance
+    /// * `version` - Typst version (e.g., "0.12.0")
+    /// * `asset_bytes` - Binary content of asset
+    ///
+    /// # Returns
+    ///
+    /// mockito Mock instance (call `.create()` to activate)
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mockito::Server;
+    /// use typstlab_typst::docs::test_helpers;
+    ///
+    /// let mut server = Server::new();
+    /// let asset_bytes = test_helpers::load_docs_archive_from_fixtures();
+    /// let mock = test_helpers::mock_github_docs_release(&mut server, "0.12.0", &asset_bytes)
+    ///     .expect(1)
+    ///     .create();
+    /// ```
+    pub fn mock_github_docs_release(
+        server: &mut mockito::Server,
+        version: &str,
+        asset_bytes: &[u8],
+    ) -> mockito::Mock {
+        server
+            .mock(
+                "GET",
+                format!("/typst/typst/archive/refs/tags/v{}.tar.gz", version).as_str(),
+            )
+            .with_status(200)
+            .with_header("content-type", "application/gzip")
+            .with_body(asset_bytes)
+    }
+
+    /// Set GitHub base URL to mock server for testing
+    ///
+    /// # Safety
+    ///
+    /// This function modifies environment variables, which is not thread-safe.
+    /// Tests using this function should be run with `--test-threads=1`.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - Mock server URL (from `mockito::Server::url()`)
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mockito::Server;
+    /// use typstlab_typst::docs::test_helpers;
+    ///
+    /// let server = Server::new();
+    /// test_helpers::set_mock_github_url(&server.url());
+    /// // ... run tests ...
+    /// test_helpers::clear_mock_github_url();
+    /// ```
+    pub fn set_mock_github_url(url: &str) {
+        unsafe {
+            std::env::set_var("GITHUB_BASE_URL", url);
+        }
+    }
+
+    /// Clear mock GitHub base URL
+    ///
+    /// # Safety
+    ///
+    /// This function modifies environment variables, which is not thread-safe.
+    /// Tests using this function should be run with `--test-threads=1`.
+    pub fn clear_mock_github_url() {
+        unsafe {
+            std::env::remove_var("GITHUB_BASE_URL");
+        }
+    }
+}

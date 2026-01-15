@@ -172,23 +172,157 @@ where
     result
 }
 
-/// Setup test typst binary in isolated environment
+/// Extract typst binary from fixtures to cache directory
 ///
-/// This helper installs typst 0.12.0 in the isolated cache directory
-/// and returns the path to the installed binary.
+/// This helper extracts the pre-downloaded typst binary from fixtures
+/// to the isolated cache directory, avoiding GitHub API calls.
 ///
 /// # Arguments
 ///
-/// * `typstlab_bin` - Path to the typstlab binary (use `Command::cargo_bin("typstlab").unwrap().get_program()`)
-/// * `project_dir` - Project directory where typst should be installed
+/// * `cache_dir` - Path to isolated cache directory (from TYPSTLAB_CACHE_DIR)
 ///
 /// # Returns
 ///
-/// PathBuf to the installed typst binary
+/// Path to extracted binary
 ///
 /// # Panics
 ///
-/// Panics if typst installation fails
+/// Panics if:
+/// - Unable to determine platform
+/// - Fixtures archive not found
+/// - Archive extraction fails
+/// - Binary not found in archive
+fn setup_typst_from_fixtures(cache_dir: &Path) -> PathBuf {
+    // Determine platform-specific archive name
+    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
+    let archive_name = "typst-x86_64-apple-darwin.tar.xz";
+
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    let archive_name = "typst-aarch64-apple-darwin.tar.xz";
+
+    #[cfg(all(target_arch = "x86_64", target_os = "windows"))]
+    let archive_name = "typst-x86_64-pc-windows-msvc.zip";
+
+    #[cfg(all(target_arch = "x86_64", target_os = "linux"))]
+    let archive_name = "typst-x86_64-unknown-linux-musl.tar.xz";
+
+    #[cfg(all(target_arch = "aarch64", target_os = "linux"))]
+    let archive_name = "typst-aarch64-unknown-linux-musl.tar.xz";
+
+    // Path to fixtures in project root
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set");
+    let fixtures_path = PathBuf::from(manifest_dir)
+        .parent() // crates/typstlab-testkit -> crates
+        .expect("Failed to get crates directory")
+        .parent() // crates -> project root
+        .expect("Failed to get project root")
+        .join("fixtures")
+        .join("typst")
+        .join("v0.12.0")
+        .join(archive_name);
+
+    // Read archive
+    let archive_bytes = std::fs::read(&fixtures_path)
+        .unwrap_or_else(|e| panic!("Failed to read {} from fixtures: {}", archive_name, e));
+
+    // Create version directory
+    let version_dir = cache_dir.join("0.12.0");
+    std::fs::create_dir_all(&version_dir).expect("Failed to create version dir");
+
+    // Extract binary based on platform
+    extract_binary_from_archive(&archive_bytes, &version_dir, archive_name)
+}
+
+/// Extract binary from archive (tar.xz or zip)
+fn extract_binary_from_archive(
+    archive_bytes: &[u8],
+    version_dir: &Path,
+    archive_name: &str,
+) -> PathBuf {
+    // Handle tar.xz archives (Unix)
+    #[cfg(not(target_os = "windows"))]
+    {
+        use tar::Archive;
+        use xz2::read::XzDecoder;
+
+        let decoder = XzDecoder::new(archive_bytes);
+        let mut archive = Archive::new(decoder);
+
+        for entry in archive.entries().expect("Failed to read archive entries") {
+            let mut entry = entry.expect("Failed to read entry");
+            let path = entry.path().expect("Failed to get entry path");
+
+            // Find binary (typst-{arch}-{os}/typst)
+            if path.file_name().map(|n| n == "typst").unwrap_or(false) {
+                let binary_path = version_dir.join("typst");
+                let mut output =
+                    std::fs::File::create(&binary_path).expect("Failed to create binary file");
+                std::io::copy(&mut entry, &mut output).expect("Failed to extract binary");
+
+                // Make executable
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = std::fs::metadata(&binary_path)
+                        .expect("Failed to get metadata")
+                        .permissions();
+                    perms.set_mode(0o755);
+                    std::fs::set_permissions(&binary_path, perms)
+                        .expect("Failed to set permissions");
+                }
+
+                return binary_path;
+            }
+        }
+
+        panic!("Failed to find typst binary in {}", archive_name);
+    }
+
+    // Handle zip archives (Windows)
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::Cursor;
+        use zip::ZipArchive;
+
+        let reader = Cursor::new(archive_bytes);
+        let mut archive = ZipArchive::new(reader).expect("Failed to read zip");
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).expect("Failed to get zip entry");
+            if file.name().ends_with("typst.exe") {
+                let binary_path = version_dir.join("typst.exe");
+                let mut output =
+                    std::fs::File::create(&binary_path).expect("Failed to create binary file");
+                std::io::copy(&mut file, &mut output).expect("Failed to extract binary");
+                return binary_path;
+            }
+        }
+
+        panic!("Failed to find typst.exe in {}", archive_name);
+    }
+}
+
+/// Setup test typst binary in isolated environment
+///
+/// This helper extracts typst 0.12.0 from fixtures to the isolated cache directory
+/// and returns the path to the binary. No network access required.
+///
+/// # Arguments
+///
+/// * `typstlab_bin` - Path to the typstlab binary (unused, kept for API compatibility)
+/// * `project_dir` - Project directory (unused, kept for API compatibility)
+///
+/// # Returns
+///
+/// PathBuf to the extracted typst binary
+///
+/// # Panics
+///
+/// Panics if:
+/// - TYPSTLAB_CACHE_DIR environment variable not set
+/// - Fixtures archive not found
+/// - Binary extraction fails
 ///
 /// # Examples
 ///
@@ -207,45 +341,21 @@ where
 ///         // Get typstlab binary path
 ///         let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
 ///
-///         // Install typst for this test
+///         // Extract typst from fixtures (no network access)
 ///         let typst_path = setup_test_typst(&typstlab, project_dir);
 ///
 ///         // Now use typst_path in your test
 ///     });
 /// }
 /// ```
-pub fn setup_test_typst(typstlab_bin: &Path, project_dir: &Path) -> PathBuf {
-    use std::process::{Command, Stdio};
-
-    // Install typst 0.12.0 in the isolated environment (suppress logs)
-    let output = Command::new(typstlab_bin)
-        .arg("typst")
-        .arg("install")
-        .arg("0.12.0")
-        .current_dir(project_dir)
-        .stdout(Stdio::null()) // Suppress stdout
-        .stderr(Stdio::piped()) // Capture stderr for error messages
-        .output()
-        .expect("Failed to execute typst install");
-
-    assert!(
-        output.status.success(),
-        "typst install failed with exit code: {:?}\nstderr: {}",
-        output.status.code(),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Return the path to the installed binary
-    // The binary is installed in TYPSTLAB_CACHE_DIR which is set by with_isolated_typst_env
+pub fn setup_test_typst(_typstlab_bin: &Path, _project_dir: &Path) -> PathBuf {
+    // Get cache directory from environment (set by with_isolated_typst_env)
     let cache_dir = std::env::var("TYPSTLAB_CACHE_DIR")
         .expect("TYPSTLAB_CACHE_DIR should be set by with_isolated_typst_env");
+    let cache_path = PathBuf::from(cache_dir);
 
-    #[cfg(windows)]
-    let binary_name = "typst.exe";
-    #[cfg(not(windows))]
-    let binary_name = "typst";
-
-    PathBuf::from(cache_dir).join("0.12.0").join(binary_name)
+    // Extract binary from fixtures to cache directory (no GitHub API)
+    setup_typst_from_fixtures(&cache_path)
 }
 
 /// Get the path to a compiled example binary

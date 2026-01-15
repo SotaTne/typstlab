@@ -6,8 +6,9 @@ use assert_cmd::assert::OutputAssertExt;
 use assert_cmd::cargo::CommandCargoExt;
 use predicates::prelude::*;
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
-use typstlab_testkit::{temp_dir_in_workspace, with_isolated_typst_env};
+use typstlab_testkit::{setup_test_typst, temp_dir_in_workspace, with_isolated_typst_env};
 
 #[test]
 fn test_sync_default_mode() {
@@ -26,15 +27,9 @@ fn test_sync_default_mode() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first (required for sync to work)
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Create paper
         Command::cargo_bin("typstlab")
@@ -92,15 +87,9 @@ fn test_sync_with_multiple_papers() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         Command::cargo_bin("typstlab")
             .unwrap()
@@ -157,15 +146,9 @@ fn test_sync_idempotency() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         Command::cargo_bin("typstlab")
             .unwrap()
@@ -230,15 +213,9 @@ fn test_sync_exit_code() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Sync should succeed (exit 0)
         Command::cargo_bin("typstlab")
@@ -284,15 +261,9 @@ fn test_sync_state_json_updated() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Run sync
         Command::cargo_bin("typstlab")
@@ -338,15 +309,9 @@ fn test_sync_generates_layouts() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Create paper
         Command::cargo_bin("typstlab")
@@ -391,15 +356,9 @@ fn test_sync_output_format() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Run sync and check output
         let output = Command::cargo_bin("typstlab")
@@ -438,15 +397,9 @@ fn test_sync_apply_mode_basic() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Create paper
         Command::cargo_bin("typstlab")
@@ -505,15 +458,9 @@ fn test_sync_apply_with_resolved_typst() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Run sync first to resolve Typst
         Command::cargo_bin("typstlab")
@@ -560,15 +507,9 @@ fn test_sync_apply_idempotency() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Run sync --apply first time
         Command::cargo_bin("typstlab")
@@ -609,15 +550,9 @@ fn test_sync_apply_exit_code() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Sync --apply should succeed (exit 0)
         Command::cargo_bin("typstlab")
@@ -647,15 +582,9 @@ fn test_sync_apply_output_contains_status() {
 
         let project_dir = root.join("test-project");
 
-        // Install typst first
-        Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(&project_dir)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert()
-            .success();
+        // Install typst from fixtures (no GitHub API)
+        let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab, &project_dir);
 
         // Run sync --apply and check output
         let output = Command::cargo_bin("typstlab")
