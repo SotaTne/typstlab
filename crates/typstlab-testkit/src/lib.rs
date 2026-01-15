@@ -172,6 +172,82 @@ where
     result
 }
 
+/// Setup test typst binary in isolated environment
+///
+/// This helper installs typst 0.12.0 in the isolated cache directory
+/// and returns the path to the installed binary.
+///
+/// # Arguments
+///
+/// * `typstlab_bin` - Path to the typstlab binary (use `Command::cargo_bin("typstlab").unwrap().get_program()`)
+/// * `project_dir` - Project directory where typst should be installed
+///
+/// # Returns
+///
+/// PathBuf to the installed typst binary
+///
+/// # Panics
+///
+/// Panics if typst installation fails
+///
+/// # Examples
+///
+/// ```no_run
+/// use typstlab_testkit::{with_isolated_typst_env, setup_test_typst};
+/// use assert_cmd::cargo::CommandCargoExt;
+/// use std::path::PathBuf;
+/// use std::process::Command;
+///
+/// // Example test function
+/// fn test_with_typst() {
+///     with_isolated_typst_env(None, |_cache| {
+///         let temp = tempfile::TempDir::new().unwrap();
+///         let project_dir = temp.path();
+///
+///         // Get typstlab binary path
+///         let typstlab = PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+///
+///         // Install typst for this test
+///         let typst_path = setup_test_typst(&typstlab, project_dir);
+///
+///         // Now use typst_path in your test
+///     });
+/// }
+/// ```
+pub fn setup_test_typst(typstlab_bin: &Path, project_dir: &Path) -> PathBuf {
+    use std::process::{Command, Stdio};
+
+    // Install typst 0.12.0 in the isolated environment (suppress logs)
+    let output = Command::new(typstlab_bin)
+        .arg("typst")
+        .arg("install")
+        .arg("0.12.0")
+        .current_dir(project_dir)
+        .stdout(Stdio::null()) // Suppress stdout
+        .stderr(Stdio::piped()) // Capture stderr for error messages
+        .output()
+        .expect("Failed to execute typst install");
+
+    assert!(
+        output.status.success(),
+        "typst install failed with exit code: {:?}\nstderr: {}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Return the path to the installed binary
+    // The binary is installed in TYPSTLAB_CACHE_DIR which is set by with_isolated_typst_env
+    let cache_dir = std::env::var("TYPSTLAB_CACHE_DIR")
+        .expect("TYPSTLAB_CACHE_DIR should be set by with_isolated_typst_env");
+
+    #[cfg(windows)]
+    let binary_name = "typst.exe";
+    #[cfg(not(windows))]
+    let binary_name = "typst";
+
+    PathBuf::from(cache_dir).join("0.12.0").join(binary_name)
+}
+
 /// Get the path to a compiled example binary
 ///
 /// This helper locates example binaries compiled by cargo test.
@@ -435,5 +511,51 @@ mod tests {
             !file_name.ends_with(".exe"),
             "File should not have .exe extension on Unix"
         );
+    }
+
+    #[test]
+    #[allow(deprecated)] // cargo_bin is deprecated but cargo_bin! macro doesn't work in lib tests
+    fn test_setup_test_typst_installs_binary() {
+        with_isolated_typst_env(None, |_cache| {
+            let temp = temp_dir_in_workspace();
+            let project_dir = temp.path();
+
+            // Create a minimal project structure with typstlab.toml
+            std::fs::create_dir_all(project_dir.join(".typstlab")).unwrap();
+            std::fs::write(
+                project_dir.join("typstlab.toml"),
+                "[project]\nname = \"test\"\ninit_date = \"2026-01-15\"\n\n[typst]\nversion = \"0.12.0\"\n",
+            )
+            .unwrap();
+
+            // Get typstlab binary path
+            use assert_cmd::cargo::CommandCargoExt;
+            use std::process::Command;
+            let typstlab_bin =
+                std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+
+            // Setup typst
+            let typst_path = setup_test_typst(&typstlab_bin, project_dir);
+
+            // Verify binary exists
+            assert!(
+                typst_path.exists(),
+                "Typst binary should exist at: {}",
+                typst_path.display()
+            );
+
+            // Verify it's in the cache directory
+            let cache_dir = std::env::var("TYPSTLAB_CACHE_DIR").unwrap();
+            assert!(
+                typst_path.to_string_lossy().contains(&cache_dir),
+                "Typst binary should be in cache directory"
+            );
+
+            // Verify version directory
+            assert!(
+                typst_path.to_string_lossy().contains("0.12.0"),
+                "Typst binary should be in version directory"
+            );
+        });
     }
 }

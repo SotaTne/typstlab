@@ -87,6 +87,10 @@ pub enum ReleaseError {
     /// Insufficient disk space
     #[error("Insufficient disk space for download (required: {required} bytes)")]
     InsufficientDiskSpace { required: u64 },
+
+    /// File lock acquisition failed
+    #[error("Failed to acquire file lock: {0}")]
+    LockError(String),
 }
 
 /// GitHub Release metadata from API

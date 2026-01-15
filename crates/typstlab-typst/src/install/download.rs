@@ -45,6 +45,7 @@ use crate::install::release::{Asset, ReleaseError};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// Download configuration options
 #[derive(Debug, Clone)]
@@ -110,6 +111,34 @@ pub fn download_and_install(
     asset: &Asset,
     options: DownloadOptions,
 ) -> Result<PathBuf, ReleaseError> {
+    // Prepare version directory path and lock path
+    let version_dir = options.cache_dir.join(&options.version);
+    let lock_path = version_dir.join(".lock");
+
+    // Acquire per-version lock (allows parallel installs of different versions)
+    // This prevents race conditions when multiple processes/threads try to install
+    // the same version simultaneously
+    let _lock_guard = typstlab_core::lock::acquire_lock(
+        &lock_path,
+        Duration::from_secs(60),
+        &format!("Installing Typst {}", options.version),
+    )
+    .map_err(|e| ReleaseError::LockError(e.to_string()))?;
+
+    // Early exit if binary already exists (idempotency)
+    // This optimization avoids re-downloading when version is already installed
+    let final_path = version_dir.join(binary_name());
+    if final_path.exists() {
+        // Verify the existing binary is valid (not corrupted or truncated)
+        if let Ok(metadata) = fs::metadata(&final_path)
+            && metadata.len() > 0
+        {
+            // Binary exists and has content, return it
+            return Ok(final_path);
+        }
+        // If metadata check fails or file is empty, continue with installation
+    }
+
     // 1. Download asset to temporary file
     let archive_path = download_to_temp(&asset.browser_download_url, asset.size, options.progress)?;
 
@@ -124,21 +153,20 @@ pub fn download_and_install(
     #[cfg(unix)]
     set_executable_permissions(&binary_path)?;
 
-    // 5. Create version-specific directory in cache
-    let version_dir = options.cache_dir.join(&options.version);
+    // 5. Create version-specific directory in cache (if not already created)
     fs::create_dir_all(&version_dir).map_err(|e| ReleaseError::IoError {
         operation: format!("create version directory {}", version_dir.display()),
         source: e,
     })?;
 
     // 6. Atomic move to final destination
-    let final_path = version_dir.join(binary_name());
     atomic_move(&binary_path, &final_path)?;
 
     // 7. Cleanup temporary files
     // TempDir will be automatically cleaned up when extract_tempdir is dropped
     let _ = fs::remove_file(&archive_path);
 
+    // Lock automatically released when _lock_guard is dropped
     Ok(final_path)
 }
 
@@ -1194,12 +1222,14 @@ mod tests {
         let result = download_and_install(&asset, options);
         assert!(result.is_err(), "Should fail with invalid URL");
 
-        // Verify no leftover files in cache directory
-        // TempDir cleanup ensures this, but we verify explicitly
+        // Verify no binary left in cache directory
+        // Note: version_dir may exist (lock acquisition creates it),
+        // but the actual binary should not be present
         let version_dir = cache_dir.path().join("0.18.0");
+        let binary_path = version_dir.join(binary_name());
         assert!(
-            !version_dir.exists() || fs::read_dir(&version_dir).unwrap().count() == 0,
-            "Should not leave partial installations"
+            !binary_path.exists(),
+            "Should not leave partial binary installations"
         );
     }
 

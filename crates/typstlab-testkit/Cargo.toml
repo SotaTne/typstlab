@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 tempfile = "3"
+
+[dev-dependencies]
+assert_cmd = "2"
