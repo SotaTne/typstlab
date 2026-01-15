@@ -2548,6 +2548,8 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "flate2",
+ "lazy_static",
+ "mockito",
  "tar",
  "tempfile",
  "xz2",

@@ -32,16 +32,18 @@ fn test_lock_blocks_concurrent_access() {
     let handle1 = thread::spawn(move || {
         let _lock = acquire_lock(&lock_path_clone, Duration::from_secs(5), "thread1").unwrap();
         barrier_clone.wait(); // Signal that lock is acquired
-        thread::sleep(Duration::from_millis(100)); // Hold lock for a bit
-                                                   // Lock released when _lock drops
+        thread::sleep(Duration::from_millis(300)); // Hold lock longer than thread2's timeout
+                                                    // Lock released when _lock drops
     });
 
     // Wait for thread 1 to acquire lock
     barrier.wait();
 
     // Thread 2: Try to acquire same lock with short timeout
+    // Note: 200ms timeout (increased from 50ms) provides more reliability on CI systems
+    // where scheduling jitter can be significant
     let start = std::time::Instant::now();
-    let result = acquire_lock(&lock_path, Duration::from_millis(50), "thread2");
+    let result = acquire_lock(&lock_path, Duration::from_millis(200), "thread2");
 
     // Should timeout because thread 1 holds the lock
     assert!(result.is_err(), "Should fail to acquire lock");
@@ -52,7 +54,7 @@ fn test_lock_blocks_concurrent_access() {
 
     // Should have waited for the timeout duration
     assert!(
-        start.elapsed() >= Duration::from_millis(50),
+        start.elapsed() >= Duration::from_millis(200),
         "Should wait for timeout"
     );
 

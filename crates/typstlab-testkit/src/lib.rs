@@ -408,6 +408,82 @@ pub fn example_bin(name: &str) -> PathBuf {
     path
 }
 
+// Shared mockito server infrastructure for parallel test execution
+use lazy_static::lazy_static;
+use mockito::{Server, ServerGuard};
+
+lazy_static! {
+    /// Global shared mockito server for all tests
+    ///
+    /// This server is initialized once and shared across all test threads.
+    /// Benefits:
+    /// - Eliminates environment variable conflicts
+    /// - Enables true parallel test execution
+    /// - Provides consistent base URL for all tests
+    static ref SHARED_MOCK_SERVER: Mutex<ServerGuard> = Mutex::new(Server::new());
+}
+
+/// Get reference to shared mock server
+///
+/// This function provides access to the global mockito server.
+/// The server is initialized lazily on first access.
+///
+/// # Thread Safety
+///
+/// The server is protected by a Mutex to ensure thread-safe access
+/// when creating/removing mocks.
+///
+/// # Examples
+///
+/// ```no_run
+/// use typstlab_testkit::get_shared_mock_server;
+///
+/// // Example test function (not executed in doctest)
+/// fn test_with_shared_server() {
+///     let mut server = get_shared_mock_server();
+///     let mock = server.mock("GET", "/path").with_status(200).create();
+///
+///     // Test code here
+///
+///     // Mock automatically cleaned up when dropped
+/// }
+/// ```
+pub fn get_shared_mock_server() -> std::sync::MutexGuard<'static, ServerGuard> {
+    SHARED_MOCK_SERVER
+        .lock()
+        .expect("Failed to acquire mock server lock")
+}
+
+/// Initialize shared mock GitHub base URL
+///
+/// Sets the GITHUB_BASE_URL environment variable to point to the shared
+/// mock server. This should be called once before running tests that need
+/// GitHub mocking.
+///
+/// # Safety
+///
+/// This modifies a global environment variable. However, since the shared
+/// server's URL never changes, this is safe to call multiple times.
+///
+/// # Examples
+///
+/// ```no_run
+/// use typstlab_testkit::init_shared_mock_github_url;
+///
+/// // Example test function (not executed in doctest)
+/// fn test_github_interaction() {
+///     init_shared_mock_github_url();
+///     // Test code that uses github_base_url()
+/// }
+/// ```
+pub fn init_shared_mock_github_url() {
+    let server = get_shared_mock_server();
+    let url = server.url();
+    unsafe {
+        std::env::set_var("GITHUB_BASE_URL", url);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

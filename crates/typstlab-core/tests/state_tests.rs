@@ -159,8 +159,8 @@ fn test_state_save_no_temp_artifacts() {
 
     assert_eq!(
         entries,
-        vec![".lock", "state.json"],
-        "Should have state.json and .lock, no .tmp files: {:?}",
+        vec!["state.json", "state.lock"],
+        "Should have state.json and state.lock, no .tmp files: {:?}",
         entries
     );
 

@@ -56,7 +56,7 @@ pub(crate) fn acquire_with_retry(
                 // Lock is held by another process, retry
                 let elapsed = start.elapsed();
 
-                // Check timeout
+                // Check timeout before sleeping
                 if elapsed >= timeout {
                     return Err(LockError::Timeout {
                         path: lock_path.to_path_buf(),
@@ -74,8 +74,14 @@ pub(crate) fn acquire_with_retry(
                     progress_shown = true;
                 }
 
-                // Sleep before retry
-                thread::sleep(retry_delay);
+                // Calculate how long to sleep (don't exceed timeout)
+                let remaining = timeout.saturating_sub(elapsed);
+                let sleep_duration = retry_delay.min(remaining);
+
+                // Sleep before retry (but not longer than remaining time)
+                if sleep_duration > Duration::ZERO {
+                    thread::sleep(sleep_duration);
+                }
 
                 // Exponential backoff
                 retry_delay = (retry_delay * 2).min(MAX_RETRY_DELAY);

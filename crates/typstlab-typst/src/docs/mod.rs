@@ -49,7 +49,7 @@ pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usiz
         .ok_or_else(|| {
             DocsError::LockError("Target dir must be under kb/typst/docs".to_string())
         })?;
-    let lock_path = kb_dir.join(".lock");
+    let lock_path = kb_dir.join("docs.lock");
 
     // Acquire project-level lock (one sync at a time per project)
     // This prevents race conditions when multiple processes sync docs simultaneously

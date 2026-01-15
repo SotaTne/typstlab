@@ -4,36 +4,34 @@
 //! threads/processes try to sync documentation for the same project simultaneously.
 //!
 //! Uses fixtures-based approach with real HTML files to avoid PathTraversal errors.
+//! Uses shared mockito server from testkit to enable true parallel execution.
 
 use std::fs;
 use std::sync::{Arc, Barrier};
 use std::thread;
 use tempfile::TempDir;
+use typstlab_testkit::{get_shared_mock_server, init_shared_mock_github_url};
 use typstlab_typst::docs::sync_docs;
 use typstlab_typst::docs::test_helpers::{
-    clear_mock_github_url, load_docs_archive_from_fixtures, mock_github_docs_release,
-    set_mock_github_url,
+    load_docs_archive_from_fixtures, mock_github_docs_release,
 };
 
 #[test]
 fn test_parallel_docs_sync_no_corruption() {
-    use mockito::Server;
+    // Initialize shared mock GitHub URL (safe to call multiple times)
+    init_shared_mock_github_url();
 
-    // Setup: Create mock HTTP server
-    let mut server = Server::new();
     let archive_bytes = load_docs_archive_from_fixtures();
 
-    // With locking, only ONE download should occur:
-    // - First thread acquires lock and downloads
-    // - Other threads wait for lock
-    // - When they get lock, docs already exist -> early exit
-    let mock = mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
-        .expect(1) // With locking, only first thread downloads
-        .create();
+    // Use shared server - lock is acquired only for mock setup/teardown
+    let mock = {
+        let mut server = get_shared_mock_server();
+        mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
+            .expect(1) // With locking, only first thread downloads
+            .create()
+    }; // Server lock released here
 
-    // Override GitHub base URL for testing
-    set_mock_github_url(&server.url());
-
+    // Test logic runs with server unlocked (parallel execution!)
     let temp_project = TempDir::new().unwrap();
     let kb_dir = temp_project.path().join(".typstlab").join("kb");
     let target_dir = kb_dir.join("typst").join("docs");
@@ -84,24 +82,23 @@ fn test_parallel_docs_sync_no_corruption() {
     // Verify: Only one download occurred (mock expectation)
     mock.assert();
 
-    // Cleanup
-    clear_mock_github_url();
+    // No cleanup needed - env var stays set permanently, mock auto-removed on drop
 }
 
 #[test]
 fn test_docs_sync_idempotency_with_locking() {
-    use mockito::Server;
+    // Initialize shared mock GitHub URL
+    init_shared_mock_github_url();
 
-    // Setup: Create mock HTTP server
-    let mut server = Server::new();
     let archive_bytes = load_docs_archive_from_fixtures();
 
-    // Only first sync should download
-    let mock = mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
-        .expect(1) // Only first sync downloads
-        .create();
-
-    set_mock_github_url(&server.url());
+    // Use shared server - lock only during mock setup
+    let mock = {
+        let mut server = get_shared_mock_server();
+        mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
+            .expect(1) // Only first sync downloads
+            .create()
+    };
 
     let temp_project = TempDir::new().unwrap();
     let kb_dir = temp_project.path().join(".typstlab").join("kb");
@@ -122,24 +119,23 @@ fn test_docs_sync_idempotency_with_locking() {
     // Verify: Only one download occurred
     mock.assert();
 
-    // Cleanup
-    clear_mock_github_url();
+    // No cleanup needed
 }
 
 #[test]
 fn test_concurrent_docs_sync_different_projects_no_conflict() {
-    use mockito::Server;
+    // Initialize shared mock GitHub URL
+    init_shared_mock_github_url();
 
-    // Setup: Create mock HTTP server
-    let mut server = Server::new();
     let archive_bytes = load_docs_archive_from_fixtures();
 
-    // Different projects should download independently (2 downloads)
-    let mock = mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
-        .expect(2) // Two different projects = 2 downloads
-        .create();
-
-    set_mock_github_url(&server.url());
+    // Use shared server - lock only during mock setup
+    let mock = {
+        let mut server = get_shared_mock_server();
+        mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
+            .expect(2) // Two different projects = 2 downloads
+            .create()
+    };
 
     // Create two different project directories
     let project1 = TempDir::new().unwrap();
@@ -195,6 +191,5 @@ fn test_concurrent_docs_sync_different_projects_no_conflict() {
     // Verify: Two downloads occurred (different projects, different locks)
     mock.assert();
 
-    // Cleanup
-    clear_mock_github_url();
+    // No cleanup needed
 }

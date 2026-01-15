@@ -113,7 +113,7 @@ pub fn download_and_install(
 ) -> Result<PathBuf, ReleaseError> {
     // Prepare version directory path and lock path
     let version_dir = options.cache_dir.join(&options.version);
-    let lock_path = version_dir.join(".lock");
+    let lock_path = version_dir.join("install.lock");
 
     // Acquire per-version lock (allows parallel installs of different versions)
     // This prevents race conditions when multiple processes/threads try to install

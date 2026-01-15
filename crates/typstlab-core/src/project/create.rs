@@ -202,6 +202,11 @@ dist/
 .typstlab/state.json
 .typstlab/typst-*/
 
+# Process lock files (temporary, auto-cleaned on exit)
+.typstlab/*.lock
+.typstlab/kb/*.lock
+.typstlab/locks/*.lock
+
 # Typst cache
 .typst-cache/
 

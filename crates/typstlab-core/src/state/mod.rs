@@ -153,9 +153,9 @@ fn ensure_parent_dir(path: &Path) -> crate::error::Result<&Path> {
     Ok(parent)
 }
 
-/// Acquire exclusive lock on .typstlab/.lock
+/// Acquire exclusive lock on .typstlab/state.lock
 fn acquire_state_lock(parent: &Path) -> crate::error::Result<crate::lock::LockGuard> {
-    let lock_path = parent.join(".lock");
+    let lock_path = parent.join("state.lock");
     crate::lock::acquire_lock(
         &lock_path,
         std::time::Duration::from_secs(30),
