@@ -7,7 +7,12 @@ use assert_cmd::cargo::CommandCargoExt;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
-use typstlab_testkit::with_isolated_typst_env;
+use typstlab_testkit::{
+    get_shared_mock_server, init_shared_mock_github_url, with_isolated_typst_env,
+};
+use typstlab_typst::docs::test_helpers::{
+    load_docs_archive_from_fixtures, mock_github_docs_release,
+};
 
 /// Helper: Create a temporary typstlab project
 fn create_test_project() -> TempDir {
@@ -52,8 +57,21 @@ policy = "never"
     temp_dir
 }
 
+/// Helper: Setup docs mock with specified expected call count
+fn setup_docs_mock(expect_calls: usize) -> mockito::Mock {
+    init_shared_mock_github_url();
+    let archive_bytes = load_docs_archive_from_fixtures();
+    let mut server = get_shared_mock_server();
+    mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
+        .expect(expect_calls)
+        .create()
+}
+
 #[test]
 fn test_docs_status_before_sync() {
+    // Initialize mockito environment (prevents macOS system-configuration panic)
+    init_shared_mock_github_url();
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Create test project
         let project = create_test_project();
@@ -82,6 +100,9 @@ fn test_docs_status_before_sync() {
 
 #[test]
 fn test_docs_status_json_structure() {
+    // Initialize mockito environment (prevents macOS system-configuration panic)
+    init_shared_mock_github_url();
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Create test project
         let project = create_test_project();
@@ -119,6 +140,9 @@ fn test_docs_status_json_structure() {
 
 #[test]
 fn test_docs_sync_downloads_docs() {
+    // Setup mock (expect 1 download)
+    let mock = setup_docs_mock(1);
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Create test project
         let project = create_test_project();
@@ -158,10 +182,16 @@ fn test_docs_sync_downloads_docs() {
             "Docs directory should contain files after sync"
         );
     });
+
+    // Verify mock expectations
+    mock.assert();
 }
 
 #[test]
 fn test_docs_status_after_sync() {
+    // Setup mock (expect 1 download)
+    let mock = setup_docs_mock(1);
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Create test project and sync docs
         let project = create_test_project();
@@ -194,10 +224,16 @@ fn test_docs_status_after_sync() {
             "Status should indicate docs are present after sync"
         );
     });
+
+    // Verify mock expectations
+    mock.assert();
 }
 
 #[test]
 fn test_docs_clear_removes_docs() {
+    // Setup mock (expect 1 download)
+    let mock = setup_docs_mock(1);
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Create test project, sync docs, verify they exist
         let project = create_test_project();
@@ -232,10 +268,16 @@ fn test_docs_clear_removes_docs() {
             "Docs directory should not exist after clear"
         );
     });
+
+    // Verify mock expectations
+    mock.assert();
 }
 
 #[test]
 fn test_docs_status_after_clear() {
+    // Setup mock (expect 1 download)
+    let mock = setup_docs_mock(1);
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Sync then clear docs
         let project = create_test_project();
@@ -279,10 +321,16 @@ fn test_docs_status_after_clear() {
             "Status should indicate docs not present after clear"
         );
     });
+
+    // Verify mock expectations
+    mock.assert();
 }
 
 #[test]
 fn test_docs_sync_respects_network_policy_never() {
+    // Initialize mockito environment (no HTTP requests expected due to policy)
+    init_shared_mock_github_url();
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Create project with network policy "never"
         let project = create_project_with_network_never();
@@ -318,6 +366,9 @@ fn test_docs_sync_respects_network_policy_never() {
 
 #[test]
 fn test_docs_sync_updates_state_json() {
+    // Setup mock (expect 1 download)
+    let mock = setup_docs_mock(1);
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Create test project
         let project = create_test_project();
@@ -362,10 +413,16 @@ fn test_docs_sync_updates_state_json() {
             "docs.typst should have 'source' field"
         );
     });
+
+    // Verify mock expectations
+    mock.assert();
 }
 
 #[test]
 fn test_docs_clear_updates_state_json() {
+    // Setup mock (expect 1 download)
+    let mock = setup_docs_mock(1);
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Sync docs first
         let project = create_test_project();
@@ -406,10 +463,16 @@ fn test_docs_clear_updates_state_json() {
 
         assert!(!present, "docs.typst.present should be false after clear");
     });
+
+    // Verify mock expectations
+    mock.assert();
 }
 
 #[test]
 fn test_docs_verbose_flag() {
+    // Setup mock (expect 1 download)
+    let mock = setup_docs_mock(1);
+
     with_isolated_typst_env(None, |_cache| {
         // Arrange: Create test project
         let project = create_test_project();
@@ -427,4 +490,7 @@ fn test_docs_verbose_flag() {
         // Assert: Should execute successfully with verbose output
         assert.success();
     });
+
+    // Verify mock expectations
+    mock.assert();
 }
