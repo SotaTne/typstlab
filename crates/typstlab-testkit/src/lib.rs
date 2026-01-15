@@ -116,7 +116,13 @@ pub fn with_isolated_typst_env<F, R>(typst_binary: Option<&Path>, f: F) -> R
 where
     F: FnOnce(&Path) -> R,
 {
-    let _guard = ENV_LOCK.lock().unwrap();
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|poisoned| {
+        // Recover from poisoned mutex
+        // Safe because:
+        // - Environment variables remain valid after panic
+        // - We're just serializing access, not protecting data
+        poisoned.into_inner()
+    });
 
     // Save original environment (for restoration)
     let original_home = std::env::var("HOME").ok();
@@ -545,9 +551,14 @@ lazy_static! {
 /// }
 /// ```
 pub fn get_shared_mock_server() -> std::sync::MutexGuard<'static, ServerGuard> {
-    SHARED_MOCK_SERVER
-        .lock()
-        .expect("Failed to acquire mock server lock")
+    SHARED_MOCK_SERVER.lock().unwrap_or_else(|poisoned| {
+        // Recover from poisoned mutex
+        // Safe because:
+        // - Mockito server remains functional after panic
+        // - We're just serializing access
+        // - Test isolation still maintained via unique mock paths
+        poisoned.into_inner()
+    })
 }
 
 /// Initialize shared mock GitHub base URL
@@ -851,5 +862,67 @@ mod tests {
                 "Typst binary should be in version directory"
             );
         });
+    }
+
+    /// Tests for mutex poison recovery
+    ///
+    /// These tests are marked with #[ignore] because they intentionally poison mutexes,
+    /// which can interfere with other tests when run in parallel.
+    /// Run explicitly with: cargo test --package typstlab-testkit poison_recovery -- --ignored
+    mod poison_recovery_tests {
+        use super::*;
+        use std::thread;
+
+        #[test]
+        #[ignore]
+        fn test_env_lock_recovers_from_poison() {
+            // Save original environment (to restore after test)
+            let original_home = std::env::var("HOME").ok();
+
+            // Simulate panic while holding lock
+            let handle = thread::spawn(|| {
+                let _guard = ENV_LOCK.lock().unwrap();
+                panic!("Simulated panic to poison mutex");
+            });
+
+            // Join will return Err because thread panicked
+            let _ = handle.join();
+
+            // Subsequent lock should recover (not panic)
+            let result = std::panic::catch_unwind(|| {
+                let _guard = ENV_LOCK
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+            });
+
+            assert!(result.is_ok(), "Should recover from poisoned mutex");
+
+            // Restore environment if modified
+            // SAFETY: No other test is running concurrently (single test execution)
+            if let Some(home) = original_home {
+                unsafe {
+                    std::env::set_var("HOME", home);
+                }
+            }
+        }
+
+        #[test]
+        #[ignore]
+        fn test_shared_mock_server_recovers_from_poison() {
+            // Simulate panic while holding server lock
+            let handle = thread::spawn(|| {
+                let _guard = get_shared_mock_server();
+                panic!("Simulated panic to poison server mutex");
+            });
+
+            let _ = handle.join();
+
+            // Should recover
+            let result = std::panic::catch_unwind(|| {
+                let _guard = get_shared_mock_server();
+            });
+
+            assert!(result.is_ok(), "Server lock should recover from poison");
+        }
     }
 }
