@@ -4,29 +4,10 @@
 //! not just thread boundaries. Uses counter-based verification
 //! to detect lost updates.
 
-use std::env;
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
-
-/// Get the path to a compiled example binary
-fn example_bin(name: &str) -> PathBuf {
-    let mut path = env::current_exe().expect("Failed to get current executable path");
-
-    // Navigate from target/debug/deps/test_binary to target/debug/examples/
-    path.pop(); // Remove test binary name
-    path.pop(); // Remove "deps"
-    path.push("examples");
-    path.push(name);
-
-    // Add .exe extension on Windows
-    if cfg!(target_os = "windows") {
-        path.set_extension("exe");
-    }
-
-    path
-}
+use typstlab_testkit::example_bin;
 
 #[test]
 fn test_counter_without_lock_exposes_race() {

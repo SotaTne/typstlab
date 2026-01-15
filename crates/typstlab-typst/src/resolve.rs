@@ -33,18 +33,28 @@ pub enum ResolveResult {
 
 /// Get the managed cache directory for Typst binaries
 ///
-/// Platform-specific paths:
-/// - macOS: ~/Library/Caches/typstlab/typst
-/// - Linux: ~/.cache/typstlab/typst
-/// - Windows: %LOCALAPPDATA%\typstlab\typst
-///
-/// Falls back to .tmp/ directory if cache_dir is unavailable (e.g., in containers)
+/// Priority order:
+/// 1. TYPSTLAB_CACHE_DIR environment variable (if set)
+/// 2. Platform-specific cache directory:
+///    - macOS: ~/Library/Caches/typstlab/typst
+///    - Linux: ~/.cache/typstlab/typst
+///    - Windows: %LOCALAPPDATA%\typstlab\typst
+/// 3. Fallback: .tmp/ directory if cache_dir is unavailable
 pub fn managed_cache_dir() -> Result<PathBuf> {
+    // 1. Check TYPSTLAB_CACHE_DIR environment variable first (test isolation + CI customization)
+    if let Ok(cache_override) = std::env::var("TYPSTLAB_CACHE_DIR") {
+        let cache_path = PathBuf::from(cache_override);
+        fs::create_dir_all(&cache_path).map_err(|e| {
+            TypstlabError::Generic(format!("Failed to create cache directory: {}", e))
+        })?;
+        return Ok(cache_path);
+    }
+
+    // 2. Platform-specific cache directory
     let base_cache = match dirs::cache_dir() {
         Some(dir) => dir,
         None => {
-            // Fallback: use .tmp in project workspace for development/testing
-            // In production, this typically won't be used as cache_dir() exists
+            // 3. Fallback: use .tmp in project workspace for development/testing
             let workspace = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
             workspace.join(".tmp").join(".typstlab-cache")
         }
@@ -171,6 +181,40 @@ fn check_cache(_version: &str) -> Option<TypstInfo> {
 // Resolution Strategies (to be implemented in Commit 5)
 // ============================================================================
 
+/// Resolve Typst from TYPST_BINARY environment variable
+///
+/// Priority 1: Direct binary path via TYPST_BINARY env var.
+/// Returns Some if env var is set and binary exists with matching version.
+///
+/// This is used for test isolation and explicit binary specification.
+fn resolve_from_env(version: &str) -> Result<Option<TypstInfo>> {
+    let binary_path = match std::env::var("TYPST_BINARY") {
+        Ok(path) => PathBuf::from(path),
+        Err(_) => return Ok(None),
+    };
+
+    // Check if binary exists
+    if !binary_path.exists() || !binary_path.is_file() {
+        return Ok(None);
+    }
+
+    // Validate version matches
+    match validate_version(&binary_path, version) {
+        Ok(true) => {
+            // Version matches
+            Ok(Some(TypstInfo {
+                version: version.to_string(),
+                source: TypstSource::System, // Treat as system since it's env-provided
+                path: binary_path,
+            }))
+        }
+        Ok(false) | Err(_) => {
+            // Version mismatch or error
+            Ok(None)
+        }
+    }
+}
+
 /// Resolve Typst from managed cache
 ///
 /// Checks {cache_dir}/{version}/typst for the binary
@@ -253,13 +297,26 @@ fn resolve_system(version: &str) -> Result<Option<TypstInfo>> {
 /// Resolve the Typst binary based on options
 ///
 /// Resolution priority:
-/// 1. Cache (if !force_refresh)
-/// 2. Managed cache
-/// 3. System PATH
-/// 4. NotFound
+/// 1. TYPST_BINARY environment variable (if set)
+/// 2. Cache (if !force_refresh)
+/// 3. Managed cache
+/// 4. System PATH
+/// 5. NotFound
 pub fn resolve_typst(options: ResolveOptions) -> Result<ResolveResult> {
     let version = &options.required_version;
     let mut searched_locations = Vec::new();
+
+    // Step 0: Check TYPST_BINARY environment variable (highest priority)
+    match resolve_from_env(version)? {
+        Some(info) => {
+            return Ok(ResolveResult::Resolved(info));
+        }
+        None => {
+            if std::env::var("TYPST_BINARY").is_ok() {
+                searched_locations.push("TYPST_BINARY env var".to_string());
+            }
+        }
+    }
 
     // Step 1: Check cache (fast path) if not force_refresh
     if !options.force_refresh

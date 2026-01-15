@@ -1,12 +1,12 @@
 //! Typst install command - download and install Typst from GitHub Releases
 
 use anyhow::Result;
-use std::path::PathBuf;
 use typstlab_core::{TypstlabError, project::Project};
 use typstlab_typst::install::{
     DownloadOptions, download_and_install, fetch_release_metadata,
     select_asset_for_current_platform,
 };
+use typstlab_typst::resolve::managed_cache_dir;
 
 use super::link;
 
@@ -39,8 +39,8 @@ pub fn execute_install(version: String, from_cargo: bool) -> Result<()> {
     let asset = select_asset_for_current_platform(&release)?;
     println!("Selected asset: {}", asset.name);
 
-    // 3. Determine cache directory
-    let cache_dir = determine_cache_dir()?;
+    // 3. Determine cache directory (respects TYPSTLAB_CACHE_DIR environment variable)
+    let cache_dir = managed_cache_dir()?;
     println!("Cache directory: {}", cache_dir.display());
 
     // 4. Download and install
@@ -94,45 +94,6 @@ pub fn execute_install(version: String, from_cargo: bool) -> Result<()> {
     println!("✓ Typst {} installation complete", version);
 
     Ok(())
-}
-
-/// Determine managed cache directory (per DESIGN.md 6.1.2)
-/// Uses OS default cache locations only, does not respect environment variables
-fn determine_cache_dir() -> Result<PathBuf> {
-    // Per DESIGN.md 6.1.2: Use OS default cache locations only
-    // Do NOT respect XDG_CACHE_HOME or other environment variables
-    let cache_base = {
-        #[cfg(target_os = "macos")]
-        {
-            dirs::home_dir()
-                .ok_or_else(|| {
-                    TypstlabError::Generic("Could not determine home directory".to_string())
-                })?
-                .join("Library")
-                .join("Caches")
-        }
-        #[cfg(target_os = "linux")]
-        {
-            dirs::home_dir()
-                .ok_or_else(|| {
-                    TypstlabError::Generic("Could not determine home directory".to_string())
-                })?
-                .join(".cache")
-        }
-        #[cfg(target_os = "windows")]
-        {
-            dirs::cache_dir().ok_or_else(|| {
-                TypstlabError::Generic("Could not determine cache directory".to_string())
-            })?
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            return Err(TypstlabError::Generic("Unsupported platform".to_string()).into());
-        }
-    };
-
-    let typstlab_cache = cache_base.join("typstlab").join("typst");
-    Ok(typstlab_cache)
 }
 
 /// Progress callback for download

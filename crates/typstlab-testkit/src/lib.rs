@@ -2,7 +2,12 @@
 //!
 //! This crate provides shared testing utilities used across the typstlab workspace.
 
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tempfile::TempDir;
+
+/// Static mutex to serialize tests that modify environment variables
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// Creates a temporary directory within `.tmp/` at the project root
 ///
@@ -51,6 +56,170 @@ pub fn try_temp_dir_in_workspace() -> std::io::Result<TempDir> {
     let tmp_base = workspace_root.join(".tmp");
     std::fs::create_dir_all(&tmp_base)?;
     TempDir::new_in(&tmp_base)
+}
+
+/// Run a test with isolated typst environment
+///
+/// This helper provides complete environment isolation for tests that need to control
+/// typst binary resolution. It:
+/// 1. Creates an isolated HOME directory
+/// 2. Creates an isolated cache directory
+/// 3. Controls TYPST_BINARY environment variable
+/// 4. Prevents tests from interfering with each other using a Mutex
+///
+/// # Arguments
+///
+/// * `typst_binary` - Optional path to a typst binary. If `None`, no typst will be available.
+/// * `f` - Test closure that receives the cache directory path
+///
+/// # Returns
+///
+/// The result returned by the test closure
+///
+/// # Examples
+///
+/// ## Test with typst NOT found
+///
+/// ```no_run
+/// use typstlab_testkit::with_isolated_typst_env;
+/// use std::process::Command;
+///
+/// // Example test function (not executed in doctest)
+/// fn test_typst_not_found() {
+///     with_isolated_typst_env(None, |_cache| {
+///         // In this test, typst is NOT available
+///         // Neither in cache, nor via TYPST_BINARY, nor in PATH
+///         let result = Command::new("typstlab")
+///             .arg("sync")
+///             .status();
+///         // Should fail because typst not found
+///     });
+/// }
+/// ```
+///
+/// ## Test with specific typst binary
+///
+/// ```no_run
+/// use typstlab_testkit::with_isolated_typst_env;
+/// use std::path::PathBuf;
+///
+/// // Example test function (not executed in doctest)
+/// fn test_with_specific_typst() {
+///     let typst_path = PathBuf::from("/usr/local/bin/typst");
+///     with_isolated_typst_env(Some(&typst_path), |_cache| {
+///         // In this test, TYPST_BINARY points to /usr/local/bin/typst
+///         // typstlab will use this binary
+///     });
+/// }
+/// ```
+pub fn with_isolated_typst_env<F, R>(typst_binary: Option<&Path>, f: F) -> R
+where
+    F: FnOnce(&Path) -> R,
+{
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    // Save original environment (for restoration)
+    let original_home = std::env::var("HOME").ok();
+    let original_cache_dir = std::env::var("TYPSTLAB_CACHE_DIR").ok();
+    let original_typst_binary = std::env::var("TYPST_BINARY").ok();
+
+    // Create isolated directories
+    let fake_home = TempDir::new().unwrap();
+    let fake_cache = fake_home.path().join(".cache/typstlab");
+    std::fs::create_dir_all(&fake_cache).unwrap();
+
+    // Set environment variables for COMPLETE isolation
+    // SAFETY: We hold ENV_LOCK, ensuring no other test is modifying env vars concurrently.
+    // Environment variable modification is inherently unsafe in multi-threaded contexts,
+    // but the mutex guarantees exclusive access, making this safe.
+    unsafe {
+        std::env::set_var("HOME", fake_home.path());
+        std::env::set_var("TYPSTLAB_CACHE_DIR", &fake_cache);
+
+        if let Some(binary_path) = typst_binary {
+            std::env::set_var("TYPST_BINARY", binary_path);
+        } else {
+            // Ensure TYPST_BINARY is not set (test "not found" scenario)
+            std::env::remove_var("TYPST_BINARY");
+        }
+    }
+
+    // Run test
+    let result = f(fake_cache.as_path());
+
+    // Restore environment (important for test isolation)
+    // SAFETY: We still hold ENV_LOCK, ensuring exclusive access to env vars.
+    unsafe {
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        if let Some(cache_dir) = original_cache_dir {
+            std::env::set_var("TYPSTLAB_CACHE_DIR", cache_dir);
+        } else {
+            std::env::remove_var("TYPSTLAB_CACHE_DIR");
+        }
+
+        if let Some(binary) = original_typst_binary {
+            std::env::set_var("TYPST_BINARY", binary);
+        } else {
+            std::env::remove_var("TYPST_BINARY");
+        }
+    }
+
+    result
+}
+
+/// Get the path to a compiled example binary
+///
+/// This helper locates example binaries compiled by cargo test.
+/// Example binaries are in the `target/debug/examples/` directory.
+///
+/// # Arguments
+///
+/// * `name` - Name of the example binary (without .exe extension)
+///
+/// # Returns
+///
+/// PathBuf to the compiled example binary
+///
+/// # Panics
+///
+/// Panics if unable to determine the current executable path
+///
+/// # Examples
+///
+/// ```no_run
+/// use typstlab_testkit::example_bin;
+/// use std::process::Command;
+///
+/// // Example test function (not executed in doctest)
+/// fn test_with_example() {
+///     let status = Command::new(example_bin("counter_child"))
+///         .arg("counter.txt")
+///         .arg("10")
+///         .status()
+///         .unwrap();
+///     assert!(status.success());
+/// }
+/// ```
+pub fn example_bin(name: &str) -> PathBuf {
+    let mut path = std::env::current_exe().expect("Failed to get current executable path");
+
+    // Navigate from target/debug/deps/test_binary to target/debug/examples/
+    path.pop(); // Remove test binary name
+    path.pop(); // Remove "deps"
+    path.push("examples");
+    path.push(name);
+
+    // Add .exe extension on Windows
+    if cfg!(target_os = "windows") {
+        path.set_extension("exe");
+    }
+
+    path
 }
 
 #[cfg(test)]
@@ -112,5 +281,159 @@ mod tests {
         let temp = result.unwrap();
         assert!(temp.path().exists());
         assert!(temp.path().to_string_lossy().contains(".tmp"));
+    }
+
+    #[test]
+    fn test_with_isolated_typst_env_creates_fake_home() {
+        with_isolated_typst_env(None, |cache_dir| {
+            // Verify cache directory exists
+            assert!(cache_dir.exists(), "Cache directory should exist");
+            assert!(
+                cache_dir.to_string_lossy().contains(".cache"),
+                "Cache should be in .cache directory"
+            );
+
+            // Verify HOME environment variable is set to fake home
+            let home = std::env::var("HOME").unwrap();
+            assert!(
+                home.contains("tmp"),
+                "HOME should point to temporary directory"
+            );
+
+            // Verify TYPSTLAB_CACHE_DIR is set
+            let cache_env = std::env::var("TYPSTLAB_CACHE_DIR").unwrap();
+            assert_eq!(
+                cache_env,
+                cache_dir.to_string_lossy(),
+                "TYPSTLAB_CACHE_DIR should match provided cache_dir"
+            );
+
+            // Verify TYPST_BINARY is not set (since we passed None)
+            assert!(
+                std::env::var("TYPST_BINARY").is_err(),
+                "TYPST_BINARY should not be set when None is passed"
+            );
+        });
+    }
+
+    #[test]
+    fn test_with_isolated_typst_env_sets_typst_binary() {
+        let fake_binary = PathBuf::from("/fake/typst");
+
+        with_isolated_typst_env(Some(&fake_binary), |_cache| {
+            // Verify TYPST_BINARY is set to the fake binary
+            let binary_env = std::env::var("TYPST_BINARY").unwrap();
+            assert_eq!(
+                binary_env,
+                fake_binary.to_string_lossy(),
+                "TYPST_BINARY should be set to provided path"
+            );
+        });
+    }
+
+    #[test]
+    fn test_with_isolated_typst_env_restores_original_env() {
+        // Save original environment
+        let original_home = std::env::var("HOME").ok();
+        let original_cache = std::env::var("TYPSTLAB_CACHE_DIR").ok();
+        let original_binary = std::env::var("TYPST_BINARY").ok();
+
+        // Run isolated environment
+        with_isolated_typst_env(None, |_cache| {
+            // Environment is modified inside
+        });
+
+        // Verify environment is restored
+        assert_eq!(
+            std::env::var("HOME").ok(),
+            original_home,
+            "HOME should be restored"
+        );
+        assert_eq!(
+            std::env::var("TYPSTLAB_CACHE_DIR").ok(),
+            original_cache,
+            "TYPSTLAB_CACHE_DIR should be restored"
+        );
+        assert_eq!(
+            std::env::var("TYPST_BINARY").ok(),
+            original_binary,
+            "TYPST_BINARY should be restored"
+        );
+    }
+
+    #[test]
+    fn test_with_isolated_typst_env_serializes_access() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::thread;
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone1 = Arc::clone(&counter);
+        let counter_clone2 = Arc::clone(&counter);
+
+        let handle1 = thread::spawn(move || {
+            with_isolated_typst_env(None, |_cache| {
+                let current = counter_clone1.fetch_add(1, Ordering::SeqCst);
+                // If serialization works, current should always be 0
+                // because no other thread can be inside at the same time
+                thread::sleep(std::time::Duration::from_millis(10));
+                assert_eq!(
+                    current, 0,
+                    "Thread 1: Should be the only thread inside (serialization)"
+                );
+                counter_clone1.fetch_sub(1, Ordering::SeqCst);
+            });
+        });
+
+        let handle2 = thread::spawn(move || {
+            with_isolated_typst_env(None, |_cache| {
+                let current = counter_clone2.fetch_add(1, Ordering::SeqCst);
+                // If serialization works, current should always be 0
+                thread::sleep(std::time::Duration::from_millis(10));
+                assert_eq!(
+                    current, 0,
+                    "Thread 2: Should be the only thread inside (serialization)"
+                );
+                counter_clone2.fetch_sub(1, Ordering::SeqCst);
+            });
+        });
+
+        handle1.join().unwrap();
+        handle2.join().unwrap();
+
+        // Final counter should be 0 (all increments/decrements balanced)
+        assert_eq!(counter.load(Ordering::SeqCst), 0, "Counter should be 0");
+    }
+
+    #[test]
+    fn test_example_bin_returns_correct_path() {
+        let path = example_bin("test_example");
+
+        // Verify path contains "examples" directory
+        assert!(
+            path.to_string_lossy().contains("examples"),
+            "Path should contain 'examples' directory"
+        );
+
+        // Verify path ends with the binary name
+        let file_name = path.file_name().unwrap().to_string_lossy();
+        assert!(
+            file_name.starts_with("test_example"),
+            "File name should start with 'test_example'"
+        );
+
+        // Verify .exe extension on Windows
+        #[cfg(target_os = "windows")]
+        assert!(
+            file_name.ends_with(".exe"),
+            "File should have .exe extension on Windows"
+        );
+
+        // Verify no .exe extension on Unix
+        #[cfg(not(target_os = "windows"))]
+        assert!(
+            !file_name.ends_with(".exe"),
+            "File should not have .exe extension on Unix"
+        );
     }
 }
