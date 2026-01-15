@@ -131,4 +131,8 @@ pub enum DocsError {
     /// Path traversal attempt detected
     #[error("Path traversal detected in archive entry")]
     PathTraversal,
+
+    /// File lock acquisition failed
+    #[error("Failed to acquire file lock: {0}")]
+    LockError(String),
 }
