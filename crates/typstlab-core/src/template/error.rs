@@ -32,6 +32,14 @@ pub enum TemplateError {
         /// The key that resolved to a table
         key: String,
     },
+
+    /// Template rendering timed out (malformed input protection)
+    Timeout {
+        /// Maximum allowed duration
+        max_duration: std::time::Duration,
+        /// Actual elapsed time
+        elapsed: std::time::Duration,
+    },
 }
 
 impl fmt::Display for TemplateError {
@@ -55,6 +63,17 @@ impl fmt::Display for TemplateError {
                     f,
                     "Table '{}' cannot be used directly in placeholder. Use nested keys like {}.field",
                     key, key
+                )
+            }
+            TemplateError::Timeout {
+                max_duration,
+                elapsed,
+            } => {
+                write!(
+                    f,
+                    "Template rendering timed out after {:.2}s (max: {:.2}s). Check for unclosed {{{{...}}}} or {{{{each}}}} blocks.",
+                    elapsed.as_secs_f64(),
+                    max_duration.as_secs_f64()
                 )
             }
         }
