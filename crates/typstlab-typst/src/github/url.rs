@@ -7,8 +7,12 @@ use url::Url;
 ///
 /// # Returns
 ///
-/// Base URL for github.com
+/// Base URL for github.com (or GITHUB_BASE_URL env var if set for testing)
 pub fn github_base_url() -> Result<Url, url::ParseError> {
+    // Allow override for testing with mock servers
+    if let Ok(base_url) = std::env::var("GITHUB_BASE_URL") {
+        return Url::parse(&base_url);
+    }
     Url::parse("https://github.com")
 }
 

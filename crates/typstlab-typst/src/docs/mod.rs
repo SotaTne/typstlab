@@ -62,19 +62,17 @@ pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usiz
 
     // Early exit if docs already exist (idempotency)
     if target_dir.exists() {
-        // Check if docs directory has content
-        if let Ok(entries) = fs::read_dir(target_dir) {
-            let file_count = entries.count();
-            if file_count > 0 {
-                // Docs already synced, return count
-                if verbose {
-                    eprintln!(
-                        "Documentation for Typst {} already synced ({} files)",
-                        version, file_count
-                    );
-                }
-                return Ok(file_count);
+        // Count files recursively (matching extract behavior which only counts files, not dirs)
+        let file_count = count_files_recursively(target_dir)?;
+        if file_count > 0 {
+            // Docs already synced, return count
+            if verbose {
+                eprintln!(
+                    "Documentation for Typst {} already synced ({} files)",
+                    version, file_count
+                );
             }
+            return Ok(file_count);
         }
     }
 
@@ -85,5 +83,22 @@ pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usiz
     let count = extract::extract_docs_directory(&bytes, target_dir, verbose)?;
 
     // Lock automatically released when _lock_guard is dropped
+    Ok(count)
+}
+
+/// Recursively count files (not directories) in a directory tree
+///
+/// This matches the behavior of extract_docs_directory() which only counts files.
+fn count_files_recursively(dir: &Path) -> Result<usize, DocsError> {
+    let mut count = 0;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            count += count_files_recursively(&path)?;
+        } else {
+            count += 1;
+        }
+    }
     Ok(count)
 }

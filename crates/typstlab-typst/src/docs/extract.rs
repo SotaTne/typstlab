@@ -67,7 +67,8 @@ fn extract_docs_entry(
 
     // Check if path is within docs/ directory
     // GitHub archive format: typst-{version}/docs/...
-    if components.len() < 2 {
+    // We need at least 3 components: typst-{version}/docs/filename
+    if components.len() < 3 {
         return Ok(None);
     }
 
@@ -81,7 +82,7 @@ fn extract_docs_entry(
     }
 
     // Security: Validate no path traversal in remaining components
-    for component in &components[1..] {
+    for component in &components[2..] {
         match component {
             Component::Normal(_) => continue,
             Component::ParentDir | Component::RootDir => {
@@ -91,19 +92,28 @@ fn extract_docs_entry(
         }
     }
 
-    // Extract file, removing the archive prefix
-    let relative_path: PathBuf = components[1..].iter().collect();
+    // Extract file, removing the archive prefix and docs/ directory
+    // Archive structure: typst-0.12.0/docs/index.html
+    // We want: target_dir/index.html
+    let relative_path: PathBuf = components[2..].iter().collect();
     let target_path = target_dir.join(&relative_path);
 
+    // Create parent directory first (needed for canonicalize check)
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
     // Ensure target path is still within target_dir (defense in depth)
-    let canonical_target = target_path
-        .canonicalize()
-        .unwrap_or_else(|_| target_path.clone());
+    // Now that parent exists, we can canonicalize it
+    let canonical_target_parent = target_path
+        .parent()
+        .and_then(|p| p.canonicalize().ok())
+        .unwrap_or_else(|| target_path.parent().unwrap_or(&target_path).to_path_buf());
     let canonical_base = target_dir
         .canonicalize()
         .unwrap_or_else(|_| target_dir.to_path_buf());
 
-    if !canonical_target.starts_with(&canonical_base) {
+    if !canonical_target_parent.starts_with(&canonical_base) {
         return Err(DocsError::PathTraversal);
     }
 
@@ -112,10 +122,7 @@ fn extract_docs_entry(
         fs::create_dir_all(&target_path)?;
         Ok(Some(0))
     } else {
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
+        // Parent already created above
         let mut output = fs::File::create(&target_path)?;
         let mut content = Vec::new();
         entry.read_to_end(&mut content)?;

@@ -7,7 +7,7 @@ use assert_cmd::cargo::CommandCargoExt;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
-use typstlab_testkit::temp_dir_in_workspace;
+use typstlab_testkit::{setup_test_typst, temp_dir_in_workspace, with_isolated_typst_env};
 
 /// Helper to create a minimal typstlab project
 fn create_test_project(root: &std::path::Path, typst_version: &str) {
@@ -81,352 +81,303 @@ fn create_main_file(paper_dir: &std::path::Path, path: &str, content: &str) {
 
 #[test]
 fn test_build_requires_project_root() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    // Don't create typstlab.toml - should fail
+        // Don't create typstlab.toml - should fail
 
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("paper1")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("project"));
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("paper1")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("project"));
+    });
 }
 
 #[test]
 fn test_build_requires_paper_id() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    // Should fail without --paper flag
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .assert()
-        .failure();
+        // Should fail without --paper flag
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .assert()
+            .failure();
+    });
 }
 
 #[test]
 fn test_build_paper_not_found() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    // Build nonexistent paper
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("nonexistent")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("not found").or(predicate::str::contains("nonexistent")));
+        // Build nonexistent paper
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("nonexistent")
+            .assert()
+            .failure()
+            .stderr(
+                predicate::str::contains("not found").or(predicate::str::contains("nonexistent")),
+            );
+    });
 }
 
 #[test]
 fn test_build_typst_not_resolved() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    let papers_dir = root.join("papers");
-    create_test_paper(&papers_dir, "paper1", None, None);
-    create_main_file(&papers_dir.join("paper1"), "main.typ", "= Test");
+        let papers_dir = root.join("papers");
+        create_test_paper(&papers_dir, "paper1", None, None);
+        create_main_file(&papers_dir.join("paper1"), "main.typ", "= Test");
 
-    // Don't link typst - exec_typst will try to find system typst
-    // If system typst is available, build will succeed
-    // If not available, build will fail
-    let result = Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("paper1")
-        .output()
-        .unwrap();
-
-    // Test passes if either:
-    // 1. Build succeeds (system typst available)
-    // 2. Build fails with "not resolved" error (no system typst)
-    if !result.status.success() {
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        assert!(
-            stderr.contains("not resolved") || stderr.contains("not found"),
-            "Expected 'not resolved' or 'not found' error, got: {}",
-            stderr
-        );
-    }
-    // If build succeeded, that's also OK (system typst was available)
+        // With environment isolation, typst is NOT available
+        // Build should fail with "not found" or "not resolved" error
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("paper1")
+            .assert()
+            .failure()
+            .stderr(
+                predicate::str::contains("not resolved").or(predicate::str::contains("not found")),
+            );
+    });
 }
 
 #[test]
 fn test_build_main_file_not_found() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    let papers_dir = root.join("papers");
-    create_test_paper(&papers_dir, "paper1", None, None);
-    // Don't create main.typ
+        let papers_dir = root.join("papers");
+        create_test_paper(&papers_dir, "paper1", None, None);
+        // Don't create main.typ
 
-    // Try to link first
-    let link_result = Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("typst")
-        .arg("link")
-        .output()
-        .unwrap();
+        // Install typst using setup_test_typst
+        let typstlab_bin =
+            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab_bin, root);
 
-    // Skip test if link failed
-    if !link_result.status.success() {
-        eprintln!("Skipping test: system typst not available");
-        return;
-    }
-
-    // Build should fail because main.typ doesn't exist
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("paper1")
-        .assert()
-        .failure()
-        .stderr(
-            predicate::str::contains("main.typ")
-                .or(predicate::str::contains("not found"))
-                .or(predicate::str::contains("does not exist")),
-        );
+        // Build should fail because main.typ doesn't exist
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("paper1")
+            .assert()
+            .failure()
+            .stderr(
+                predicate::str::contains("main.typ")
+                    .or(predicate::str::contains("not found"))
+                    .or(predicate::str::contains("does not exist")),
+            );
+    });
 }
 
 #[test]
 fn test_build_with_default_main_file() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    let papers_dir = root.join("papers");
-    create_test_paper(&papers_dir, "paper1", None, None);
-    create_main_file(&papers_dir.join("paper1"), "main.typ", "= Test Paper");
+        let papers_dir = root.join("papers");
+        create_test_paper(&papers_dir, "paper1", None, None);
+        create_main_file(&papers_dir.join("paper1"), "main.typ", "= Test Paper");
 
-    // Try to link first
-    let link_result = Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("typst")
-        .arg("link")
-        .output()
-        .unwrap();
+        // Install typst using setup_test_typst
+        let typstlab_bin =
+            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab_bin, root);
 
-    // Skip test if link failed
-    if !link_result.status.success() {
-        eprintln!("Skipping test: system typst not available");
-        return;
-    }
+        // Build should succeed
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("paper1")
+            .assert()
+            .success();
 
-    // Build should succeed
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("paper1")
-        .assert()
-        .success();
-
-    // Verify PDF created
-    let pdf_path = root.join("dist/paper1/paper1.pdf");
-    assert!(pdf_path.exists(), "PDF should be created at {:?}", pdf_path);
+        // Verify PDF created
+        let pdf_path = root.join("dist/paper1/paper1.pdf");
+        assert!(pdf_path.exists(), "PDF should be created at {:?}", pdf_path);
+    });
 }
 
 #[test]
 fn test_build_with_custom_main_file() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    let papers_dir = root.join("papers");
-    create_test_paper(&papers_dir, "paper1", Some("custom.typ"), None);
-    create_main_file(
-        &papers_dir.join("paper1"),
-        "custom.typ",
-        "= Custom Main File",
-    );
+        let papers_dir = root.join("papers");
+        create_test_paper(&papers_dir, "paper1", Some("custom.typ"), None);
+        create_main_file(
+            &papers_dir.join("paper1"),
+            "custom.typ",
+            "= Custom Main File",
+        );
 
-    // Try to link first
-    let link_result = Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("typst")
-        .arg("link")
-        .output()
-        .unwrap();
+        // Install typst using setup_test_typst
+        let typstlab_bin =
+            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab_bin, root);
 
-    // Skip test if link failed
-    if !link_result.status.success() {
-        eprintln!("Skipping test: system typst not available");
-        return;
-    }
+        // Build should succeed
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("paper1")
+            .assert()
+            .success();
 
-    // Build should succeed
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("paper1")
-        .assert()
-        .success();
-
-    // Verify PDF created
-    let pdf_path = root.join("dist/paper1/paper1.pdf");
-    assert!(pdf_path.exists(), "PDF should be created at {:?}", pdf_path);
+        // Verify PDF created
+        let pdf_path = root.join("dist/paper1/paper1.pdf");
+        assert!(pdf_path.exists(), "PDF should be created at {:?}", pdf_path);
+    });
 }
 
 #[test]
 fn test_build_with_root_option() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    let papers_dir = root.join("papers");
-    create_test_paper(&papers_dir, "paper1", Some("index.typ"), Some("src"));
+        let papers_dir = root.join("papers");
+        create_test_paper(&papers_dir, "paper1", Some("index.typ"), Some("src"));
 
-    // Create src directory and index.typ
-    let paper_dir = papers_dir.join("paper1");
-    fs::create_dir(paper_dir.join("src")).unwrap();
-    create_main_file(&paper_dir, "src/index.typ", "= Root Option Test");
+        // Create src directory and index.typ
+        let paper_dir = papers_dir.join("paper1");
+        fs::create_dir(paper_dir.join("src")).unwrap();
+        create_main_file(&paper_dir, "src/index.typ", "= Root Option Test");
 
-    // Try to link first
-    let link_result = Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("typst")
-        .arg("link")
-        .output()
-        .unwrap();
+        // Install typst using setup_test_typst
+        let typstlab_bin =
+            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab_bin, root);
 
-    // Skip test if link failed
-    if !link_result.status.success() {
-        eprintln!("Skipping test: system typst not available");
-        return;
-    }
+        // Build should succeed
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("paper1")
+            .assert()
+            .success();
 
-    // Build should succeed
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("paper1")
-        .assert()
-        .success();
-
-    // Verify PDF created
-    let pdf_path = root.join("dist/paper1/paper1.pdf");
-    assert!(pdf_path.exists(), "PDF should be created at {:?}", pdf_path);
+        // Verify PDF created
+        let pdf_path = root.join("dist/paper1/paper1.pdf");
+        assert!(pdf_path.exists(), "PDF should be created at {:?}", pdf_path);
+    });
 }
 
 #[test]
 fn test_build_root_dir_not_found() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    let papers_dir = root.join("papers");
-    create_test_paper(
-        &papers_dir,
-        "paper1",
-        Some("index.typ"),
-        Some("nonexistent"),
-    );
-    // Don't create the "nonexistent" directory
-
-    // Try to link first
-    let link_result = Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("typst")
-        .arg("link")
-        .output()
-        .unwrap();
-
-    // Skip test if link failed
-    if !link_result.status.success() {
-        eprintln!("Skipping test: system typst not available");
-        return;
-    }
-
-    // Build should fail because root dir doesn't exist
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("paper1")
-        .assert()
-        .failure()
-        .stderr(
-            predicate::str::contains("nonexistent")
-                .or(predicate::str::contains("not found"))
-                .or(predicate::str::contains("does not exist")),
+        let papers_dir = root.join("papers");
+        create_test_paper(
+            &papers_dir,
+            "paper1",
+            Some("index.typ"),
+            Some("nonexistent"),
         );
+        // Don't create the "nonexistent" directory
+
+        // Install typst using setup_test_typst
+        let typstlab_bin =
+            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab_bin, root);
+
+        // Build should fail because root dir doesn't exist
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("paper1")
+            .assert()
+            .failure()
+            .stderr(
+                predicate::str::contains("nonexistent")
+                    .or(predicate::str::contains("not found"))
+                    .or(predicate::str::contains("does not exist")),
+            );
+    });
 }
 
 #[test]
 fn test_build_with_full_flag() {
-    let temp = temp_dir_in_workspace();
-    let root = temp.path();
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
 
-    create_test_project(root, "0.12.0");
+        create_test_project(root, "0.12.0");
 
-    let papers_dir = root.join("papers");
-    create_test_paper(&papers_dir, "paper1", None, None);
-    create_main_file(&papers_dir.join("paper1"), "main.typ", "= Full Flag Test");
+        let papers_dir = root.join("papers");
+        create_test_paper(&papers_dir, "paper1", None, None);
+        create_main_file(&papers_dir.join("paper1"), "main.typ", "= Full Flag Test");
 
-    // Try to link first
-    let link_result = Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("typst")
-        .arg("link")
-        .output()
-        .unwrap();
+        // Install typst using setup_test_typst
+        let typstlab_bin =
+            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab_bin, root);
 
-    // Skip test if link failed
-    if !link_result.status.success() {
-        eprintln!("Skipping test: system typst not available");
-        return;
-    }
+        // Build with --full flag should succeed
+        Command::cargo_bin("typstlab")
+            .unwrap()
+            .current_dir(root)
+            .arg("build")
+            .arg("--paper")
+            .arg("paper1")
+            .arg("--full")
+            .assert()
+            .success();
 
-    // Build with --full flag should succeed
-    Command::cargo_bin("typstlab")
-        .unwrap()
-        .current_dir(root)
-        .arg("build")
-        .arg("--paper")
-        .arg("paper1")
-        .arg("--full")
-        .assert()
-        .success();
-
-    // Verify PDF created
-    let pdf_path = root.join("dist/paper1/paper1.pdf");
-    assert!(pdf_path.exists(), "PDF should be created at {:?}", pdf_path);
+        // Verify PDF created
+        let pdf_path = root.join("dist/paper1/paper1.pdf");
+        assert!(pdf_path.exists(), "PDF should be created at {:?}", pdf_path);
+    });
 }
