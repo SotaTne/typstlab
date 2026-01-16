@@ -3,6 +3,7 @@ pub mod config;
 pub mod error;
 pub mod lock;
 pub mod paper;
+pub mod path;
 pub mod project;
 pub mod state;
 pub mod status;
