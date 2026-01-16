@@ -1,5 +1,6 @@
 //! Project scaffold creation
 
+use crate::path::has_absolute_or_rooted_component;
 use crate::project::builtin_layouts;
 use anyhow::{bail, Result};
 use chrono::Local;
@@ -36,7 +37,7 @@ pub fn validate_name(name: &str) -> Result<()> {
 
     let path = Path::new(name);
 
-    if path.is_absolute() {
+    if has_absolute_or_rooted_component(path) {
         bail!("Name cannot be an absolute path: '{}'", name);
     }
 
@@ -53,7 +54,7 @@ fn validate_path_components(path: &Path, name: &str) -> Result<()> {
         match component {
             Component::Normal(_) => normal_count += 1,
             Component::Prefix(_) => bail!("Name cannot contain drive prefix: '{}'", name),
-            Component::RootDir => bail!("Name cannot contain root directory: '{}'", name),
+            Component::RootDir => bail!("Name cannot be an absolute path: '{}'", name),
             Component::CurDir => bail!("Name cannot contain current directory (.): '{}'", name),
             Component::ParentDir => {
                 bail!("Name cannot contain parent directory (..): '{}'", name)

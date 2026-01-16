@@ -5,6 +5,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use typstlab_core::error::{Result as CoreResult, TypstlabError};
+use typstlab_core::path::has_absolute_or_rooted_component;
 use walkdir::WalkDir;
 
 // ============================================================================
@@ -172,8 +173,8 @@ fn validate_rules_path(
 
     let requested = requested_path.as_ref();
 
-    // 1. Check for absolute paths
-    if requested.is_absolute() {
+    // 1. Check for absolute or rooted paths
+    if has_absolute_or_rooted_component(requested) {
         return Err(TypstlabError::ProjectPathEscape {
             path: requested.to_path_buf(),
         });
