@@ -1,0 +1,17 @@
+# Clippy configuration for typstlab
+#
+# This file configures clippy lints to prevent common mistakes
+# and enforce project coding standards.
+
+# Disallow direct use of Path::is_absolute() in validation code
+#
+# Reason: Platform-dependent semantics cause security issues
+# - Unix: Path::new("/tmp").is_absolute() → true
+# - Windows: Path::new("/tmp").is_absolute() → false
+#
+# Use typstlab_core::path::has_absolute_or_rooted_component() instead.
+#
+# See: AGENTS.md section 3.6 "Path Validation and Security"
+disallowed-methods = [
+    { path = "std::path::Path::is_absolute", reason = "Use typstlab_core::path::has_absolute_or_rooted_component instead. See AGENTS.md section 3.6 for details on platform-dependent semantics." },
+]
