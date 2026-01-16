@@ -379,6 +379,78 @@ fn test_cross_platform_path_handling() {
 }
 ```
 
+#### Path Validation and Security
+
+**CRITICAL: Never use `Path::is_absolute()` directly for security validation.**
+
+##### The Platform Semantics Problem
+
+Rust's `std::path::Path::is_absolute()` has hidden platform-dependent behavior:
+
+- Unix: `Path::new("/tmp").is_absolute()` → `true`
+- Windows: `Path::new("/tmp").is_absolute()` → `false` (!)
+
+**Result:** Security checks pass on macOS, fail silently on Windows.
+
+**Real-world impact:** Bug discovered in Phase 2 of architectural review:
+
+- Tests passed on macOS: `/tmp/malicious` caught by `is_absolute()`
+- Tests failed on Windows CI: `/tmp/malicious` NOT caught by `is_absolute()`
+- Error messages differed between platforms ("absolute path" vs "root directory")
+
+##### Required Abstraction
+
+**ALWAYS use `typstlab_core::path` utilities:**
+
+```rust
+use typstlab_core::path::has_absolute_or_rooted_component;
+
+// ✅ Good: Cross-platform
+if has_absolute_or_rooted_component(path) {
+    bail!("Path cannot be absolute or rooted");
+}
+
+// ❌ Bad: Platform-dependent
+if path.is_absolute() {
+    bail!("Path cannot be absolute");
+}
+```
+
+**Why this works:**
+
+- Component-based analysis (universal across platforms)
+- Detects both Unix absolute (`/tmp`) AND Windows rooted (`/tmp`) paths
+- Same behavior on all platforms
+
+**Testing strategy:**
+
+```rust
+#[test]
+fn test_windows_rooted_detected_on_all_platforms() {
+    // THE CRITICAL TEST: Must pass on macOS to catch Windows bugs
+    let path = Path::new("/tmp");
+
+    // Verify Component structure (universal)
+    let components: Vec<Component> = path.components().collect();
+    assert!(matches!(components[0], Component::RootDir));
+
+    // Verify abstraction catches it (universal)
+    assert!(has_absolute_or_rooted_component(path));
+}
+```
+
+##### Code Review Checklist Addition
+
+When reviewing path validation code:
+
+- [ ] No direct use of `Path::is_absolute()` for security checks
+- [ ] Use `has_absolute_or_rooted_component()` for validation
+- [ ] Component-based tests verify Windows rooted paths
+- [ ] Error messages mention "absolute or rooted" (not just "absolute")
+- [ ] Tests include `/tmp` case (critical for Windows compatibility)
+
+**See also:** `crates/typstlab-core/src/path/mod.rs` for implementation details.
+
 ---
 
 ### 4. Keep Files Readable and Focused
