@@ -68,6 +68,12 @@ use std::path::{Component, Path};
 ///
 /// **Note**: Windows absolute paths with drive letters (e.g., `C:\tmp`)
 /// are only testable on Windows due to platform-specific semantics.
+///
+/// # Internal Implementation
+///
+/// This function uses `is_absolute()` internally as a fast path optimization.
+/// External code should use this abstraction instead of calling `is_absolute()` directly.
+#[allow(clippy::disallowed_methods)]
 pub fn has_absolute_or_rooted_component(path: &Path) -> bool {
     // Fast path: Platform-specific absolute check
     if path.is_absolute() {
