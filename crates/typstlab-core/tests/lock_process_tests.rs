@@ -36,10 +36,11 @@ use typstlab_testkit::example_bin;
 ///
 /// # See Also
 ///
-/// - `test_cross_process_exclusive_locking` - Proves only one process
-///   holds lock at a time
+/// - `test_cross_process_exclusive_locking` - Verifies all processes
+///   complete successfully without deadlocks
 /// - `crates/typstlab-core/src/lock/tests.rs` - Thread-level lock tests
-/// - AGENTS.md §1 - Testing philosophy (positive verification)
+/// - Positive verification is sufficient here because negative tests
+///   (proving "no locks fails") are unreliable with file I/O timing
 ///
 /// # Decision History
 ///
