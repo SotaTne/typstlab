@@ -11,6 +11,22 @@ const INITIAL_RETRY_DELAY: Duration = Duration::from_millis(10);
 const MAX_RETRY_DELAY: Duration = Duration::from_millis(500);
 const PROGRESS_MESSAGE_THRESHOLD: Duration = Duration::from_secs(2);
 
+/// Check if an I/O error indicates the lock is held and should be retried
+fn should_retry_lock(error: &std::io::Error) -> bool {
+    // Unix: WouldBlock when lock is held
+    if error.kind() == std::io::ErrorKind::WouldBlock {
+        return true;
+    }
+
+    // Windows: ERROR_LOCK_VIOLATION (code 33) when lock is held
+    #[cfg(target_os = "windows")]
+    if error.raw_os_error() == Some(33) {
+        return true;
+    }
+
+    false
+}
+
 /// Attempts to acquire an exclusive lock with retry and timeout
 pub(crate) fn acquire_with_retry(
     lock_path: &Path,
@@ -52,8 +68,8 @@ pub(crate) fn acquire_with_retry(
                     path: lock_path.to_path_buf(),
                 });
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // Lock is held by another process, retry
+            Err(e) if should_retry_lock(&e) => {
+                // Lock is held by another process (Unix WouldBlock or Windows ERROR_LOCK_VIOLATION)
                 let elapsed = start.elapsed();
 
                 // Check timeout before sleeping
