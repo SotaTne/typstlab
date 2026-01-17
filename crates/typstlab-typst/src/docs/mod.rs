@@ -2,7 +2,6 @@
 
 pub mod download;
 pub mod download_json;
-pub mod extract;
 pub mod generate;
 pub mod html_to_md;
 pub mod schema;
@@ -12,28 +11,31 @@ use std::path::Path;
 use std::time::Duration;
 
 // Re-exports
-pub use download::{DocsError, MAX_DOCS_SIZE, build_docs_archive_url, download_docs_archive};
-pub use extract::extract_docs_directory;
+pub use download::{DocsError, MAX_DOCS_SIZE};
 
-/// High-level API: Download and extract Typst documentation
+/// High-level API: Download and generate Typst documentation
+///
+/// Downloads docs.json from typst-community/dev-builds and generates
+/// hierarchical Markdown files for LLM consumption.
 ///
 /// # Arguments
 ///
 /// * `version` - Typst version (e.g., "0.12.0")
-/// * `target_dir` - Directory to extract docs to
+/// * `target_dir` - Directory to write Markdown files to
 /// * `verbose` - Enable verbose output
 ///
 /// # Returns
 ///
-/// Number of files extracted
+/// Number of files generated
 ///
 /// # Errors
 ///
 /// Returns error if:
 /// - URL construction fails
 /// - Download fails
-/// - Archive extraction fails
-/// - No documentation files found
+/// - JSON parsing fails
+/// - Schema validation fails
+/// - Markdown generation fails
 ///
 /// # Example
 ///
@@ -41,7 +43,7 @@ pub use extract::extract_docs_directory;
 /// # use typstlab_typst::docs;
 /// # use std::path::Path;
 /// let count = docs::sync_docs("0.12.0", Path::new(".typstlab/kb/typst/docs"), false).unwrap();
-/// println!("Extracted {} files", count);
+/// println!("Generated {} files", count);
 /// ```
 pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usize, DocsError> {
     // Prepare lock path (.typstlab/kb/.lock)
@@ -66,7 +68,7 @@ pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usiz
 
     // Early exit if docs already exist (idempotency)
     if target_dir.exists() {
-        // Count files recursively (matching extract behavior which only counts files, not dirs)
+        // Count files recursively (matching generate behavior which only counts files, not dirs)
         let file_count = count_files_recursively(target_dir)?;
         if file_count > 0 {
             // Docs already synced, return count
@@ -80,11 +82,22 @@ pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usiz
         }
     }
 
-    // Download archive
-    let bytes = download::download_docs_archive(version, verbose)?;
+    // Download docs.json
+    let json_bytes = download_json::download_docs_json(version, verbose)?;
 
-    // Extract docs/
-    let count = extract::extract_docs_directory(&bytes, target_dir, verbose)?;
+    // Parse JSON
+    let entries: Vec<schema::DocsEntry> = serde_json::from_slice(&json_bytes)?;
+
+    if verbose {
+        eprintln!("Parsed {} top-level documentation entries", entries.len());
+    }
+
+    // Generate Markdown files
+    let count = generate::generate_markdown_files(&entries, target_dir, verbose)?;
+
+    if verbose {
+        eprintln!("Generated {} documentation files", count);
+    }
 
     // Lock automatically released when _lock_guard is dropped
     Ok(count)
@@ -111,19 +124,19 @@ fn count_files_recursively(dir: &Path) -> Result<usize, DocsError> {
 pub mod test_helpers {
     use std::path::PathBuf;
 
-    /// Load docs archive from fixtures
+    /// Load docs.json from fixtures
     ///
-    /// Reads the pre-downloaded typst-0.12.0.tar.gz archive from project fixtures.
-    /// This archive contains the actual Typst documentation.
+    /// Reads the docs.json file from project fixtures.
+    /// This file contains the actual Typst documentation in JSON format.
     ///
     /// # Returns
     ///
-    /// Binary content of the docs archive
+    /// Binary content of docs.json
     ///
     /// # Panics
     ///
     /// Panics if the fixture file cannot be read
-    pub fn load_docs_archive_from_fixtures() -> Vec<u8> {
+    pub fn load_docs_json_from_fixtures() -> Vec<u8> {
         let manifest_dir =
             std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR should be set");
         let fixtures_path = PathBuf::from(manifest_dir)
@@ -134,18 +147,18 @@ pub mod test_helpers {
             .join("fixtures")
             .join("typst")
             .join("v0.12.0")
-            .join("typst-0.12.0.tar.gz");
+            .join("docs.json");
 
-        std::fs::read(&fixtures_path).expect("Failed to read typst-0.12.0.tar.gz from fixtures")
+        std::fs::read(&fixtures_path).expect("Failed to read docs.json from fixtures")
     }
 
-    /// Create a mock GitHub server with release archive response
+    /// Create a mock GitHub server with docs.json response
     ///
     /// # Arguments
     ///
     /// * `server` - mockito Server instance
     /// * `version` - Typst version (e.g., "0.12.0")
-    /// * `asset_bytes` - Binary content of asset
+    /// * `json_bytes` - Binary content of docs.json
     ///
     /// # Returns
     ///
@@ -158,24 +171,28 @@ pub mod test_helpers {
     /// use typstlab_typst::docs::test_helpers;
     ///
     /// let mut server = Server::new();
-    /// let asset_bytes = test_helpers::load_docs_archive_from_fixtures();
-    /// let mock = test_helpers::mock_github_docs_release(&mut server, "0.12.0", &asset_bytes)
+    /// let json_bytes = test_helpers::load_docs_json_from_fixtures();
+    /// let mock = test_helpers::mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
     ///     .expect(1)
     ///     .create();
     /// ```
-    pub fn mock_github_docs_release(
+    pub fn mock_github_docs_json(
         server: &mut mockito::Server,
         version: &str,
-        asset_bytes: &[u8],
+        json_bytes: &[u8],
     ) -> mockito::Mock {
         server
             .mock(
                 "GET",
-                format!("/typst/typst/archive/refs/tags/v{}.tar.gz", version).as_str(),
+                format!(
+                    "/typst-community/dev-builds/releases/download/v{}/docs.json",
+                    version
+                )
+                .as_str(),
             )
             .with_status(200)
-            .with_header("content-type", "application/gzip")
-            .with_body(asset_bytes)
+            .with_header("content-type", "application/json")
+            .with_body(json_bytes)
     }
 
     /// Set GitHub base URL to mock server for testing

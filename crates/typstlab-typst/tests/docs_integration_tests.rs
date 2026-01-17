@@ -3,41 +3,6 @@
 use typstlab_typst::{docs, github};
 
 #[test]
-fn test_url_construction_safety() {
-    use docs::build_docs_archive_url;
-
-    // Malicious version should be safely encoded
-    let url = build_docs_archive_url("../../../etc/passwd").unwrap();
-    // The ../ should be URL-encoded, preventing path traversal
-    assert!(
-        url.as_str().contains("%2E%2E%2F") || url.as_str().contains("..%2F"),
-        "Path traversal characters should be encoded"
-    );
-    assert!(
-        url.as_str().starts_with("https://github.com/typst/typst/"),
-        "URL should still point to typst repo"
-    );
-}
-
-#[test]
-fn test_url_special_characters_safety() {
-    use docs::build_docs_archive_url;
-
-    // Special characters should be encoded
-    let url = build_docs_archive_url("version with spaces").unwrap();
-    // Spaces should be percent-encoded
-    assert!(
-        url.as_str().contains("%20"),
-        "Spaces should be percent-encoded as %20"
-    );
-    // URL should still be valid and point to correct repo
-    assert!(
-        url.as_str().starts_with("https://github.com/typst/typst/"),
-        "URL should point to typst repo"
-    );
-}
-
-#[test]
 fn test_github_module_client_construction() {
     // Verify github module can be used independently
     let client = github::build_default_client();
@@ -82,14 +47,6 @@ fn test_github_url_path_segments_safety() {
         url_str.contains("%2E%2E") || url_str.starts_with("https://github.com/typst/"),
         "Path traversal should be prevented by encoding"
     );
-}
-
-#[test]
-fn test_docs_url_construction_consistency() {
-    // Verify docs module uses github module correctly
-    let docs_url = docs::build_docs_archive_url("0.12.0").unwrap();
-    let expected = "https://github.com/typst/typst/archive/refs/tags/v0.12.0.tar.gz";
-    assert_eq!(docs_url.as_str(), expected);
 }
 
 #[test]
