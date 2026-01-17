@@ -3,6 +3,8 @@
 //! Converts parsed docs.json structure to hierarchical Markdown files.
 
 use super::html_to_md;
+use super::render_bodies;
+use super::render_func;
 use super::schema::{DocsEntry, SchemaError};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -142,36 +144,107 @@ fn route_to_filepath(target_dir: &Path, route: &str) -> Result<PathBuf, Generate
 fn entry_to_markdown(entry: &DocsEntry) -> Result<String, GenerateError> {
     let mut markdown = String::new();
 
-    // Title
-    markdown.push_str(&format!("# {}\n\n", entry.title));
-
-    // Description
+    // YAML Frontmatter
     if let Some(desc) = &entry.description {
-        markdown.push_str(desc);
-        markdown.push_str("\n\n");
+        markdown.push_str("---\n");
+        markdown.push_str("description: |\n");
+        // Indent each line with 2 spaces for YAML block scalar
+        for line in desc.lines() {
+            markdown.push_str("  ");
+            markdown.push_str(line);
+            markdown.push('\n');
+        }
+        markdown.push_str("---\n\n");
     }
 
-    // Body content
+    // Title (AFTER frontmatter)
+    markdown.push_str(&format!("# {}\n\n", entry.title));
+
+    // Body content (with body kind routing)
     if let Some(body) = &entry.body {
-        if body.is_html() {
-            // HTML content: convert to Markdown
-            let html = body.as_html()?;
-            let converted = html_to_md::convert(html)?;
-            markdown.push_str(&converted);
-            markdown.push_str("\n\n");
-        } else if body.is_definition() {
-            // Function/type definition: placeholder for now
-            // TODO: Implement full function definition formatting
-            markdown.push_str("## Definition\n\n");
-            markdown.push_str("*Function definition rendering not yet implemented*\n\n");
-            markdown.push_str(&format!(
-                "```json\n{}\n```\n\n",
-                serde_json::to_string_pretty(&body.content)?
-            ));
+        match body.kind.as_str() {
+            "html" => {
+                // HTML content: convert to Markdown
+                let html = body.as_html()?;
+                let converted = html_to_md::convert(html)?;
+                // Remove duplicate h1 if it matches title
+                let cleaned = remove_duplicate_heading(&converted, &entry.title);
+                markdown.push_str(&cleaned);
+                markdown.push_str("\n\n");
+            }
+            "func" => {
+                // Function definition: render with specialized function
+                let func_md = render_func::render_func_body(&body.content)?;
+                markdown.push_str(&func_md);
+                markdown.push_str("\n\n");
+            }
+            "type" => {
+                // Type definition: render with specialized function
+                let type_md = render_bodies::render_type_body(&body.content)?;
+                markdown.push_str(&type_md);
+                markdown.push_str("\n\n");
+            }
+            "category" => {
+                // Category listing: render with specialized function
+                let cat_md = render_bodies::render_category_body(&body.content)?;
+                markdown.push_str(&cat_md);
+                markdown.push_str("\n\n");
+            }
+            "group" => {
+                // Function group: render with specialized function
+                let group_md = render_bodies::render_group_body(&body.content)?;
+                markdown.push_str(&group_md);
+                markdown.push_str("\n\n");
+            }
+            "symbols" => {
+                // Symbol table: render with specialized function
+                let sym_md = render_bodies::render_symbols_body(&body.content)?;
+                markdown.push_str(&sym_md);
+                markdown.push_str("\n\n");
+            }
+            _ => {
+                // Unknown kind: render warning comment
+                markdown.push_str(&format!("<!-- Unknown body kind: {} -->\n\n", body.kind));
+            }
         }
     }
 
     Ok(markdown)
+}
+
+/// Remove duplicate h1 heading if it matches the title
+///
+/// Checks if the first non-empty line is an h1 heading that matches the title.
+/// If so, removes it and any following empty lines.
+fn remove_duplicate_heading(content: &str, title: &str) -> String {
+    let title_normalized = title.trim().to_lowercase();
+    let lines: Vec<&str> = content.lines().collect();
+
+    // Check if first non-empty line is h1 matching title
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Check for h1 (starts with # but not ##)
+        if trimmed.starts_with("# ") && !trimmed.starts_with("## ") {
+            let heading_text = trimmed[2..].trim().to_lowercase();
+            if heading_text == title_normalized {
+                // Skip this line and following empty lines
+                let mut skip_until = i + 1;
+                while skip_until < lines.len() && lines[skip_until].trim().is_empty() {
+                    skip_until += 1;
+                }
+                return lines[skip_until..].join("\n");
+            }
+        }
+
+        // Non-empty, non-matching line found - no duplicate
+        break;
+    }
+
+    content.to_string()
 }
 
 /// Markdown generation errors
@@ -311,5 +384,156 @@ mod tests {
 
         let result = generate_markdown_files(&[entry], temp.path(), false);
         assert!(result.is_err());
+    }
+
+    /// Test: YAML frontmatter generation from fixture
+    #[test]
+    fn test_yaml_frontmatter_from_fixture() {
+        // Load fixture JSON
+        let fixture_json = include_str!("../../../../fixtures/typst/v0.12.0/overview.json");
+        let entry: DocsEntry =
+            serde_json::from_str(fixture_json).expect("Failed to parse overview.json");
+
+        // Generate Markdown
+        let result = entry_to_markdown(&entry).expect("Failed to generate markdown");
+
+        // Load expected output
+        let expected = include_str!("../../../../fixtures/typst/v0.12.0/overview.md");
+
+        // Compare (trim whitespace for comparison)
+        assert_eq!(
+            result.trim(),
+            expected.trim(),
+            "Generated markdown should match expected output"
+        );
+
+        // Verify YAML frontmatter present
+        assert!(
+            result.starts_with("---\n"),
+            "Should start with YAML frontmatter"
+        );
+        assert!(
+            result.contains("description: |"),
+            "Should have description field"
+        );
+
+        // Verify no duplicate h1
+        let h1_count = result.matches("\n# ").count();
+        assert_eq!(h1_count, 1, "Should have exactly one h1 heading");
+    }
+
+    /// Test: Duplicate heading removal
+    #[test]
+    fn test_duplicate_heading_removal() {
+        let content = "# Overview\n\nSome content...";
+        let title = "Overview";
+
+        let result = remove_duplicate_heading(content, title);
+
+        assert!(
+            !result.starts_with("# Overview"),
+            "Should remove duplicate h1"
+        );
+        assert!(
+            result.starts_with("Some content..."),
+            "Should start with actual content"
+        );
+    }
+
+    /// Test: Duplicate heading removal (case insensitive)
+    #[test]
+    fn test_duplicate_heading_removal_case_insensitive() {
+        let content = "# overview\n\nSome content...";
+        let title = "Overview";
+
+        let result = remove_duplicate_heading(content, title);
+
+        assert!(
+            !result.starts_with("# overview"),
+            "Should remove duplicate h1 (case insensitive)"
+        );
+        assert!(
+            result.starts_with("Some content..."),
+            "Should start with actual content"
+        );
+    }
+
+    /// Test: No duplicate heading removal if different
+    #[test]
+    fn test_no_duplicate_heading_removal_if_different() {
+        let content = "# Introduction\n\nSome content...";
+        let title = "Overview";
+
+        let result = remove_duplicate_heading(content, title);
+
+        assert_eq!(result, content, "Should not remove non-duplicate heading");
+    }
+
+    /// Test: Integration - Function entry to markdown
+    #[test]
+    fn test_integration_func_to_markdown() {
+        let fixture =
+            include_str!("../../../../fixtures/typst/v0.12.0/test-fixtures/func-assert.json");
+        let entry: DocsEntry =
+            serde_json::from_str(fixture).expect("Failed to parse func-assert.json");
+
+        let result = entry_to_markdown(&entry).expect("Failed to generate markdown");
+
+        // Verify title (no YAML frontmatter for this entry as it has no description)
+        assert!(result.contains("# Assert"), "Should have title");
+
+        // Verify function body rendered
+        assert!(
+            result.contains("## Signature"),
+            "Should have Signature section"
+        );
+        assert!(
+            result.contains("## Parameters"),
+            "Should have Parameters section"
+        );
+        assert!(
+            result.contains("**condition**"),
+            "Should have condition parameter"
+        );
+    }
+
+    /// Test: Integration - Type entry to markdown
+    #[test]
+    fn test_integration_type_to_markdown() {
+        let fixture =
+            include_str!("../../../../fixtures/typst/v0.12.0/test-fixtures/type-arguments.json");
+        let entry: DocsEntry =
+            serde_json::from_str(fixture).expect("Failed to parse type-arguments.json");
+
+        let result = entry_to_markdown(&entry).expect("Failed to generate markdown");
+
+        // Verify title
+        assert!(result.contains("# Arguments"), "Should have title");
+
+        // Verify type body rendered
+        assert!(
+            result.contains("## Constructor"),
+            "Should have Constructor section"
+        );
+        assert!(result.contains("## Methods"), "Should have Methods section");
+    }
+
+    /// Test: Integration - Category entry to markdown
+    #[test]
+    fn test_integration_category_to_markdown() {
+        let fixture = include_str!(
+            "../../../../fixtures/typst/v0.12.0/test-fixtures/category-foundations.json"
+        );
+        let entry: DocsEntry =
+            serde_json::from_str(fixture).expect("Failed to parse category-foundations.json");
+
+        let result = entry_to_markdown(&entry).expect("Failed to generate markdown");
+
+        // Verify title
+        assert!(result.contains("# Foundations"), "Should have title");
+
+        // Verify category body rendered
+        assert!(result.contains("## Items"), "Should have Items section");
+        assert!(result.contains("- ["), "Should have list items");
     }
 }
