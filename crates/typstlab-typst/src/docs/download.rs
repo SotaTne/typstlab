@@ -3,7 +3,7 @@
 use crate::github;
 use thiserror::Error;
 
-/// Maximum documentation archive size (50 MB)
+/// Maximum documentation download size (50 MB)
 pub const MAX_DOCS_SIZE: u64 = 50 * 1024 * 1024;
 
 /// Documentation download errors
@@ -37,14 +37,6 @@ pub enum DocsError {
     /// I/O error
     #[error("I/O error: {0}")]
     IoError(#[from] std::io::Error),
-
-    /// No documentation files found in archive
-    #[error("No documentation files found in archive")]
-    NoDocsFound,
-
-    /// Path traversal attempt detected
-    #[error("Path traversal detected in archive entry")]
-    PathTraversal,
 
     /// File lock acquisition failed
     #[error("Failed to acquire file lock: {0}")]

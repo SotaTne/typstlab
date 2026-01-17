@@ -30,13 +30,13 @@ pub const MAX_DOCS_JSON_SIZE: u64 = 10 * 1024 * 1024;
 pub fn build_docs_json_url(version: &str) -> Result<Url, DocsJsonError> {
     let mut url = github::github_base_url()?;
 
-    // URL pattern: typst-community/dev-builds/releases/download/v{version}/docs.json
+    // URL pattern: typst-community/dev-builds/releases/download/docs-v{version}/docs.json
     let segments = &[
         "typst-community",
         "dev-builds",
         "releases",
         "download",
-        &format!("v{}", version),
+        &format!("docs-v{}", version),
         "docs.json",
     ];
 
@@ -214,7 +214,7 @@ mod tests {
         let mock = server
             .mock(
                 "GET",
-                "/typst-community/dev-builds/releases/download/v0.12.0/docs.json",
+                "/typst-community/dev-builds/releases/download/docs-v0.12.0/docs.json",
             )
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -263,7 +263,7 @@ mod tests {
         let mock = server
             .mock(
                 "GET",
-                "/typst-community/dev-builds/releases/download/v0.12.0/docs.json",
+                "/typst-community/dev-builds/releases/download/docs-v0.12.0/docs.json",
             )
             .with_status(200)
             .with_header("content-type", "application/json")
@@ -305,7 +305,7 @@ mod tests {
         let mock = server
             .mock(
                 "GET",
-                "/typst-community/dev-builds/releases/download/v0.12.0/docs.json",
+                "/typst-community/dev-builds/releases/download/docs-v0.12.0/docs.json",
             )
             .with_status(200)
             .with_body(fixture_json)

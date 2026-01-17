@@ -105,7 +105,7 @@ pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usiz
 
 /// Recursively count files (not directories) in a directory tree
 ///
-/// This matches the behavior of extract_docs_directory() which only counts files.
+/// This matches the behavior of generate_markdown_files() which only counts files.
 fn count_files_recursively(dir: &Path) -> Result<usize, DocsError> {
     let mut count = 0;
     for entry in fs::read_dir(dir)? {
@@ -185,7 +185,7 @@ pub mod test_helpers {
             .mock(
                 "GET",
                 format!(
-                    "/typst-community/dev-builds/releases/download/v{}/docs.json",
+                    "/typst-community/dev-builds/releases/download/docs-v{}/docs.json",
                     version
                 )
                 .as_str(),
