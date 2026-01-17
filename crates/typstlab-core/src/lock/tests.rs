@@ -1,6 +1,6 @@
 //! Tests for file locking module
 
-use super::{acquire_lock, LockError};
+use super::{acquire_lock, acquire_shared_lock, LockError};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Duration;
@@ -200,4 +200,154 @@ fn test_multiple_different_locks() {
     // Both should be held
     assert!(lock1_path.exists());
     assert!(lock2_path.exists());
+}
+
+// ============================================================================
+// RED Phase Tests for Phase 2.9: Shared Locking (Windows CI Fix)
+// ============================================================================
+//
+// These tests verify that multiple readers can hold shared locks simultaneously,
+// which is necessary to fix the Windows CI ERROR_ACCESS_DENIED issue where
+// concurrent readers block writers during State::save().
+
+#[test]
+fn test_shared_lock_allows_concurrent_readers() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    let temp = TempDir::new().unwrap();
+    let lock_path = temp.path().join("test.lock");
+
+    const NUM_READERS: usize = 5;
+    let barrier = Arc::new(Barrier::new(NUM_READERS));
+    let success_count = Arc::new(AtomicUsize::new(0));
+
+    // Spawn 5 reader threads that acquire shared locks simultaneously
+    let handles: Vec<_> = (0..NUM_READERS)
+        .map(|_| {
+            let lock_path = lock_path.clone();
+            let barrier = Arc::clone(&barrier);
+            let success_count = Arc::clone(&success_count);
+
+            thread::spawn(move || {
+                barrier.wait(); // Synchronize start
+
+                // All threads should acquire shared locks without blocking
+                let _guard =
+                    acquire_shared_lock(&lock_path, Duration::from_secs(1), "concurrent read test")
+                        .unwrap();
+
+                success_count.fetch_add(1, Ordering::SeqCst);
+                thread::sleep(Duration::from_millis(50)); // Hold lock briefly
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    // Verify: All readers succeeded (no blocking)
+    assert_eq!(
+        success_count.load(Ordering::SeqCst),
+        NUM_READERS,
+        "All {} readers should acquire shared locks concurrently",
+        NUM_READERS
+    );
+}
+
+#[test]
+fn test_shared_lock_blocks_exclusive_writer() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    let temp = TempDir::new().unwrap();
+    let lock_path = temp.path().join("test.lock");
+
+    let barrier = Arc::new(Barrier::new(2));
+    let writer_blocked = Arc::new(AtomicBool::new(false));
+
+    // Reader thread: Acquire shared lock and hold
+    let lock_path_reader = lock_path.clone();
+    let barrier_reader = Arc::clone(&barrier);
+    let reader_handle = thread::spawn(move || {
+        let _guard =
+            acquire_shared_lock(&lock_path_reader, Duration::from_secs(1), "reader").unwrap();
+
+        barrier_reader.wait(); // Signal: shared lock acquired
+        thread::sleep(Duration::from_millis(200)); // Hold lock
+    });
+
+    // Writer thread: Try to acquire exclusive lock (should block)
+    let lock_path_writer = lock_path.clone();
+    let barrier_writer = Arc::clone(&barrier);
+    let writer_blocked_clone = Arc::clone(&writer_blocked);
+    let writer_handle = thread::spawn(move || {
+        barrier_writer.wait(); // Wait for reader to acquire lock
+
+        // Try to acquire exclusive lock (should timeout because reader holds shared lock)
+        let result = acquire_lock(&lock_path_writer, Duration::from_millis(100), "writer");
+
+        if result.is_err() {
+            writer_blocked_clone.store(true, Ordering::SeqCst);
+        }
+    });
+
+    reader_handle.join().unwrap();
+    writer_handle.join().unwrap();
+
+    // Verify: Writer was blocked by shared lock
+    assert!(
+        writer_blocked.load(Ordering::SeqCst),
+        "Exclusive lock should be blocked by shared lock"
+    );
+}
+
+#[test]
+fn test_exclusive_lock_blocks_shared_readers() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    let temp = TempDir::new().unwrap();
+    let lock_path = temp.path().join("test.lock");
+
+    let barrier = Arc::new(Barrier::new(2));
+    let reader_blocked = Arc::new(AtomicBool::new(false));
+
+    // Writer thread: Acquire exclusive lock and hold
+    let lock_path_writer = lock_path.clone();
+    let barrier_writer = Arc::clone(&barrier);
+    let writer_handle = thread::spawn(move || {
+        let _guard = acquire_lock(&lock_path_writer, Duration::from_secs(1), "writer").unwrap();
+
+        barrier_writer.wait(); // Signal: exclusive lock acquired
+        thread::sleep(Duration::from_millis(200)); // Hold lock
+    });
+
+    // Reader thread: Try to acquire shared lock (should block)
+    let lock_path_reader = lock_path.clone();
+    let barrier_reader = Arc::clone(&barrier);
+    let reader_blocked_clone = Arc::clone(&reader_blocked);
+    let reader_handle = thread::spawn(move || {
+        barrier_reader.wait(); // Wait for writer to acquire lock
+
+        // Try to acquire shared lock (should timeout because writer holds exclusive lock)
+        let result = acquire_shared_lock(&lock_path_reader, Duration::from_millis(100), "reader");
+
+        if result.is_err() {
+            reader_blocked_clone.store(true, Ordering::SeqCst);
+        }
+    });
+
+    writer_handle.join().unwrap();
+    reader_handle.join().unwrap();
+
+    // Verify: Reader was blocked by exclusive lock
+    assert!(
+        reader_blocked.load(Ordering::SeqCst),
+        "Shared lock should be blocked by exclusive lock"
+    );
 }

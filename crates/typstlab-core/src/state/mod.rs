@@ -98,7 +98,11 @@ impl State {
 
     /// state.json を読み込む
     pub fn load(path: impl AsRef<Path>) -> crate::error::Result<Self> {
-        let content = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+        let path = path.as_ref();
+        let parent = ensure_parent_dir(path)?;
+        let _guard = acquire_state_lock_shared(parent)?;
+
+        let content = std::fs::read_to_string(path).map_err(|e| {
             crate::error::TypstlabError::StateReadError(format!("Failed to read: {}", e))
         })?;
 
@@ -163,6 +167,19 @@ fn acquire_state_lock(parent: &Path) -> crate::error::Result<crate::lock::LockGu
     )
     .map_err(|e| {
         crate::error::TypstlabError::StateWriteError(format!("Failed to acquire lock: {}", e))
+    })
+}
+
+/// Acquire shared lock on .typstlab/state.lock for read operations
+fn acquire_state_lock_shared(parent: &Path) -> crate::error::Result<crate::lock::LockGuard> {
+    let lock_path = parent.join("state.lock");
+    crate::lock::acquire_shared_lock(
+        &lock_path,
+        std::time::Duration::from_secs(5), // Readers: shorter timeout
+        "state read",
+    )
+    .map_err(|e| {
+        crate::error::TypstlabError::StateReadError(format!("Failed to acquire shared lock: {}", e))
     })
 }
 

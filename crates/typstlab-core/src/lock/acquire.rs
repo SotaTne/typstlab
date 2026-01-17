@@ -113,3 +113,95 @@ pub(crate) fn acquire_with_retry(
         }
     }
 }
+
+/// Attempts to acquire a shared lock with retry and timeout
+///
+/// Similar to `acquire_with_retry` but uses `try_lock_shared()` instead of
+/// `try_lock_exclusive()`. Multiple shared locks can coexist, but shared
+/// locks conflict with exclusive locks.
+pub(crate) fn acquire_shared_with_retry(
+    lock_path: &Path,
+    timeout: Duration,
+    description: &str,
+) -> Result<LockGuard, LockError> {
+    // Create parent directories if needed
+    if let Some(parent) = lock_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| LockError::Io {
+            source: e,
+            path: lock_path.to_path_buf(),
+            operation: "create parent directories".to_string(),
+        })?;
+    }
+
+    let start = Instant::now();
+    let mut retry_delay = INITIAL_RETRY_DELAY;
+    let mut progress_shown = false;
+
+    loop {
+        // Try to open/create lock file
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(lock_path)
+            .map_err(|e| LockError::Io {
+                source: e,
+                path: lock_path.to_path_buf(),
+                operation: "open lock file".to_string(),
+            })?;
+
+        // Try to acquire shared lock (non-blocking)
+        // Note: Convert TryLockError to io::Error for uniform error handling
+        match file.try_lock_shared().map_err(Into::into) {
+            Ok(()) => {
+                // Successfully acquired lock
+                return Ok(LockGuard {
+                    file,
+                    path: lock_path.to_path_buf(),
+                });
+            }
+            Err(e) if should_retry_lock(&e) => {
+                // Lock is held by another process (Unix WouldBlock or Windows ERROR_LOCK_VIOLATION)
+                let elapsed = start.elapsed();
+
+                // Check timeout before sleeping
+                if elapsed >= timeout {
+                    return Err(LockError::Timeout {
+                        path: lock_path.to_path_buf(),
+                        description: description.to_string(),
+                    });
+                }
+
+                // Show progress message after threshold
+                if !progress_shown && elapsed >= PROGRESS_MESSAGE_THRESHOLD {
+                    eprintln!(
+                        "Waiting for lock on {} ({})...",
+                        lock_path.display(),
+                        description
+                    );
+                    progress_shown = true;
+                }
+
+                // Calculate how long to sleep (don't exceed timeout)
+                let remaining = timeout.saturating_sub(elapsed);
+                let sleep_duration = retry_delay.min(remaining);
+
+                // Sleep before retry (but not longer than remaining time)
+                if sleep_duration > Duration::ZERO {
+                    thread::sleep(sleep_duration);
+                }
+
+                // Exponential backoff
+                retry_delay = (retry_delay * 2).min(MAX_RETRY_DELAY);
+            }
+            Err(e) => {
+                // Other I/O error
+                return Err(LockError::Io {
+                    source: e,
+                    path: lock_path.to_path_buf(),
+                    operation: "acquire shared lock".to_string(),
+                });
+            }
+        }
+    }
+}
