@@ -10,6 +10,115 @@ use tempfile::TempDir;
 /// Static mutex to serialize tests that modify environment variables
 pub static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+/// Test-only snapshot of environment variables for deterministic restoration tests
+///
+/// This struct is always compiled (not just #[cfg(test)]) to avoid conditional
+/// compilation complexity in the core function, but is only used in test code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EnvSnapshot {
+    home: Option<String>,
+    cache: Option<String>,
+    typst: Option<String>,
+}
+
+/// Internal core function for environment isolation with optional snapshot capture
+///
+/// This function implements the common logic for `with_isolated_typst_env` and
+/// `with_isolated_typst_env_snapshot`. The snapshot is captured AFTER restoration
+/// but BEFORE releasing the mutex, ensuring deterministic tests.
+fn with_isolated_typst_env_core<F, R>(
+    typst_binary: Option<&Path>,
+    f: F,
+    #[cfg(test)] capture_snapshot: bool,
+) -> (R, Option<EnvSnapshot>)
+where
+    F: FnOnce(&PathBuf) -> R,
+{
+    let _guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    // Save original environment (for restoration)
+    let original_home = std::env::var("HOME").ok();
+    let original_cache_dir = std::env::var("TYPSTLAB_CACHE_DIR").ok();
+    let original_typst_binary = std::env::var("TYPST_BINARY").ok();
+
+    // Create isolated directories and convert to String immediately
+    let fake_home = TempDir::new().unwrap();
+    let fake_home_str = fake_home
+        .path()
+        .to_str()
+        .expect("TempDir path is not valid UTF-8")
+        .to_string();
+
+    let fake_cache_path = fake_home.path().join(".cache/typstlab");
+    std::fs::create_dir_all(&fake_cache_path).unwrap();
+    let fake_cache_str = fake_cache_path
+        .to_str()
+        .expect("Cache path is not valid UTF-8")
+        .to_string();
+
+    // Set environment variables
+    // SAFETY: We hold ENV_LOCK, ensuring no other test is modifying env vars concurrently.
+    unsafe {
+        std::env::set_var("HOME", &fake_home_str);
+        std::env::set_var("TYPSTLAB_CACHE_DIR", &fake_cache_str);
+
+        if let Some(binary_path) = typst_binary {
+            std::env::set_var("TYPST_BINARY", binary_path);
+        } else {
+            std::env::remove_var("TYPST_BINARY");
+        }
+    }
+
+    // Run test
+    let fake_cache_for_test = PathBuf::from(&fake_cache_str);
+    let result = f(&fake_cache_for_test);
+
+    // Explicit cleanup BEFORE TempDir::drop()
+    let _ = std::fs::remove_dir_all(&fake_cache_path);
+    drop(fake_home);
+
+    // Restore environment
+    // SAFETY: We still hold ENV_LOCK, ensuring exclusive access to env vars.
+    unsafe {
+        if let Some(home) = original_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        if let Some(cache_dir) = original_cache_dir {
+            std::env::set_var("TYPSTLAB_CACHE_DIR", cache_dir);
+        } else {
+            std::env::remove_var("TYPSTLAB_CACHE_DIR");
+        }
+
+        if let Some(binary) = original_typst_binary {
+            std::env::set_var("TYPST_BINARY", binary);
+        } else {
+            std::env::remove_var("TYPST_BINARY");
+        }
+    }
+
+    // Capture snapshot AFTER restoration, BEFORE mutex release
+    #[cfg(test)]
+    let snapshot = if capture_snapshot {
+        Some(EnvSnapshot {
+            home: std::env::var("HOME").ok(),
+            cache: std::env::var("TYPSTLAB_CACHE_DIR").ok(),
+            typst: std::env::var("TYPST_BINARY").ok(),
+        })
+    } else {
+        None
+    };
+
+    #[cfg(not(test))]
+    let snapshot = None;
+
+    (result, snapshot)
+}
+
 /// Run a test with isolated typst environment
 ///
 /// This helper provides complete environment isolation for tests that need to control
@@ -66,88 +175,32 @@ pub static ENV_LOCK: Mutex<()> = Mutex::new(());
 /// ```
 pub fn with_isolated_typst_env<F, R>(typst_binary: Option<&Path>, f: F) -> R
 where
-    F: FnOnce(&Path) -> R,
+    F: FnOnce(&PathBuf) -> R,
 {
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|poisoned| {
-        // Recover from poisoned mutex
-        // Safe because:
-        // - Environment variables remain valid after panic
-        // - We're just serializing access, not protecting data
-        poisoned.into_inner()
-    });
+    #[cfg(test)]
+    let (result, _snapshot) = with_isolated_typst_env_core(typst_binary, f, false);
 
-    // Save original environment (for restoration)
-    let original_home = std::env::var("HOME").ok();
-    let original_cache_dir = std::env::var("TYPSTLAB_CACHE_DIR").ok();
-    let original_typst_binary = std::env::var("TYPST_BINARY").ok();
-
-    // Create isolated directories and convert to String immediately
-    // This ensures no Path references remain when TempDir is dropped
-    let fake_home = TempDir::new().unwrap();
-    let fake_home_str = fake_home
-        .path()
-        .to_str()
-        .expect("TempDir path is not valid UTF-8")
-        .to_string();
-
-    let fake_cache_path = fake_home.path().join(".cache/typstlab");
-    std::fs::create_dir_all(&fake_cache_path).unwrap();
-    let fake_cache_str = fake_cache_path
-        .to_str()
-        .expect("Cache path is not valid UTF-8")
-        .to_string();
-
-    // Set environment variables using String values (safe across platforms)
-    // SAFETY: We hold ENV_LOCK, ensuring no other test is modifying env vars concurrently.
-    // Environment variable modification is inherently unsafe in multi-threaded contexts,
-    // but the mutex guarantees exclusive access, making this safe.
-    unsafe {
-        std::env::set_var("HOME", &fake_home_str);
-        std::env::set_var("TYPSTLAB_CACHE_DIR", &fake_cache_str);
-
-        if let Some(binary_path) = typst_binary {
-            std::env::set_var("TYPST_BINARY", binary_path);
-        } else {
-            // Ensure TYPST_BINARY is not set (test "not found" scenario)
-            std::env::remove_var("TYPST_BINARY");
-        }
-    }
-
-    // Run test (pass PathBuf derived from String, not TempDir)
-    let fake_cache_for_test = PathBuf::from(&fake_cache_str);
-    let result = f(&fake_cache_for_test);
-
-    // NEW: Explicit cleanup BEFORE TempDir::drop()
-    // Force removal to ensure clean state for next test (Linux tmpfs caching)
-    // Best-effort: Ignore errors as TempDir::drop() is fallback
-    let _ = std::fs::remove_dir_all(&fake_cache_path);
-
-    // Drop fake_home (cleanup already attempted)
-    drop(fake_home);
-
-    // Restore environment (important for test isolation)
-    // SAFETY: We still hold ENV_LOCK, ensuring exclusive access to env vars.
-    unsafe {
-        if let Some(home) = original_home {
-            std::env::set_var("HOME", home);
-        } else {
-            std::env::remove_var("HOME");
-        }
-
-        if let Some(cache_dir) = original_cache_dir {
-            std::env::set_var("TYPSTLAB_CACHE_DIR", cache_dir);
-        } else {
-            std::env::remove_var("TYPSTLAB_CACHE_DIR");
-        }
-
-        if let Some(binary) = original_typst_binary {
-            std::env::set_var("TYPST_BINARY", binary);
-        } else {
-            std::env::remove_var("TYPST_BINARY");
-        }
-    }
+    #[cfg(not(test))]
+    let (result, _snapshot) = with_isolated_typst_env_core(typst_binary, f);
 
     result
+}
+
+/// Test-only helper that captures env snapshot after restoration (race-proof)
+///
+/// This helper is identical to `with_isolated_typst_env` but captures
+/// environment variable state BEFORE releasing the mutex, ensuring the
+/// restoration test is deterministic and cannot race with other tests.
+#[cfg(test)]
+fn with_isolated_typst_env_snapshot<F, R>(typst_binary: Option<&Path>, f: F) -> (R, EnvSnapshot)
+where
+    F: FnOnce(&PathBuf) -> R,
+{
+    let (result, snapshot) = with_isolated_typst_env_core(typst_binary, f, true);
+    (
+        result,
+        snapshot.expect("snapshot should be captured when requested"),
+    )
 }
 
 #[cfg(test)]
@@ -203,32 +256,35 @@ mod tests {
     }
 
     #[test]
-    fn test_with_isolated_typst_env_restores_original_env() {
-        // Save original environment
+    fn test_with_isolated_typst_env_restores_original_env_deterministic() {
+        // Save original environment before test
         let original_home = std::env::var("HOME").ok();
         let original_cache = std::env::var("TYPSTLAB_CACHE_DIR").ok();
-        let original_binary = std::env::var("TYPST_BINARY").ok();
+        let original_typst = std::env::var("TYPST_BINARY").ok();
 
-        // Run isolated environment
-        with_isolated_typst_env(None, |_cache| {
-            // Environment is modified inside
+        // Run isolated environment with snapshot capture
+        let (_result, snapshot) = with_isolated_typst_env_snapshot(None, |_cache| {
+            // Intentionally mutate env vars inside to ensure restoration happens
+            unsafe {
+                std::env::set_var("HOME", "/tmp/fake-home");
+                std::env::set_var("TYPSTLAB_CACHE_DIR", "/tmp/fake-cache");
+                std::env::set_var("TYPST_BINARY", "/tmp/fake-typst");
+            }
         });
 
-        // Verify environment is restored
+        // Verify environment is restored (snapshot captured BEFORE mutex release)
+        // This test is deterministic and cannot race with other tests
         assert_eq!(
-            std::env::var("HOME").ok(),
-            original_home,
-            "HOME should be restored"
+            snapshot.home, original_home,
+            "HOME should be restored to original value"
         );
         assert_eq!(
-            std::env::var("TYPSTLAB_CACHE_DIR").ok(),
-            original_cache,
-            "TYPSTLAB_CACHE_DIR should be restored"
+            snapshot.cache, original_cache,
+            "TYPSTLAB_CACHE_DIR should be restored to original value"
         );
         assert_eq!(
-            std::env::var("TYPST_BINARY").ok(),
-            original_binary,
-            "TYPST_BINARY should be restored"
+            snapshot.typst, original_typst,
+            "TYPST_BINARY should be restored to original value"
         );
     }
 
