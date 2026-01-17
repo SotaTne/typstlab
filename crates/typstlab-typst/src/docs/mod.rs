@@ -3,6 +3,7 @@
 pub mod download;
 pub mod download_json;
 pub mod extract;
+pub mod html_to_md;
 pub mod schema;
 
 use std::fs;

@@ -30,6 +30,11 @@ sha2 = "0.10"
 # Temporary files (moved from dev-dependencies for atomic installation)
 tempfile = "3.24.0"
 
+# HTML parsing for docs.json conversion
+html5ever = "0.27"
+markup5ever = "0.12"
+markup5ever_rcdom = "0.3"
+
 # HTTP mocking for test_helpers (needed for integration tests to access test_helpers)
 mockito = "1.5"
 
