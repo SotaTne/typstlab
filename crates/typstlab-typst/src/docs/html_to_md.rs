@@ -14,10 +14,10 @@ use thiserror::Error;
 /// Maximum HTML size per page (5MB)
 const MAX_HTML_SIZE: usize = 5_000_000;
 
-/// Typst HTML to Markdown converter
+/// Typst HTML to Markdown converter (internal implementation)
 ///
 /// Uses stack-based state management to correctly handle nested HTML structures.
-pub struct TypstHtmlConverter {
+struct TypstHtmlConverter {
     output: String,
     state_stack: Vec<ConverterMode>,
 }
@@ -27,7 +27,53 @@ pub struct TypstHtmlConverter {
 enum ConverterMode {
     Normal,
     InCodeBlock,
-    InTypstSpan { class: String },
+    /// Typst syntax span state
+    ///
+    /// The class field is preserved for future enhancements (e.g., type-specific
+    /// formatting for typ-func vs typ-punct). Currently used only to track nesting.
+    InTypstSpan {
+        class: String,
+    },
+}
+
+/// Converts HTML to Markdown
+///
+/// # Arguments
+///
+/// * `html` - HTML string to convert
+///
+/// # Errors
+///
+/// Returns error if:
+/// - HTML exceeds size limit (5MB)
+/// - HTML parsing fails
+///
+/// # Example
+///
+/// ```
+/// use typstlab_typst::docs::html_to_md::convert;
+///
+/// let html = "<p>Hello, world!</p>";
+/// let md = convert(html).expect("Should convert");
+/// assert_eq!(md, "Hello, world!");
+/// ```
+pub fn convert(html: &str) -> Result<String, ConversionError> {
+    // Validate HTML size before parsing
+    if html.len() > MAX_HTML_SIZE {
+        return Err(ConversionError::HtmlTooLarge(html.len()));
+    }
+
+    // Parse HTML into DOM
+    let dom = parse_document(RcDom::default(), Default::default())
+        .from_utf8()
+        .read_from(&mut html.as_bytes())
+        .map_err(|e| ConversionError::ParseError(e.to_string()))?;
+
+    // Walk DOM and convert to Markdown
+    let mut converter = TypstHtmlConverter::new();
+    converter.walk_node(&dom.document);
+
+    Ok(converter.finalize())
 }
 
 impl TypstHtmlConverter {
@@ -37,36 +83,6 @@ impl TypstHtmlConverter {
             output: String::new(),
             state_stack: vec![ConverterMode::Normal],
         }
-    }
-
-    /// Converts HTML to Markdown
-    ///
-    /// # Arguments
-    ///
-    /// * `html` - HTML string to convert
-    ///
-    /// # Errors
-    ///
-    /// Returns error if:
-    /// - HTML exceeds size limit (5MB)
-    /// - HTML parsing fails
-    pub fn convert(html: &str) -> Result<String, ConversionError> {
-        // Validate HTML size before parsing
-        if html.len() > MAX_HTML_SIZE {
-            return Err(ConversionError::HtmlTooLarge(html.len()));
-        }
-
-        // Parse HTML into DOM
-        let dom = parse_document(RcDom::default(), Default::default())
-            .from_utf8()
-            .read_from(&mut html.as_bytes())
-            .map_err(|e| ConversionError::ParseError(e.to_string()))?;
-
-        // Walk DOM and convert to Markdown
-        let mut converter = Self::new();
-        converter.walk_node(&dom.document);
-
-        Ok(converter.finalize())
     }
 
     /// Walks DOM tree recursively
@@ -81,8 +97,11 @@ impl TypstHtmlConverter {
             NodeData::Element { name, attrs, .. } => {
                 let tag = name.local.as_ref();
 
-                // Skip dangerous tags entirely (don't process children)
-                if matches!(tag, "script" | "iframe" | "object" | "embed") {
+                // Skip dangerous/irrelevant tags entirely (don't process children)
+                if matches!(
+                    tag,
+                    "script" | "iframe" | "object" | "embed" | "style" | "link"
+                ) {
                     return;
                 }
 
@@ -220,7 +239,7 @@ mod tests {
     #[test]
     fn test_convert_simple_paragraph() {
         let html = "<p>Hello, world!</p>";
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert_eq!(md, "Hello, world!");
     }
 
@@ -228,7 +247,7 @@ mod tests {
     #[test]
     fn test_convert_headings() {
         let html = "<h1>Title</h1><h2>Section</h2><h3>Subsection</h3>";
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert!(md.contains("# Title"));
         assert!(md.contains("## Section"));
         assert!(md.contains("### Subsection"));
@@ -238,7 +257,7 @@ mod tests {
     #[test]
     fn test_convert_inline_code() {
         let html = "<p>Use <code>print()</code> function</p>";
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert!(md.contains("`print()`"));
     }
 
@@ -246,7 +265,7 @@ mod tests {
     #[test]
     fn test_convert_code_block() {
         let html = "<pre><code>let x = 1;</code></pre>";
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert!(md.contains("```typ"));
         assert!(md.contains("let x = 1;"));
         assert!(md.contains("```"));
@@ -257,7 +276,7 @@ mod tests {
     fn test_convert_typst_syntax() {
         let html =
             r#"<code><span class="typ-func">#image</span><span class="typ-punct">(</span></code>"#;
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert!(md.contains("`#image(`"));
     }
 
@@ -265,7 +284,7 @@ mod tests {
     #[test]
     fn test_inline_code_outside_block() {
         let html = "<p>Use <code>func()</code> to call.</p>";
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert!(md.contains("`func()`"));
     }
 
@@ -273,7 +292,7 @@ mod tests {
     #[test]
     fn test_size_limit() {
         let large_html = "x".repeat(MAX_HTML_SIZE + 1);
-        let result = TypstHtmlConverter::convert(&large_html);
+        let result = convert(&large_html);
         assert!(result.is_err());
         match result.unwrap_err() {
             ConversionError::HtmlTooLarge(size) => {
@@ -287,18 +306,29 @@ mod tests {
     #[test]
     fn test_dangerous_tags_ignored() {
         let html = r#"<p>Safe</p><script>alert("xss")</script><p>Also safe</p>"#;
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert!(md.contains("Safe"));
         assert!(md.contains("Also safe"));
         assert!(!md.contains("alert"));
         assert!(!md.contains("xss"));
     }
 
+    /// Test: Security - style and link tags ignored
+    #[test]
+    fn test_style_and_link_tags_ignored() {
+        let html = r#"<p>Content</p><style>.malicious { }</style><link rel="stylesheet" href="evil.css"><p>More content</p>"#;
+        let md = convert(html).expect("Should convert");
+        assert!(md.contains("Content"));
+        assert!(md.contains("More content"));
+        assert!(!md.contains("malicious"));
+        assert!(!md.contains("evil.css"));
+    }
+
     /// Test: Empty HTML
     #[test]
     fn test_empty_html() {
         let html = "";
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert_eq!(md, "");
     }
 
@@ -306,7 +336,7 @@ mod tests {
     #[test]
     fn test_multiple_paragraphs() {
         let html = "<p>First paragraph.</p><p>Second paragraph.</p>";
-        let md = TypstHtmlConverter::convert(html).expect("Should convert");
+        let md = convert(html).expect("Should convert");
         assert!(md.contains("First paragraph."));
         assert!(md.contains("Second paragraph."));
     }
