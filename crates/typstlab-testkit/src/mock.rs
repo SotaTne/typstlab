@@ -113,36 +113,5 @@ pub fn init_shared_mock_github_url() {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Tests for mutex poison recovery
-    ///
-    /// These tests are marked with #[ignore] because they intentionally poison mutexes,
-    /// which can interfere with other tests when run in parallel.
-    /// Run explicitly with: cargo test --package typstlab-testkit poison_recovery -- --ignored
-    mod poison_recovery_tests {
-        use super::*;
-        use std::thread;
-
-        #[test]
-        #[ignore]
-        fn test_shared_mock_server_recovers_from_poison() {
-            // Simulate panic while holding server lock
-            let handle = thread::spawn(|| {
-                let _guard = get_shared_mock_server();
-                panic!("Simulated panic to poison server mutex");
-            });
-
-            let _ = handle.join();
-
-            // Should recover
-            let result = std::panic::catch_unwind(|| {
-                let _guard = get_shared_mock_server();
-            });
-
-            assert!(result.is_ok(), "Server lock should recover from poison");
-        }
-    }
-}
+// Note: Poison recovery tests moved to integration tests
+// See crates/typstlab-testkit/tests/poison_recovery.rs

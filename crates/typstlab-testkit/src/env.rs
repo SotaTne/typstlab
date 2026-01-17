@@ -332,49 +332,6 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 0, "Counter should be 0");
     }
 
-    /// Tests for mutex poison recovery
-    ///
-    /// These tests are marked with #[ignore] because they intentionally poison mutexes,
-    /// which can interfere with other tests when run in parallel.
-    /// Run explicitly with: cargo test --package typstlab-testkit poison_recovery -- --ignored
-    mod poison_recovery_tests {
-        use super::*;
-        use std::thread;
-
-        #[test]
-        #[ignore]
-        fn test_env_lock_recovers_from_poison() {
-            // Save original environment (to restore after test)
-            let original_home = std::env::var("HOME").ok();
-
-            // Simulate panic while holding lock
-            let handle = thread::spawn(|| {
-                let _guard = ENV_LOCK.lock().unwrap();
-                panic!("Simulated panic to poison mutex");
-            });
-
-            // Join will return Err because thread panicked
-            let _ = handle.join();
-
-            // Subsequent lock should recover (not panic)
-            let result = std::panic::catch_unwind(|| {
-                let _guard = ENV_LOCK
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-            });
-
-            assert!(result.is_ok(), "Should recover from poisoned mutex");
-
-            // Restore environment if modified
-            // SAFETY: No other test is running concurrently (single test execution)
-            if let Some(home) = original_home {
-                unsafe {
-                    std::env::set_var("HOME", home);
-                }
-            }
-        }
-    }
-
     // ============================================================================
     // RED Phase Tests for Phase 2.10: Cache Persistence Fix (Linux CI Fix)
     // ============================================================================
