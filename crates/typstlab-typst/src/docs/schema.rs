@@ -52,7 +52,34 @@ pub struct Body {
     pub kind: String,
 
     /// Actual content
-    pub content: String,
+    ///
+    /// Can be either:
+    /// - String: HTML content (for tutorial pages, guides)
+    /// - Object: Function/type definition (for reference pages)
+    pub content: serde_json::Value,
+}
+
+impl Body {
+    /// Checks if content is HTML string
+    pub fn is_html(&self) -> bool {
+        self.content.is_string()
+    }
+
+    /// Checks if content is function/type definition object
+    pub fn is_definition(&self) -> bool {
+        self.content.is_object()
+    }
+
+    /// Gets content as HTML string
+    ///
+    /// # Errors
+    ///
+    /// Returns error if content is not a string
+    pub fn as_html(&self) -> Result<&str, SchemaError> {
+        self.content
+            .as_str()
+            .ok_or_else(|| SchemaError::InvalidContentType("Expected HTML string".to_string()))
+    }
 }
 
 /// Table of contents outline item
@@ -132,6 +159,10 @@ pub enum SchemaError {
     /// JSON parse error
     #[error("JSON parse error: {0}")]
     ParseError(String),
+
+    /// Invalid content type
+    #[error("Invalid content type: {0}")]
+    InvalidContentType(String),
 }
 
 #[cfg(test)]
