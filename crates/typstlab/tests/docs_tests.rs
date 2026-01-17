@@ -10,9 +10,7 @@ use tempfile::TempDir;
 use typstlab_testkit::{
     get_shared_mock_server, init_shared_mock_github_url, with_isolated_typst_env,
 };
-use typstlab_typst::docs::test_helpers::{
-    load_docs_archive_from_fixtures, mock_github_docs_release,
-};
+use typstlab_typst::docs::test_helpers::{load_docs_json_from_fixtures, mock_github_docs_json};
 
 /// Helper: Create a temporary typstlab project
 fn create_test_project() -> TempDir {
@@ -60,9 +58,9 @@ policy = "never"
 /// Helper: Setup docs mock with specified expected call count
 fn setup_docs_mock(expect_calls: usize) -> mockito::Mock {
     init_shared_mock_github_url();
-    let archive_bytes = load_docs_archive_from_fixtures();
+    let json_bytes = load_docs_json_from_fixtures();
     let mut server = get_shared_mock_server();
-    mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
+    mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
         .expect(expect_calls)
         .create()
 }

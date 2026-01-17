@@ -12,21 +12,19 @@ use std::thread;
 use tempfile::TempDir;
 use typstlab_testkit::{get_shared_mock_server, init_shared_mock_github_url};
 use typstlab_typst::docs::sync_docs;
-use typstlab_typst::docs::test_helpers::{
-    load_docs_archive_from_fixtures, mock_github_docs_release,
-};
+use typstlab_typst::docs::test_helpers::{load_docs_json_from_fixtures, mock_github_docs_json};
 
 #[test]
 fn test_parallel_docs_sync_no_corruption() {
     // Initialize shared mock GitHub URL (safe to call multiple times)
     init_shared_mock_github_url();
 
-    let archive_bytes = load_docs_archive_from_fixtures();
+    let json_bytes = load_docs_json_from_fixtures();
 
     // Use shared server - lock is acquired only for mock setup/teardown
     let mock = {
         let mut server = get_shared_mock_server();
-        mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
+        mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
             .expect(1) // With locking, only first thread downloads
             .create()
     }; // Server lock released here
@@ -90,12 +88,12 @@ fn test_docs_sync_idempotency_with_locking() {
     // Initialize shared mock GitHub URL
     init_shared_mock_github_url();
 
-    let archive_bytes = load_docs_archive_from_fixtures();
+    let json_bytes = load_docs_json_from_fixtures();
 
     // Use shared server - lock only during mock setup
     let mock = {
         let mut server = get_shared_mock_server();
-        mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
+        mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
             .expect(1) // Only first sync downloads
             .create()
     };
@@ -127,12 +125,12 @@ fn test_concurrent_docs_sync_different_projects_no_conflict() {
     // Initialize shared mock GitHub URL
     init_shared_mock_github_url();
 
-    let archive_bytes = load_docs_archive_from_fixtures();
+    let json_bytes = load_docs_json_from_fixtures();
 
     // Use shared server - lock only during mock setup
     let mock = {
         let mut server = get_shared_mock_server();
-        mock_github_docs_release(&mut server, "0.12.0", &archive_bytes)
+        mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
             .expect(2) // Two different projects = 2 downloads
             .create()
     };
