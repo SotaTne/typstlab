@@ -1,6 +1,7 @@
 //! Typst documentation download and management
 
 pub mod download;
+pub mod download_json;
 pub mod extract;
 
 use std::fs;
