@@ -117,8 +117,12 @@ where
     let fake_cache_for_test = PathBuf::from(&fake_cache_str);
     let result = f(&fake_cache_for_test);
 
-    // Drop fake_home BEFORE restoring environment
-    // This ensures TempDir cleanup happens before restoration
+    // NEW: Explicit cleanup BEFORE TempDir::drop()
+    // Force removal to ensure clean state for next test (Linux tmpfs caching)
+    // Best-effort: Ignore errors as TempDir::drop() is fallback
+    let _ = std::fs::remove_dir_all(&fake_cache_path);
+
+    // Drop fake_home (cleanup already attempted)
     drop(fake_home);
 
     // Restore environment (important for test isolation)
@@ -313,5 +317,32 @@ mod tests {
                 }
             }
         }
+    }
+
+    // ============================================================================
+    // RED Phase Tests for Phase 2.10: Cache Persistence Fix (Linux CI Fix)
+    // ============================================================================
+    //
+    // These tests verify that cache isolation works correctly between tests,
+    // which is necessary to fix the Linux CI mock failure where docs cache
+    // persists between tests due to delayed TempDir cleanup on tmpfs.
+
+    #[test]
+    fn test_cache_isolation_between_tests() {
+        // Test 1: Create cache with marker file
+        with_isolated_typst_env(None, |cache| {
+            let marker = cache.join("test_marker.txt");
+            std::fs::write(&marker, "test1").unwrap();
+            assert!(marker.exists(), "Marker should exist in Test 1");
+        });
+
+        // Test 2: Cache should be clean (no marker from Test 1)
+        with_isolated_typst_env(None, |cache| {
+            let marker = cache.join("test_marker.txt");
+            assert!(
+                !marker.exists(),
+                "Marker from Test 1 should NOT exist in Test 2 (cache isolation failure on Linux tmpfs)"
+            );
+        });
     }
 }
