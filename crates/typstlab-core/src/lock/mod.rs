@@ -84,11 +84,10 @@ pub fn acquire_lock(
 /// ```no_run
 /// use typstlab_core::lock::acquire_shared_lock;
 /// use std::time::Duration;
-/// use std::path::Path;
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let lock_path = Path::new("/tmp/my.lock");
-/// let guard = acquire_shared_lock(lock_path, Duration::from_secs(5), "read state")?;
+/// let lock_path = std::env::temp_dir().join("my.lock");
+/// let guard = acquire_shared_lock(&lock_path, Duration::from_secs(5), "read state")?;
 /// // Critical section (read-only)
 /// drop(guard); // Explicit drop (automatic on scope exit)
 /// # Ok(())

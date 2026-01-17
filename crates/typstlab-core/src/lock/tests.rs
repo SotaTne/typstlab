@@ -277,7 +277,7 @@ fn test_shared_lock_blocks_exclusive_writer() {
             acquire_shared_lock(&lock_path_reader, Duration::from_secs(1), "reader").unwrap();
 
         barrier_reader.wait(); // Signal: shared lock acquired
-        thread::sleep(Duration::from_millis(200)); // Hold lock
+        thread::sleep(Duration::from_millis(300)); // Hold lock (increased from 200ms for CI stability)
     });
 
     // Writer thread: Try to acquire exclusive lock (should block)
@@ -288,7 +288,7 @@ fn test_shared_lock_blocks_exclusive_writer() {
         barrier_writer.wait(); // Wait for reader to acquire lock
 
         // Try to acquire exclusive lock (should timeout because reader holds shared lock)
-        let result = acquire_lock(&lock_path_writer, Duration::from_millis(100), "writer");
+        let result = acquire_lock(&lock_path_writer, Duration::from_millis(150), "writer");
 
         if result.is_err() {
             writer_blocked_clone.store(true, Ordering::SeqCst);
@@ -324,7 +324,7 @@ fn test_exclusive_lock_blocks_shared_readers() {
         let _guard = acquire_lock(&lock_path_writer, Duration::from_secs(1), "writer").unwrap();
 
         barrier_writer.wait(); // Signal: exclusive lock acquired
-        thread::sleep(Duration::from_millis(200)); // Hold lock
+        thread::sleep(Duration::from_millis(300)); // Hold lock (increased from 200ms for CI stability)
     });
 
     // Reader thread: Try to acquire shared lock (should block)
@@ -335,7 +335,7 @@ fn test_exclusive_lock_blocks_shared_readers() {
         barrier_reader.wait(); // Wait for writer to acquire lock
 
         // Try to acquire shared lock (should timeout because writer holds exclusive lock)
-        let result = acquire_shared_lock(&lock_path_reader, Duration::from_millis(100), "reader");
+        let result = acquire_shared_lock(&lock_path_reader, Duration::from_millis(150), "reader");
 
         if result.is_err() {
             reader_blocked_clone.store(true, Ordering::SeqCst);
