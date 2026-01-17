@@ -3,6 +3,7 @@
 pub mod download;
 pub mod download_json;
 pub mod extract;
+pub mod schema;
 
 use std::fs;
 use std::path::Path;
