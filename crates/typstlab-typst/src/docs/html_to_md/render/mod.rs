@@ -18,10 +18,13 @@
 //! All renderers guarantee O(n) complexity where n = node count.
 //! Verified with step counters in `tests/performance.rs`.
 
+mod composite;
 mod compositor;
 mod standard;
 mod table;
 
+#[allow(unused_imports)] // Used in Phase 6+
+pub use composite::CompositeRenderer;
 #[allow(unused_imports)] // Used in Phase 5+
 pub use compositor::Compositor;
 #[allow(unused_imports)] // Used in Phase 5+
@@ -109,4 +112,27 @@ pub enum RenderError {
     /// Table structure invalid
     #[error("Invalid table structure: {0}")]
     InvalidTable(String),
+}
+
+/// Create a CompositeRenderer with default configuration
+///
+/// Factory function for creating a unified renderer that coordinates
+/// StandardRenderer, StructuralTableRenderer, and Compositor.
+///
+/// # Returns
+///
+/// CompositeRenderer instance ready for use
+///
+/// # Example
+///
+/// ```
+/// use typstlab_typst::docs::html_to_md::render::create_composite_renderer;
+/// use markdown::mdast::{Node, Text};
+///
+/// let renderer = create_composite_renderer();
+/// // let result = renderer.render(&node);
+/// ```
+#[allow(dead_code)] // Used in Phase 6+
+pub fn create_composite_renderer() -> CompositeRenderer {
+    CompositeRenderer::new()
 }
