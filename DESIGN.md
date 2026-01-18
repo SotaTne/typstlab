@@ -1435,10 +1435,16 @@ typstlab typst docs sync
      - mdast (Markdown Abstract Syntax Tree) ノードを直接構成
      - サポート要素: heading, paragraph, link, list, table, blockquote, code, emphasis, strong
      - Typst syntax spans (`typ-*` classes) は inline code にフラット化
-   - **Stage 2**: mdast → Markdown (mdast_util_to_markdown)
-     - CommonMark 100% 準拠保証 (markdown-rs ecosystem, 2300+ tests)
+   - **Stage 2**: mdast → Markdown (mdast_util_to_markdown + custom table renderer)
+     - **Base**: CommonMark 100% 準拠保証 (markdown-rs ecosystem, 2300+ tests)
+     - **GFM Tables**: カスタムレンダラー (mdast_util_to_markdown v0.0.2 は Table 非サポート)
+       - 形式: GFM pipe table (`| Header | Header |`)
+       - 機能: カラムアライメント (`:---`, `:---:`, `---:`)、インライン整形、パイプエスケープ
+       - 参照実装: pulldown-cmark (GitHub公式GFMパーサー)
      - alpha dependency (v0.0.2) だがバージョン固定 + 包括的テストでリスク軽減
-     - エラー時は plain text fallback（dual spec 回避）
+     - **Fallback 戦略**:
+       1. Table ノード検出時 → カスタム GFM レンダラー使用
+       2. その他のエラー → plain text fallback（dual spec 回避）
 4. YAML frontmatter 生成
    - `serde_yaml`で構造化データからYAML生成
    - `title`フィールド: 常に含まれる

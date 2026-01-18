@@ -4,12 +4,9 @@
 //! Uses 2-stage pipeline: HTML → mdast → Markdown for CommonMark compliance.
 
 mod render;
-// TODO(Phase 7): Remove obsolete table_renderer (broken, explicit \n)
-// mod table_renderer;
 
 use super::html_to_mdast;
 use markdown::mdast::Node;
-// use table_renderer::render_table_to_gfm;
 use thiserror::Error;
 
 /// Maximum HTML size per page (5MB)

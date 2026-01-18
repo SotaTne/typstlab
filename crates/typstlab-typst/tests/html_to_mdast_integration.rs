@@ -45,7 +45,6 @@ fn test_nested_list_with_inline_code() {
 
     let result = html_to_md::convert(html).expect("Should convert nested list");
 
-    // Debug: print actual output
     // Verify list structure
     assert!(
         result.contains("**Arrays**"),
@@ -94,6 +93,9 @@ fn test_table_with_rich_content() {
     "#;
 
     let result = html_to_md::convert(html).expect("Should convert table");
+
+    // Debug: Print actual output
+    eprintln!("Actual table output:\n{}", result);
 
     // Note: mdast_util_to_markdown may not support complex table structures
     // Verify table content is present (plain text fallback is acceptable)
