@@ -35,6 +35,13 @@ html5ever = "0.27"
 markup5ever = "0.12"
 markup5ever_rcdom = "0.3"
 
+# Markdown AST for HTML→Markdown conversion
+markdown = "1.0.0-alpha.24"
+mdast_util_to_markdown = "0.0.2"
+
+# YAML frontmatter generation
+serde_yaml = "0.9"
+
 # HTTP mocking for test_helpers (needed for integration tests to access test_helpers)
 mockito = "1.5"
 

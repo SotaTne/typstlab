@@ -6,6 +6,7 @@ use super::html_to_md;
 use super::render_bodies;
 use super::render_func;
 use super::schema::{DocsEntry, SchemaError};
+use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -140,27 +141,30 @@ fn route_to_filepath(target_dir: &Path, route: &str) -> Result<PathBuf, Generate
     Ok(path)
 }
 
+/// YAML frontmatter for documentation pages
+#[derive(Serialize)]
+struct DocsFrontmatter {
+    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
 /// Converts DocsEntry to Markdown content
 fn entry_to_markdown(entry: &DocsEntry) -> Result<String, GenerateError> {
+    // Build YAML frontmatter using structured data
+    let frontmatter = DocsFrontmatter {
+        title: entry.title.clone(),
+        description: entry.description.clone(),
+    };
+
+    // Serialize YAML frontmatter (without --- delimiters, we add them manually)
+    let yaml_content = serde_yaml::to_string(&frontmatter)
+        .map_err(|e| GenerateError::YamlSerialization(e.to_string()))?;
+
     let mut markdown = String::new();
 
-    // YAML Frontmatter
-    if let Some(desc) = &entry.description {
-        markdown.push_str("---\n");
-        markdown.push_str("description: |\n");
-        // Indent each line with 2 spaces for YAML block scalar
-        for line in desc.lines() {
-            markdown.push_str("  ");
-            markdown.push_str(line);
-            markdown.push('\n');
-        }
-        markdown.push_str("---\n\n");
-    }
-
-    // Title (AFTER frontmatter)
-    markdown.push_str(&format!("# {}\n\n", entry.title));
-
     // Body content (with body kind routing)
+    // Note: Title is in YAML frontmatter, not in body as h1
     if let Some(body) = &entry.body {
         match body.kind.as_str() {
             "html" => {
@@ -209,7 +213,10 @@ fn entry_to_markdown(entry: &DocsEntry) -> Result<String, GenerateError> {
         }
     }
 
-    Ok(markdown)
+    // Combine YAML frontmatter with Markdown content
+    let final_markdown = format!("---\n{}---\n\n{}", yaml_content, markdown);
+
+    Ok(final_markdown)
 }
 
 /// Remove duplicate h1 heading if it matches the title
@@ -269,6 +276,10 @@ pub enum GenerateError {
     /// JSON error
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
+
+    /// YAML serialization error
+    #[error("YAML serialization error: {0}")]
+    YamlSerialization(String),
 }
 
 #[cfg(test)]
@@ -332,7 +343,12 @@ mod tests {
         assert!(index_path.exists());
 
         let content = fs::read_to_string(index_path).expect("Should read file");
-        assert!(content.contains("# Overview"));
+        // Title is in YAML frontmatter, not as h1 in body
+        assert!(content.starts_with("---\n"), "Should have YAML frontmatter");
+        assert!(
+            content.contains("title: Overview"),
+            "Should have title in frontmatter"
+        );
         assert!(content.contains("Welcome"));
     }
 
@@ -413,13 +429,20 @@ mod tests {
             "Should start with YAML frontmatter"
         );
         assert!(
+            result.contains("title: Overview"),
+            "Should have title field in frontmatter"
+        );
+        assert!(
             result.contains("description: |"),
             "Should have description field"
         );
 
-        // Verify no duplicate h1
+        // Verify no h1 in body (title is in YAML frontmatter)
         let h1_count = result.matches("\n# ").count();
-        assert_eq!(h1_count, 1, "Should have exactly one h1 heading");
+        assert_eq!(
+            h1_count, 0,
+            "Should have no h1 headings in body (title in frontmatter)"
+        );
     }
 
     /// Test: Duplicate heading removal
@@ -479,8 +502,12 @@ mod tests {
 
         let result = entry_to_markdown(&entry).expect("Failed to generate markdown");
 
-        // Verify title (no YAML frontmatter for this entry as it has no description)
-        assert!(result.contains("# Assert"), "Should have title");
+        // Verify title in YAML frontmatter (always present)
+        assert!(result.starts_with("---\n"), "Should have YAML frontmatter");
+        assert!(
+            result.contains("title: Assert"),
+            "Should have title in frontmatter"
+        );
 
         // Verify function body rendered
         assert!(
@@ -507,8 +534,12 @@ mod tests {
 
         let result = entry_to_markdown(&entry).expect("Failed to generate markdown");
 
-        // Verify title
-        assert!(result.contains("# Arguments"), "Should have title");
+        // Verify title in YAML frontmatter
+        assert!(result.starts_with("---\n"), "Should have YAML frontmatter");
+        assert!(
+            result.contains("title: Arguments"),
+            "Should have title in frontmatter"
+        );
 
         // Verify type body rendered
         assert!(
@@ -529,8 +560,12 @@ mod tests {
 
         let result = entry_to_markdown(&entry).expect("Failed to generate markdown");
 
-        // Verify title
-        assert!(result.contains("# Foundations"), "Should have title");
+        // Verify title in YAML frontmatter
+        assert!(result.starts_with("---\n"), "Should have YAML frontmatter");
+        assert!(
+            result.contains("title: Foundations"),
+            "Should have title in frontmatter"
+        );
 
         // Verify category body rendered
         assert!(result.contains("## Items"), "Should have Items section");

@@ -1,0 +1,201 @@
+{
+  "route": "/DOCS-BASE/reference/foundations/arguments/",
+  "title": "Arguments",
+  "description": "Documentation for the Arguments type.",
+  "part": null,
+  "outline": [
+    {
+      "id": "summary",
+      "name": "Summary",
+      "children": []
+    },
+    {
+      "id": "argument-sinks",
+      "name": "Argument Sinks",
+      "children": []
+    },
+    {
+      "id": "spreading",
+      "name": "Spreading",
+      "children": []
+    },
+    {
+      "id": "constructor",
+      "name": "Constructor",
+      "children": [
+        {
+          "id": "constructor-arguments",
+          "name": "arguments",
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "definitions",
+      "name": "Definitions",
+      "children": [
+        {
+          "id": "definitions-at",
+          "name": "At",
+          "children": [
+            {
+              "id": "definitions-at-key",
+              "name": "key",
+              "children": []
+            },
+            {
+              "id": "definitions-at-default",
+              "name": "default",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "definitions-pos",
+          "name": "Positional",
+          "children": []
+        },
+        {
+          "id": "definitions-named",
+          "name": "Named",
+          "children": []
+        }
+      ]
+    }
+  ],
+  "body": {
+    "kind": "type",
+    "content": {
+      "name": "arguments",
+      "title": "Arguments",
+      "keywords": [],
+      "oneliner": "Captured arguments to a function.",
+      "details": "<p>Captured arguments to a function.</p>\n<h2 id=\"argument-sinks\">Argument Sinks</h2>\n<p>Like built-in functions, custom functions can also take a variable number of\narguments. You can specify an <em>argument sink</em> which collects all excess\narguments as <code>..sink</code>. The resulting <code>sink</code> value is of the <code>arguments</code>\ntype. It exposes methods to access the positional and named arguments.</p>\n<div class=\"previewed-code\"><pre><code><span class=\"typ-key\">#</span><span class=\"typ-key\">let</span> <span class=\"typ-func\">format</span><span class=\"typ-punct\">(</span>title<span class=\"typ-punct\">,</span> <span class=\"typ-op\">..</span>authors<span class=\"typ-punct\">)</span> <span class=\"typ-op\">=</span> <span class=\"typ-punct\">{</span>\n  <span class=\"typ-key\">let</span> by <span class=\"typ-op\">=</span> authors\n    <span class=\"typ-punct\">.</span><span class=\"typ-func\">pos</span><span class=\"typ-punct\">(</span><span class=\"typ-punct\">)</span>\n    <span class=\"typ-punct\">.</span><span class=\"typ-func\">join</span><span class=\"typ-punct\">(</span><span class=\"typ-str\">&quot;, &quot;</span><span class=\"typ-punct\">,</span> last<span class=\"typ-punct\">:</span> <span class=\"typ-str\">&quot; and &quot;</span><span class=\"typ-punct\">)</span>\n\n  <span class=\"typ-punct\">[</span><span class=\"typ-strong\">*<span class=\"typ-pol\">#</span><span class=\"typ-pol\">title</span>*</span> <span class=\"typ-escape\">\\</span> <span class=\"typ-emph\">_Written by <span class=\"typ-pol\">#</span><span class=\"typ-pol\">by</span><span class=\"typ-punct\">;</span>_</span><span class=\"typ-punct\">]</span>\n<span class=\"typ-punct\">}</span>\n\n<span class=\"typ-func\">#</span><span class=\"typ-func\">format</span><span class=\"typ-punct\">(</span><span class=\"typ-str\">&quot;ArtosFlow&quot;</span><span class=\"typ-punct\">,</span> <span class=\"typ-str\">&quot;Jane&quot;</span><span class=\"typ-punct\">,</span> <span class=\"typ-str\">&quot;Joe&quot;</span><span class=\"typ-punct\">)</span>\n</code></pre><div class=\"preview\"><img src=\"/DOCS-BASE/assets/d6ce7ebd806b82775abf2d566f8c412.png\" alt=\"Preview\" /></div></div>\n<h2 id=\"spreading\">Spreading</h2>\n<p>Inversely to an argument sink, you can <em>spread</em> arguments, arrays and\ndictionaries into a function call with the <code>..spread</code> operator:</p>\n<div class=\"previewed-code\"><pre><code><span class=\"typ-key\">#</span><span class=\"typ-key\">let</span> array <span class=\"typ-op\">=</span> <span class=\"typ-punct\">(</span><span class=\"typ-num\">2</span><span class=\"typ-punct\">,</span> <span class=\"typ-num\">3</span><span class=\"typ-punct\">,</span> <span class=\"typ-num\">5</span><span class=\"typ-punct\">)</span>\n<span class=\"typ-pol\">#</span><span class=\"typ-pol\">calc</span><span class=\"typ-punct\">.</span><span class=\"typ-func\">min</span><span class=\"typ-punct\">(</span><span class=\"typ-op\">..</span>array<span class=\"typ-punct\">)</span>\n<span class=\"typ-key\">#</span><span class=\"typ-key\">let</span> dict <span class=\"typ-op\">=</span> <span class=\"typ-punct\">(</span>fill<span class=\"typ-punct\">:</span> blue<span class=\"typ-punct\">)</span>\n<span class=\"typ-func\">#</span><span class=\"typ-func\">text</span><span class=\"typ-punct\">(</span><span class=\"typ-op\">..</span>dict<span class=\"typ-punct\">)</span><span class=\"typ-punct\">[</span>Hello<span class=\"typ-punct\">]</span>\n</code></pre><div class=\"preview\"><img src=\"/DOCS-BASE/assets/91c9aab47f6ac6ae8183c670c0a9cc09.png\" alt=\"Preview\" /></div></div>",
+      "constructor": {
+        "path": [],
+        "name": "arguments",
+        "title": "Construct",
+        "keywords": [],
+        "oneliner": "Construct spreadable arguments in place.",
+        "element": false,
+        "contextual": false,
+        "details": "<p>Construct spreadable arguments in place.</p>\n<p>This function behaves like <code><span class=\"typ-key\">let</span> <span class=\"typ-func\">args</span><span class=\"typ-punct\">(</span><span class=\"typ-op\">..</span>sink<span class=\"typ-punct\">)</span> <span class=\"typ-op\">=</span> sink</code>.</p>",
+        "example": "<div class=\"previewed-code\"><pre><code><span class=\"typ-key\">#</span><span class=\"typ-key\">let</span> args <span class=\"typ-op\">=</span> <span class=\"typ-func\">arguments</span><span class=\"typ-punct\">(</span>stroke<span class=\"typ-punct\">:</span> red<span class=\"typ-punct\">,</span> inset<span class=\"typ-punct\">:</span> <span class=\"typ-num\">1em</span><span class=\"typ-punct\">,</span> <span class=\"typ-punct\">[</span>Body<span class=\"typ-punct\">]</span><span class=\"typ-punct\">)</span>\n<span class=\"typ-func\">#</span><span class=\"typ-func\">box</span><span class=\"typ-punct\">(</span><span class=\"typ-op\">..</span>args<span class=\"typ-punct\">)</span>\n</code></pre><div class=\"preview\"><img src=\"/DOCS-BASE/assets/25bccad3df7eaeaab4a645bea07090b2.png\" alt=\"Preview\" /></div></div>",
+        "self": false,
+        "params": [
+          {
+            "name": "arguments",
+            "details": "<p>The arguments to construct.</p>",
+            "example": null,
+            "types": [
+              "any"
+            ],
+            "strings": [],
+            "default": null,
+            "positional": true,
+            "named": false,
+            "required": true,
+            "variadic": true,
+            "settable": false
+          }
+        ],
+        "returns": [
+          "arguments"
+        ],
+        "scope": []
+      },
+      "scope": [
+        {
+          "path": [
+            "arguments"
+          ],
+          "name": "at",
+          "title": "At",
+          "keywords": [],
+          "oneliner": "Returns the positional argument at the specified index, or the named",
+          "element": false,
+          "contextual": false,
+          "details": "<p>Returns the positional argument at the specified index, or the named\nargument with the specified name.</p>\n<p>If the key is an <a href=\"/DOCS-BASE/reference/foundations/int/\">integer</a>, this is equivalent to first calling\n<a href=\"/DOCS-BASE/reference/foundations/arguments/#definitions-pos\"><code>pos</code></a> and then <a href=\"/DOCS-BASE/reference/foundations/array/#definitions-at\" title=\"`array.at`\"><code>array.at</code></a>. If it is a <a href=\"/DOCS-BASE/reference/foundations/str/\">string</a>,\nthis is equivalent to first calling <a href=\"/DOCS-BASE/reference/foundations/arguments/#definitions-named\"><code>named</code></a> and then\n<a href=\"/DOCS-BASE/reference/foundations/dictionary/#definitions-at\" title=\"`dictionary.at`\"><code>dictionary.at</code></a>.</p>",
+          "example": null,
+          "self": true,
+          "params": [
+            {
+              "name": "key",
+              "details": "<p>The index or name of the argument to get.</p>",
+              "example": null,
+              "types": [
+                "int",
+                "str"
+              ],
+              "strings": [],
+              "default": null,
+              "positional": true,
+              "named": false,
+              "required": true,
+              "variadic": false,
+              "settable": false
+            },
+            {
+              "name": "default",
+              "details": "<p>A default value to return if the key is invalid.</p>",
+              "example": null,
+              "types": [
+                "any"
+              ],
+              "strings": [],
+              "default": null,
+              "positional": false,
+              "named": true,
+              "required": false,
+              "variadic": false,
+              "settable": false
+            }
+          ],
+          "returns": [
+            "any"
+          ],
+          "scope": []
+        },
+        {
+          "path": [
+            "arguments"
+          ],
+          "name": "pos",
+          "title": "Positional",
+          "keywords": [],
+          "oneliner": "Returns the captured positional arguments as an array.",
+          "element": false,
+          "contextual": false,
+          "details": "<p>Returns the captured positional arguments as an array.</p>",
+          "example": null,
+          "self": true,
+          "params": [],
+          "returns": [
+            "array"
+          ],
+          "scope": []
+        },
+        {
+          "path": [
+            "arguments"
+          ],
+          "name": "named",
+          "title": "Named",
+          "keywords": [],
+          "oneliner": "Returns the captured named arguments as a dictionary.",
+          "element": false,
+          "contextual": false,
+          "details": "<p>Returns the captured named arguments as a dictionary.</p>",
+          "example": null,
+          "self": true,
+          "params": [],
+          "returns": [
+            "dictionary"
+          ],
+          "scope": []
+        }
+      ]
+    }
+  },
+  "children": []
+}

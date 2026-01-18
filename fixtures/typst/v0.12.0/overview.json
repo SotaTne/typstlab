@@ -1,0 +1,12 @@
+{
+  "route": "/DOCS-BASE/",
+  "title": "Overview",
+  "description": "Learn how to use Typst to compose documents faster. Get started with the\ntutorial, or dive into the reference.\n",
+  "part": null,
+  "outline": [],
+  "body": {
+    "kind": "html",
+    "content": "<h1>Overview</h1>\n<p>Welcome to Typst's documentation! Typst is a new markup-based typesetting system\nfor the sciences. It is designed to be an alternative both to advanced tools\nlike LaTeX and simpler tools like Word and Google Docs. Our goal with Typst is\nto build a typesetting tool that is highly capable <em>and</em> a pleasure to use.</p>\n<p>This documentation is split into two parts: A beginner-friendly tutorial that\nintroduces Typst through a practical use case and a comprehensive reference that\nexplains all of Typst's concepts and features.</p>\n<p>We also invite you to join the community we're building around Typst. Typst is\nstill a very young project, so your feedback is more than valuable.</p>"
+  },
+  "children": []
+}

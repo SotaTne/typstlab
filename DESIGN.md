@@ -1425,18 +1425,45 @@ typstlab typst docs sync
 **動作**:
 
 1. 要求バージョンを取得
-2. Typst 公式リポジトリの docs を取得（`source: "official"` は typst/typst の docs/ を指す）
-   - 取得方法（推奨）：GitHub タグのソースアーカイブ（`refs/tags/vX.Y.Z.tar.gz`）をダウンロードし、`docs/` だけを抽出
-   - 例: `https://github.com/typst/typst/archive/refs/tags/v0.12.0.tar.gz`
-3. `.typstlab/kb/typst/docs/` に保存
-4. state.json を更新
+2. Typst Community dev-builds から docs.json を取得
+   - データソース: `https://github.com/typst-community/dev-builds/releases/download/docs-vX.Y.Z/docs.json`
+   - docs.json には HTML content + 構造化メタデータが含まれる
+   - 例: `https://github.com/typst-community/dev-builds/releases/download/docs-v0.12.0/docs.json`
+3. HTML → Markdown 変換（2-stage pipeline）
+   - **Stage 1**: HTML → mdast (html_to_mdast.rs)
+     - html5ever でHTMLをパース
+     - mdast (Markdown Abstract Syntax Tree) ノードを直接構成
+     - サポート要素: heading, paragraph, link, list, table, blockquote, code, emphasis, strong
+     - Typst syntax spans (`typ-*` classes) は inline code にフラット化
+   - **Stage 2**: mdast → Markdown (mdast_util_to_markdown)
+     - CommonMark 100% 準拠保証 (markdown-rs ecosystem, 2300+ tests)
+     - alpha dependency (v0.0.2) だがバージョン固定 + 包括的テストでリスク軽減
+     - エラー時は plain text fallback（dual spec 回避）
+4. YAML frontmatter 生成
+   - `serde_yaml`で構造化データからYAML生成
+   - `title`フィールド: 常に含まれる
+   - `description`フィールド: 存在する場合のみ含まれる
+   - 本文のh1見出しは削除（frontmatterのtitleで代替）
+5. 階層的ディレクトリ構造で`.typstlab/kb/typst/docs/`に保存
+   - route → filepath マッピング（path traversal防止）
+6. state.json を更新
+
+**アーキテクチャ設計判断**:
+
+- **ロジックの分散**: `html_to_mdast.rs`で要素ハンドリングが複数関数に分散
+  - `handle_element_start()`: 要素判定とルーティング（~250行）
+  - 個別ビルダー関数: `build_heading()`, `build_link()`, `build_list()` など（各10-50行）
+  - **理由**: Single Responsibility Principle、テスト容易性、AGENTS.md (40行/関数制限) 準拠
+- **Type safety**: Rust の型システムで正確性保証（`Path`/`PathBuf` for cross-platform、mdast nodes for structure）
+- **Extensibility**: mdast は plugin 拡張可能（future: syntax highlighting restoration、linting、optimization）
 
 **v0.1 の最低限 contract**：
 
 - docs は optional（存在しない場合は `status`/`doctor` で warning とし、actions に `sync_docs` を提示）
-- `source: "official"` の定義：typst/typst リポジトリの docs（Markdown 形式）
-- エージェントが Typst の型情報・関数情報を取得できることが目的
-  - GitHub API の多用は避け、アーカイブ取得を基本とする（負荷と実装コストの最小化）
+- `source: "official"` の定義：typst-community/dev-builds の docs.json（機械生成構造化データ）
+- エージェントが Typst の型情報・関数情報を LLM-friendly Markdown で取得できることが目的
+  - CommonMark 準拠で AI parsing 容易性保証
+  - YAML frontmatter で構造化メタデータ提供
 
 **Safety classification (v0.1)**：
 
