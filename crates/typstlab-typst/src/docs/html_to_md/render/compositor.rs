@@ -1,12 +1,15 @@
 //! Compositor: Assembles RenderResult into final Markdown
 //!
 //! Takes structural RenderResult and composes final Markdown strings.
-//! Newlines derived from structure, not explicit in rendering logic.
 //!
-//! # Key Principle
+//! # Structural Rendering Principle
 //!
-//! **NO explicit `\n` in composition logic** - only in final `join()` calls.
+//! **Rendering logic (StandardRenderer, StructuralTableRenderer) does not use explicit `\n`.**
+//! They extract structure and return RenderResult.
+//!
+//! **Compositor derives newlines from structure during composition.**
 //! Structure determines formatting, not manual string insertion.
+//! Newlines appear only in final `join()` calls, based on block context.
 
 use super::RenderResult;
 use markdown::mdast::AlignKind;
@@ -37,7 +40,9 @@ impl Compositor {
 
     /// Compose structured results into final Markdown
     ///
-    /// Newlines derived from block structure, not explicit.
+    /// Derives newlines from block structure during composition.
+    /// Rendering logic does not insert newlines; Compositor adds them
+    /// based on RenderResult types (Inline/Block/Table).
     ///
     /// # Arguments
     ///
@@ -45,7 +50,7 @@ impl Compositor {
     ///
     /// # Returns
     ///
-    /// Final Markdown string with newlines from structure
+    /// Final Markdown string with newlines derived from structure
     #[allow(dead_code)] // Used in Phase 5+
     pub fn compose(&self, results: Vec<RenderResult>) -> String {
         results

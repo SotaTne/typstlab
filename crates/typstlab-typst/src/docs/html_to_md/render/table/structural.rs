@@ -117,13 +117,7 @@ impl StructuralTableRenderer {
 
 impl MdRender for StructuralTableRenderer {
     fn render(&self, node: &Node) -> Result<RenderResult, RenderError> {
-        // Record step (O(n) verification)
-        #[cfg(test)]
-        {
-            use super::super::tests::performance::test_counter;
-            test_counter::inc();
-        }
-
+        // Step counting done at node level in render_inline_node()
         let Node::Table(table) = node else {
             return Err(RenderError::UnsupportedNode("Not a Table node".to_string()));
         };

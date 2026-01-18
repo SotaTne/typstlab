@@ -41,8 +41,14 @@ mod tests;
 /// Rendering output (structural, not flat string)
 #[allow(dead_code)] // Used in Phase 2+
 ///
-/// Preserves structure until final composition. Newlines derived from structure,
-/// never explicit in rendering logic.
+/// Preserves structure until final composition.
+/// Rendering logic extracts structure; Compositor derives newlines from structure.
+///
+/// # Structural Rendering Principle
+///
+/// Renderers (StandardRenderer, StructuralTableRenderer) do NOT insert explicit `\n`.
+/// They return RenderResult with structure.
+/// Compositor assembles RenderResult and inserts newlines based on context.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RenderResult {
     /// Inline content (no newlines)
