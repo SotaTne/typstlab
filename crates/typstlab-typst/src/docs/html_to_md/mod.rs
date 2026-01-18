@@ -3,7 +3,7 @@
 //! Converts HTML content from docs.json to clean Markdown suitable for LLMs.
 //! Uses 2-stage pipeline: HTML → mdast → Markdown for CommonMark compliance.
 
-mod render;
+pub mod render;
 
 use super::html_to_mdast;
 use markdown::mdast::Node;
