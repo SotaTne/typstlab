@@ -2,10 +2,10 @@
 //!
 //! Converts function definitions from docs.json to formatted Markdown.
 
-use super::generate::GenerateError;
 use super::html_to_md;
 use super::render::{extract_html_from_details, format_function_signature};
 use super::schema::{FuncContent, ParamContent};
+use thiserror::Error;
 
 /// Renders function body to Markdown
 ///
@@ -31,7 +31,7 @@ use super::schema::{FuncContent, ParamContent};
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_func_body(content: &serde_json::Value) -> Result<String, GenerateError> {
+pub fn render_func_body(content: &serde_json::Value) -> Result<String, RenderError> {
     // Parse FuncContent from JSON
     let func: FuncContent = serde_json::from_value(content.clone())?;
 
@@ -117,7 +117,7 @@ pub fn render_func_body(content: &serde_json::Value) -> Result<String, GenerateE
 /// # Errors
 ///
 /// Returns error if HTML conversion fails
-fn format_parameter(param: &ParamContent) -> Result<String, GenerateError> {
+fn format_parameter(param: &ParamContent) -> Result<String, RenderError> {
     let mut md = String::new();
 
     // Parameter name with type
@@ -209,7 +209,7 @@ fn format_parameter(param: &ParamContent) -> Result<String, GenerateError> {
 /// # Errors
 ///
 /// Returns error if HTML conversion fails
-fn format_scoped_function(func: &FuncContent) -> Result<String, GenerateError> {
+fn format_scoped_function(func: &FuncContent) -> Result<String, RenderError> {
     let mut md = String::new();
 
     // Method heading
@@ -450,4 +450,16 @@ mod tests {
             "Should show object default value as JSON"
         );
     }
+}
+
+/// Function rendering errors
+#[derive(Debug, Error)]
+pub enum RenderError {
+    /// JSON parsing error
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    /// HTML conversion error
+    #[error("HTML conversion error: {0}")]
+    HtmlConversionError(#[from] html_to_md::ConversionError),
 }

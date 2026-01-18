@@ -6,11 +6,11 @@
 //! - Function groups
 //! - Symbol tables
 
-use super::generate::GenerateError;
 use super::html_to_md;
 use super::render::{extract_html_from_details, format_function_signature};
 use super::render_func;
 use super::schema::{CategoryContent, FuncContent, GroupContent, SymbolsContent, TypeContent};
+use thiserror::Error;
 
 /// Renders type body to Markdown
 ///
@@ -32,7 +32,7 @@ use super::schema::{CategoryContent, FuncContent, GroupContent, SymbolsContent, 
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_type_body(content: &serde_json::Value) -> Result<String, GenerateError> {
+pub fn render_type_body(content: &serde_json::Value) -> Result<String, RenderError> {
     let type_content: TypeContent = serde_json::from_value(content.clone())?;
 
     let mut md = String::new();
@@ -83,7 +83,7 @@ pub fn render_type_body(content: &serde_json::Value) -> Result<String, GenerateE
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_category_body(content: &serde_json::Value) -> Result<String, GenerateError> {
+pub fn render_category_body(content: &serde_json::Value) -> Result<String, RenderError> {
     let cat: CategoryContent = serde_json::from_value(content.clone())?;
 
     let mut md = String::new();
@@ -134,7 +134,7 @@ pub fn render_category_body(content: &serde_json::Value) -> Result<String, Gener
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_group_body(content: &serde_json::Value) -> Result<String, GenerateError> {
+pub fn render_group_body(content: &serde_json::Value) -> Result<String, RenderError> {
     let group: GroupContent = serde_json::from_value(content.clone())?;
 
     let mut md = String::new();
@@ -226,7 +226,7 @@ pub fn render_group_body(content: &serde_json::Value) -> Result<String, Generate
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_symbols_body(content: &serde_json::Value) -> Result<String, GenerateError> {
+pub fn render_symbols_body(content: &serde_json::Value) -> Result<String, RenderError> {
     let symbols: SymbolsContent = serde_json::from_value(content.clone())?;
 
     let mut md = String::new();
@@ -298,7 +298,7 @@ pub fn render_symbols_body(content: &serde_json::Value) -> Result<String, Genera
 /// # Errors
 ///
 /// Returns error if HTML conversion fails
-fn format_scoped_function(func: &FuncContent) -> Result<String, GenerateError> {
+fn format_scoped_function(func: &FuncContent) -> Result<String, RenderError> {
     let mut md = String::new();
 
     // Method heading
@@ -409,4 +409,20 @@ mod tests {
             "Should have table header"
         );
     }
+}
+
+/// Body rendering errors
+#[derive(Debug, Error)]
+pub enum RenderError {
+    /// JSON parsing error
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    /// HTML conversion error
+    #[error("HTML conversion error: {0}")]
+    HtmlConversionError(#[from] html_to_md::ConversionError),
+
+    /// Function rendering error
+    #[error("Function rendering error: {0}")]
+    FuncRenderError(#[from] render_func::RenderError),
 }
