@@ -85,7 +85,7 @@ impl TypstHtmlConverter {
         }
     }
 
-    /// Handles element start tag and recursively processes children
+    /// Handles element start tag and dispatches to specific handlers
     fn handle_element_start(
         &mut self,
         name: &QualName,
@@ -93,155 +93,163 @@ impl TypstHtmlConverter {
         handle: &Handle,
     ) {
         let tag = name.local.as_ref();
-        let class = self.get_class(attrs);
 
-        match (tag, class.as_deref()) {
-            // Headings
-            ("h1", _) => {
-                self.end_paragraph(); // Flush paragraph before heading
-                let heading_node = self.build_heading(1, handle);
-                self.root_children.push(heading_node);
+        match tag {
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
+                self.handle_heading(tag, handle);
             }
-            ("h2", _) => {
-                self.end_paragraph();
-                let heading_node = self.build_heading(2, handle);
-                self.root_children.push(heading_node);
+            "p" => {
+                self.handle_paragraph(handle);
             }
-            ("h3", _) => {
-                self.end_paragraph();
-                let heading_node = self.build_heading(3, handle);
-                self.root_children.push(heading_node);
+            "pre" => {
+                self.handle_code_block(handle);
             }
-            ("h4", _) => {
-                self.end_paragraph();
-                let heading_node = self.build_heading(4, handle);
-                self.root_children.push(heading_node);
+            "a" => {
+                self.handle_link(attrs, handle);
             }
-            ("h5", _) => {
-                self.end_paragraph();
-                let heading_node = self.build_heading(5, handle);
-                self.root_children.push(heading_node);
+            "ul" => {
+                self.handle_list(false, handle);
             }
-            ("h6", _) => {
-                self.end_paragraph();
-                let heading_node = self.build_heading(6, handle);
-                self.root_children.push(heading_node);
+            "ol" => {
+                self.handle_list(true, handle);
             }
-
-            // Paragraph
-            ("p", _) => {
-                self.start_paragraph();
-                for child in handle.children.borrow().iter() {
-                    self.walk_node(child);
-                }
-                self.end_paragraph();
+            "blockquote" => {
+                self.handle_blockquote_element(handle);
             }
-
-            // Code block (<pre><code>...</code></pre>)
-            ("pre", _) => {
-                self.end_paragraph(); // Flush paragraph before code block
-                let code_text = self.collect_text_from_children(handle);
-                let code_node = Node::Code(markdown::mdast::Code {
-                    value: code_text,
-                    lang: None, // No language specified
-                    meta: None,
-                    position: None,
-                });
-                self.root_children.push(code_node);
+            "code" => {
+                self.handle_inline_code(handle);
             }
-
-            // Link
-            ("a", _) => {
-                let href = self.get_attr(attrs, "href");
-                let link_node = self.build_link(href, handle);
-
-                // Add to current paragraph (auto-wrap if needed)
-                if self.current_paragraph.is_none() {
-                    self.start_paragraph();
-                }
-                if let Some(para) = &mut self.current_paragraph {
-                    para.push(link_node);
-                }
+            "em" | "i" => {
+                self.handle_emphasis_element(handle);
             }
-
-            // Unordered list
-            ("ul", _) => {
-                self.end_paragraph(); // Flush paragraph before list
-                let list_node = self.build_list(false, handle);
-                self.root_children.push(list_node);
+            "strong" | "b" => {
+                self.handle_strong_element(handle);
             }
-
-            // Ordered list
-            ("ol", _) => {
-                self.end_paragraph(); // Flush paragraph before list
-                let list_node = self.build_list(true, handle);
-                self.root_children.push(list_node);
+            "table" => {
+                self.handle_table_element(handle);
             }
-
-            // Blockquote
-            ("blockquote", _) => {
-                self.end_paragraph(); // Flush paragraph before blockquote
-                let blockquote_node = self.build_blockquote(handle);
-                self.root_children.push(blockquote_node);
-            }
-
-            // Inline code
-            ("code", _) => {
-                let code_text = self.collect_text_from_children(handle);
-                let code_node = Node::InlineCode(markdown::mdast::InlineCode {
-                    value: code_text,
-                    position: None,
-                });
-
-                // Add to current paragraph (auto-wrap if needed)
-                if self.current_paragraph.is_none() {
-                    self.start_paragraph();
-                }
-                if let Some(para) = &mut self.current_paragraph {
-                    para.push(code_node);
-                }
-            }
-
-            // Emphasis (<em> or <i>)
-            ("em" | "i", _) => {
-                let emphasis_node = self.build_emphasis(handle);
-
-                // Add to current paragraph (auto-wrap if needed)
-                if self.current_paragraph.is_none() {
-                    self.start_paragraph();
-                }
-                if let Some(para) = &mut self.current_paragraph {
-                    para.push(emphasis_node);
-                }
-            }
-
-            // Strong (<strong> or <b>)
-            ("strong" | "b", _) => {
-                let strong_node = self.build_strong(handle);
-
-                // Add to current paragraph (auto-wrap if needed)
-                if self.current_paragraph.is_none() {
-                    self.start_paragraph();
-                }
-                if let Some(para) = &mut self.current_paragraph {
-                    para.push(strong_node);
-                }
-            }
-
-            // Table
-            ("table", _) => {
-                self.end_paragraph(); // Flush paragraph before table
-                let table_node = self.build_table(handle);
-                self.root_children.push(table_node);
-            }
-
-            // Text nodes (process children inline)
             _ => {
-                // Default: recurse into children
-                for child in handle.children.borrow().iter() {
-                    self.walk_node(child);
-                }
+                self.handle_default(handle);
             }
+        }
+    }
+
+    /// Handles heading elements (h1-h6)
+    fn handle_heading(&mut self, tag: &str, handle: &Handle) {
+        self.end_paragraph();
+        let depth = match tag {
+            "h1" => 1,
+            "h2" => 2,
+            "h3" => 3,
+            "h4" => 4,
+            "h5" => 5,
+            "h6" => 6,
+            _ => 1,
+        };
+        let heading_node = self.build_heading(depth, handle);
+        self.root_children.push(heading_node);
+    }
+
+    /// Handles paragraph element
+    fn handle_paragraph(&mut self, handle: &Handle) {
+        self.start_paragraph();
+        for child in handle.children.borrow().iter() {
+            self.walk_node(child);
+        }
+        self.end_paragraph();
+    }
+
+    /// Handles code block element (<pre>)
+    fn handle_code_block(&mut self, handle: &Handle) {
+        self.end_paragraph();
+        let code_text = self.collect_text_from_children(handle);
+        let code_node = Node::Code(markdown::mdast::Code {
+            value: code_text,
+            lang: None,
+            meta: None,
+            position: None,
+        });
+        self.root_children.push(code_node);
+    }
+
+    /// Handles link element (<a>)
+    fn handle_link(&mut self, attrs: &RefCell<Vec<Attribute>>, handle: &Handle) {
+        let href = self.get_attr(attrs, "href");
+        let link_node = self.build_link(href, handle);
+
+        if self.current_paragraph.is_none() {
+            self.start_paragraph();
+        }
+        if let Some(para) = &mut self.current_paragraph {
+            para.push(link_node);
+        }
+    }
+
+    /// Handles list element (<ul> or <ol>)
+    fn handle_list(&mut self, ordered: bool, handle: &Handle) {
+        self.end_paragraph();
+        let list_node = self.build_list(ordered, handle);
+        self.root_children.push(list_node);
+    }
+
+    /// Handles blockquote element
+    fn handle_blockquote_element(&mut self, handle: &Handle) {
+        self.end_paragraph();
+        let blockquote_node = self.build_blockquote(handle);
+        self.root_children.push(blockquote_node);
+    }
+
+    /// Handles inline code element (<code>)
+    fn handle_inline_code(&mut self, handle: &Handle) {
+        let code_text = self.collect_text_from_children(handle);
+        let code_node = Node::InlineCode(markdown::mdast::InlineCode {
+            value: code_text,
+            position: None,
+        });
+
+        if self.current_paragraph.is_none() {
+            self.start_paragraph();
+        }
+        if let Some(para) = &mut self.current_paragraph {
+            para.push(code_node);
+        }
+    }
+
+    /// Handles emphasis element (<em> or <i>)
+    fn handle_emphasis_element(&mut self, handle: &Handle) {
+        let emphasis_node = self.build_emphasis(handle);
+
+        if self.current_paragraph.is_none() {
+            self.start_paragraph();
+        }
+        if let Some(para) = &mut self.current_paragraph {
+            para.push(emphasis_node);
+        }
+    }
+
+    /// Handles strong element (<strong> or <b>)
+    fn handle_strong_element(&mut self, handle: &Handle) {
+        let strong_node = self.build_strong(handle);
+
+        if self.current_paragraph.is_none() {
+            self.start_paragraph();
+        }
+        if let Some(para) = &mut self.current_paragraph {
+            para.push(strong_node);
+        }
+    }
+
+    /// Handles table element
+    fn handle_table_element(&mut self, handle: &Handle) {
+        self.end_paragraph();
+        let table_node = self.build_table(handle);
+        self.root_children.push(table_node);
+    }
+
+    /// Handles default/unknown elements (recurse into children)
+    fn handle_default(&mut self, handle: &Handle) {
+        for child in handle.children.borrow().iter() {
+            self.walk_node(child);
         }
     }
 
@@ -269,6 +277,7 @@ impl TypstHtmlConverter {
     }
 
     /// Gets class attribute value
+    #[allow(dead_code)]
     fn get_class(&self, attrs: &RefCell<Vec<Attribute>>) -> Option<String> {
         attrs
             .borrow()
