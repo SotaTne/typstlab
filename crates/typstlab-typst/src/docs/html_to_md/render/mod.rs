@@ -18,10 +18,16 @@
 //! All renderers guarantee O(n) complexity where n = node count.
 //! Verified with step counters in `tests/performance.rs`.
 
+mod compositor;
 mod standard;
+mod table;
 
 #[allow(unused_imports)] // Used in Phase 5+
+pub use compositor::Compositor;
+#[allow(unused_imports)] // Used in Phase 5+
 pub use standard::StandardRenderer;
+#[allow(unused_imports)] // Used in Phase 5+
+pub use table::StructuralTableRenderer;
 
 use markdown::mdast::{AlignKind, Node};
 use thiserror::Error;
