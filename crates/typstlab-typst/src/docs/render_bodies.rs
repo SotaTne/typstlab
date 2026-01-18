@@ -8,28 +8,9 @@
 
 use super::generate::GenerateError;
 use super::html_to_md;
+use super::render::{extract_html_from_details, format_function_signature};
 use super::render_func;
 use super::schema::{CategoryContent, FuncContent, GroupContent, SymbolsContent, TypeContent};
-
-/// Extract HTML content from details field (can be string or array of Detail objects)
-fn extract_html_from_details(details: &serde_json::Value) -> String {
-    match details {
-        serde_json::Value::String(s) => s.clone(),
-        serde_json::Value::Array(arr) => arr
-            .iter()
-            .filter_map(|item| {
-                let kind = item.get("kind")?.as_str()?;
-                if kind == "html" {
-                    item.get("content")?.as_str()
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n"),
-        _ => String::new(),
-    }
-}
 
 /// Renders type body to Markdown
 ///
@@ -344,61 +325,6 @@ fn format_scoped_function(func: &FuncContent) -> Result<String, GenerateError> {
     }
 
     Ok(md)
-}
-
-/// Formats function signature (helper for type methods)
-///
-/// # Arguments
-///
-/// * `func` - Function content
-///
-/// # Returns
-///
-/// Formatted signature string with backticks
-fn format_function_signature(func: &FuncContent) -> String {
-    let mut sig = String::new();
-
-    // Function name (with path if present)
-    if !func.path.is_empty() {
-        sig.push_str(&format!("`{}.{}(", func.path.join("."), func.name));
-    } else {
-        sig.push_str(&format!("`{}(", func.name));
-    }
-
-    // Parameters
-    let param_strs: Vec<String> = func
-        .params
-        .iter()
-        .map(|p| {
-            let mut ps = p.name.clone();
-
-            // Add type annotation
-            if !p.types.is_empty() {
-                ps.push_str(": ");
-                ps.push_str(&p.types.join(" | "));
-            }
-
-            // Add default value
-            if let Some(default) = &p.default {
-                ps.push_str(" = ");
-                ps.push_str(&serde_json::to_string(default).unwrap_or_else(|_| "?".to_string()));
-            }
-
-            ps
-        })
-        .collect();
-
-    sig.push_str(&param_strs.join(", "));
-    sig.push(')');
-
-    // Return type
-    if !func.returns.is_empty() {
-        sig.push_str(" -> ");
-        sig.push_str(&func.returns.join(" | "));
-    }
-
-    sig.push('`');
-    sig
 }
 
 #[cfg(test)]

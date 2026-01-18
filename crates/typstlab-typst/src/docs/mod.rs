@@ -5,6 +5,7 @@ pub mod download_json;
 pub mod generate;
 pub mod html_to_md;
 pub mod html_to_mdast;
+pub mod render;
 pub mod render_bodies;
 pub mod render_func;
 pub mod schema;
