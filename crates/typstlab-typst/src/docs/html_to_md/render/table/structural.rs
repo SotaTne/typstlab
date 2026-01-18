@@ -20,6 +20,12 @@ use markdown::mdast::{Node, TableCell, TableRow};
 #[allow(dead_code)] // Used in Phase 5+
 pub struct StructuralTableRenderer;
 
+impl Default for StructuralTableRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StructuralTableRenderer {
     /// Create new StructuralTableRenderer
     #[allow(dead_code)] // Used in Phase 5+

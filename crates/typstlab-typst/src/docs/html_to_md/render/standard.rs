@@ -18,6 +18,12 @@ use markdown::mdast::Node;
 #[allow(dead_code)] // Used in Phase 5+
 pub struct StandardRenderer;
 
+impl Default for StandardRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StandardRenderer {
     /// Create new StandardRenderer
     #[allow(dead_code)] // Used in Phase 5+

@@ -22,6 +22,12 @@ use markdown::mdast::AlignKind;
 #[allow(dead_code)] // Used in Phase 5+
 pub struct Compositor;
 
+impl Default for Compositor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Compositor {
     /// Create new Compositor
     #[allow(dead_code)] // Used in Phase 5+
@@ -49,7 +55,8 @@ impl Compositor {
                 RenderResult::Inline(s) => s.clone(),
                 RenderResult::Block(lines) => {
                     // Block: join lines, add spacing from context
-                    let content = lines.join("\n");
+                    // Trim trailing newlines to avoid double spacing
+                    let content = lines.join("\n").trim_end().to_string();
                     if i < results.len() - 1 {
                         format!("{}\n\n", content) // Inter-block spacing
                     } else {

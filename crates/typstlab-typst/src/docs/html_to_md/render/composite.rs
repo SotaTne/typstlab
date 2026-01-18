@@ -32,6 +32,12 @@ pub struct CompositeRenderer {
     compositor: Compositor,
 }
 
+impl Default for CompositeRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CompositeRenderer {
     /// Create new CompositeRenderer
     #[allow(dead_code)] // Used in Phase 6+
@@ -46,6 +52,7 @@ impl CompositeRenderer {
     /// Render mdast node to Markdown string
     ///
     /// Delegates to appropriate renderer, then composes result.
+    /// Handles Root nodes by rendering children to enable table detection.
     ///
     /// # Arguments
     ///
@@ -61,19 +68,23 @@ impl CompositeRenderer {
     #[allow(dead_code)] // Used in Phase 6+
     pub fn render(&self, node: &Node) -> Result<String, RenderError> {
         // Dispatch to appropriate renderer
-        let result = match node {
+        match node {
+            Node::Root(root) => {
+                // Handle Root by rendering children
+                // This enables StructuralTableRenderer for nested tables
+                self.render_many(&root.children)
+            }
             Node::Table(_) => {
                 // Use structural table renderer for GFM tables
-                self.table.render(node)?
+                let result = self.table.render(node)?;
+                Ok(self.compositor.compose(vec![result]))
             }
             _ => {
                 // Use standard renderer for everything else
-                self.standard.render(node)?
+                let result = self.standard.render(node)?;
+                Ok(self.compositor.compose(vec![result]))
             }
-        };
-
-        // Compose result into final Markdown
-        Ok(self.compositor.compose(vec![result]))
+        }
     }
 
     /// Render multiple nodes and compose together
@@ -330,5 +341,81 @@ mod tests {
 
         let result = renderer.render(&node).expect("Should render");
         assert!(result.contains("Test"));
+    }
+
+    #[test]
+    fn test_composite_renders_root_with_table() {
+        let renderer = CompositeRenderer::new();
+        let root = Node::Root(Root {
+            children: vec![
+                Node::Paragraph(Paragraph {
+                    children: vec![Node::Text(Text {
+                        value: "Before table".to_string(),
+                        position: None,
+                    })],
+                    position: None,
+                }),
+                Node::Table(Table {
+                    children: vec![
+                        Node::TableRow(TableRow {
+                            children: vec![
+                                Node::TableCell(TableCell {
+                                    children: vec![Node::Text(Text {
+                                        value: "A".to_string(),
+                                        position: None,
+                                    })],
+                                    position: None,
+                                }),
+                                Node::TableCell(TableCell {
+                                    children: vec![Node::Text(Text {
+                                        value: "B".to_string(),
+                                        position: None,
+                                    })],
+                                    position: None,
+                                }),
+                            ],
+                            position: None,
+                        }),
+                        Node::TableRow(TableRow {
+                            children: vec![
+                                Node::TableCell(TableCell {
+                                    children: vec![Node::Text(Text {
+                                        value: "1".to_string(),
+                                        position: None,
+                                    })],
+                                    position: None,
+                                }),
+                                Node::TableCell(TableCell {
+                                    children: vec![Node::Text(Text {
+                                        value: "2".to_string(),
+                                        position: None,
+                                    })],
+                                    position: None,
+                                }),
+                            ],
+                            position: None,
+                        }),
+                    ],
+                    align: vec![AlignKind::None, AlignKind::None],
+                    position: None,
+                }),
+                Node::Paragraph(Paragraph {
+                    children: vec![Node::Text(Text {
+                        value: "After table".to_string(),
+                        position: None,
+                    })],
+                    position: None,
+                }),
+            ],
+            position: None,
+        });
+
+        let result = renderer.render(&root).expect("Should render");
+        // Verify table uses StructuralTableRenderer (GFM format)
+        assert!(result.contains("Before table"));
+        assert!(result.contains("| A   | B   |"));
+        assert!(result.contains("| --- | --- |"));
+        assert!(result.contains("| 1   | 2   |"));
+        assert!(result.contains("After table"));
     }
 }
