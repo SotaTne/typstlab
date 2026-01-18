@@ -20,12 +20,17 @@ const MAX_HTML_SIZE: usize = 5_000_000;
 /// # Architecture
 ///
 /// - Stage 1: HTML → mdast (via html_to_mdast::convert)
-/// - Stage 2: mdast → Markdown (via mdast_util_to_markdown)
+/// - Stage 2: mdast → Markdown (via CompositeRenderer)
 ///
-/// # Fallback Strategy (Codex Requirement 2)
+/// CompositeRenderer provides unified rendering:
+/// - Table nodes → StructuralTableRenderer (structural GFM)
+/// - Other nodes → StandardRenderer (mdast_util_to_markdown)
+/// - Assembly → Compositor (structure → final Markdown)
 ///
-/// If mdast_util_to_markdown fails, falls back to plain text extraction
-/// from mdast AST. This ensures graceful degradation without dual specs.
+/// # Fallback Strategy
+///
+/// If rendering fails, falls back to plain text extraction from mdast AST.
+/// This ensures graceful degradation.
 ///
 /// # Arguments
 ///
@@ -38,7 +43,7 @@ const MAX_HTML_SIZE: usize = 5_000_000;
 /// - HTML parsing fails
 /// - mdast construction fails
 ///
-/// Note: mdast_util_to_markdown errors trigger fallback (not error return)
+/// Note: Rendering errors trigger fallback (not error return)
 ///
 /// # Example
 ///
@@ -58,19 +63,14 @@ pub fn convert(html: &str) -> Result<String, ConversionError> {
     // Stage 1: HTML → mdast
     let mdast = html_to_mdast::convert(html)?;
 
-    // Stage 2: mdast → Markdown (with fallback)
-    match mdast_util_to_markdown::to_markdown(&mdast) {
+    // Stage 2: mdast → Markdown (via CompositeRenderer)
+    let renderer = render::create_composite_renderer();
+    match renderer.render(&mdast) {
         Ok(md) => Ok(md),
         Err(e) => {
-            // Check if error is due to unsupported Table nodes
-            if has_table_nodes(&mdast) {
-                // Use custom GFM table renderer
-                return Ok(render_with_custom_table(&mdast));
-            }
-
-            // Other errors: fallback to plain text
+            // Rendering failed: fallback to plain text
             eprintln!(
-                "mdast_util_to_markdown failed: {}, falling back to plain text",
+                "CompositeRenderer failed: {}, falling back to plain text",
                 e
             );
             Ok(extract_plain_text(&mdast))
@@ -209,57 +209,6 @@ fn extract_plain_text(node: &Node) -> String {
         // Fallback for other node types
         _ => String::new(),
     }
-}
-
-/// Check if mdast tree contains Table nodes
-fn has_table_nodes(root: &Node) -> bool {
-    match root {
-        Node::Root(r) => r
-            .children
-            .iter()
-            .any(|child| matches!(child, Node::Table(_))),
-        _ => false,
-    }
-}
-
-/// Render mdast with custom table rendering
-///
-/// This function handles mdast trees that contain Table nodes by using
-/// our custom GFM table renderer, while using mdast_util_to_markdown
-/// for all other node types.
-fn render_with_custom_table(root: &Node) -> String {
-    let Node::Root(root_node) = root else {
-        return extract_plain_text(root);
-    };
-
-    let mut output = String::new();
-
-    for child in &root_node.children {
-        match child {
-            Node::Table(_table) => {
-                // TODO(Phase 6): Replace with StructuralTableRenderer
-                // output.push_str(&render_table_to_gfm(table));
-                output.push_str("[Table rendering temporarily disabled]");
-                output.push_str("\n\n");
-            }
-            _ => {
-                // Try standard mdast_util_to_markdown for other nodes
-                match mdast_util_to_markdown::to_markdown(child) {
-                    Ok(md) => {
-                        output.push_str(&md);
-                        output.push_str("\n\n");
-                    }
-                    Err(_) => {
-                        // Fallback for this node
-                        output.push_str(&extract_plain_text(child));
-                        output.push_str("\n\n");
-                    }
-                }
-            }
-        }
-    }
-
-    output.trim_end().to_string()
 }
 
 /// HTML to Markdown conversion errors
