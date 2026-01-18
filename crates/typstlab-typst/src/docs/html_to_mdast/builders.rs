@@ -17,17 +17,7 @@ pub(super) fn build_heading(
     depth: u8,
     handle: &Handle,
 ) -> Node {
-    let saved_para = converter.current_paragraph.take();
-
-    // Temporarily accumulate children inline
-    converter.current_paragraph = Some(Vec::new());
-    for child in handle.children.borrow().iter() {
-        converter.walk_node(child);
-    }
-
-    // Extract accumulated children
-    let children = converter.current_paragraph.take().unwrap_or_default();
-    converter.current_paragraph = saved_para;
+    let children = converter.accumulate_inline_children(handle);
 
     Node::Heading(Heading {
         children,
@@ -42,23 +32,7 @@ pub(super) fn build_link(
     href: Option<String>,
     handle: &Handle,
 ) -> Node {
-    // Collect link text children
-    let mut link_children = Vec::new();
-    let saved_para = converter.current_paragraph.take();
-
-    // Temporarily accumulate children inline
-    converter.current_paragraph = Some(Vec::new());
-    for child in handle.children.borrow().iter() {
-        converter.walk_node(child);
-    }
-
-    // Extract accumulated children
-    if let Some(children) = converter.current_paragraph.take() {
-        link_children = children;
-    }
-
-    // Restore previous paragraph state
-    converter.current_paragraph = saved_para;
+    let link_children = converter.accumulate_inline_children(handle);
 
     // Fix internal links: /DOCS-BASE/ → ../
     let url = href
@@ -100,19 +74,17 @@ pub(super) fn build_list(
 
 /// Builds ListItem node from <li>
 pub(super) fn build_list_item(converter: &mut TypstHtmlConverter, handle: &Handle) -> Node {
-    let saved_root = std::mem::take(&mut converter.root_children);
     let saved_para = converter.current_paragraph.take();
 
-    // Process children (may contain paragraphs, nested lists)
-    for child in handle.children.borrow().iter() {
-        converter.walk_node(child);
-    }
+    let item_children = converter.with_saved_root_children(|conv| {
+        // Process children (may contain paragraphs, nested lists)
+        for child in handle.children.borrow().iter() {
+            conv.walk_node(child);
+        }
+        // Flush any remaining paragraph
+        conv.end_paragraph();
+    });
 
-    // Flush any remaining paragraph
-    converter.end_paragraph();
-
-    // Extract accumulated children
-    let item_children = std::mem::replace(&mut converter.root_children, saved_root);
     converter.current_paragraph = saved_para;
 
     Node::ListItem(ListItem {
@@ -125,18 +97,14 @@ pub(super) fn build_list_item(converter: &mut TypstHtmlConverter, handle: &Handl
 
 /// Builds Blockquote node from <blockquote>
 pub(super) fn build_blockquote(converter: &mut TypstHtmlConverter, handle: &Handle) -> Node {
-    let saved_root = std::mem::take(&mut converter.root_children);
-
-    // Process children
-    for child in handle.children.borrow().iter() {
-        converter.walk_node(child);
-    }
-
-    // Flush any remaining paragraph
-    converter.end_paragraph();
-
-    // Extract accumulated children
-    let blockquote_children = std::mem::replace(&mut converter.root_children, saved_root);
+    let blockquote_children = converter.with_saved_root_children(|conv| {
+        // Process children
+        for child in handle.children.borrow().iter() {
+            conv.walk_node(child);
+        }
+        // Flush any remaining paragraph
+        conv.end_paragraph();
+    });
 
     Node::Blockquote(Blockquote {
         children: blockquote_children,
@@ -146,15 +114,7 @@ pub(super) fn build_blockquote(converter: &mut TypstHtmlConverter, handle: &Hand
 
 /// Builds Emphasis node from <em> or <i>
 pub(super) fn build_emphasis(converter: &mut TypstHtmlConverter, handle: &Handle) -> Node {
-    let saved_para = converter.current_paragraph.take();
-
-    converter.current_paragraph = Some(Vec::new());
-    for child in handle.children.borrow().iter() {
-        converter.walk_node(child);
-    }
-
-    let children = converter.current_paragraph.take().unwrap_or_default();
-    converter.current_paragraph = saved_para;
+    let children = converter.accumulate_inline_children(handle);
 
     Node::Emphasis(Emphasis {
         children,
@@ -164,15 +124,7 @@ pub(super) fn build_emphasis(converter: &mut TypstHtmlConverter, handle: &Handle
 
 /// Builds Strong node from <strong> or <b>
 pub(super) fn build_strong(converter: &mut TypstHtmlConverter, handle: &Handle) -> Node {
-    let saved_para = converter.current_paragraph.take();
-
-    converter.current_paragraph = Some(Vec::new());
-    for child in handle.children.borrow().iter() {
-        converter.walk_node(child);
-    }
-
-    let children = converter.current_paragraph.take().unwrap_or_default();
-    converter.current_paragraph = saved_para;
+    let children = converter.accumulate_inline_children(handle);
 
     Node::Strong(Strong {
         children,
@@ -244,19 +196,17 @@ pub(super) fn build_table_row(converter: &mut TypstHtmlConverter, handle: &Handl
 
 /// Builds TableCell node from <th> or <td>
 pub(super) fn build_table_cell(converter: &mut TypstHtmlConverter, handle: &Handle) -> Node {
-    let saved_root = std::mem::take(&mut converter.root_children);
     let saved_para = converter.current_paragraph.take();
 
-    // Process cell content
-    for child in handle.children.borrow().iter() {
-        converter.walk_node(child);
-    }
+    let cell_children = converter.with_saved_root_children(|conv| {
+        // Process cell content
+        for child in handle.children.borrow().iter() {
+            conv.walk_node(child);
+        }
+        // Flush any remaining paragraph
+        conv.end_paragraph();
+    });
 
-    // Flush any remaining paragraph
-    converter.end_paragraph();
-
-    // Extract accumulated children
-    let cell_children = std::mem::replace(&mut converter.root_children, saved_root);
     converter.current_paragraph = saved_para;
 
     // If no children, add empty text node

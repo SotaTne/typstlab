@@ -299,6 +299,58 @@ impl TypstHtmlConverter {
         }
     }
 
+    /// Accumulate inline children temporarily
+    ///
+    /// Saves current paragraph state, processes children into temporary buffer,
+    /// returns accumulated nodes, and restores previous state.
+    ///
+    /// # Arguments
+    ///
+    /// * `handle` - DOM node whose children to process
+    ///
+    /// # Returns
+    ///
+    /// Vec of accumulated inline nodes
+    pub(super) fn accumulate_inline_children(&mut self, handle: &Handle) -> Vec<Node> {
+        let saved_para = self.current_paragraph.take();
+
+        // Temporarily accumulate children inline
+        self.current_paragraph = Some(Vec::new());
+        for child in handle.children.borrow().iter() {
+            self.walk_node(child);
+        }
+
+        // Extract accumulated children
+        let children = self.current_paragraph.take().unwrap_or_default();
+        self.current_paragraph = saved_para;
+
+        children
+    }
+
+    /// Execute closure with saved root_children
+    ///
+    /// Saves root_children, executes closure (which may modify root_children),
+    /// extracts accumulated children, and restores previous root_children.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - Closure to execute
+    ///
+    /// # Returns
+    ///
+    /// Vec of nodes accumulated in root_children during closure execution
+    pub(super) fn with_saved_root_children<F>(&mut self, f: F) -> Vec<Node>
+    where
+        F: FnOnce(&mut Self),
+    {
+        let saved_root = std::mem::take(&mut self.root_children);
+
+        f(self);
+
+        // Extract accumulated children
+        std::mem::replace(&mut self.root_children, saved_root)
+    }
+
     /// Finalizes conversion and returns mdast Root
     fn finalize(mut self) -> Node {
         // Flush any remaining paragraph
