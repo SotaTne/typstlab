@@ -18,6 +18,11 @@
 //! All renderers guarantee O(n) complexity where n = node count.
 //! Verified with step counters in `tests/performance.rs`.
 
+mod standard;
+
+#[allow(unused_imports)] // Used in Phase 5+
+pub use standard::StandardRenderer;
+
 use markdown::mdast::{AlignKind, Node};
 use thiserror::Error;
 

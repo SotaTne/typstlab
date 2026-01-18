@@ -3,7 +3,7 @@
 //! Includes O(n) performance verification tests using step counters.
 
 #[cfg(test)]
-mod performance;
+pub(super) mod performance;
 
 #[cfg(test)]
 mod structural;
