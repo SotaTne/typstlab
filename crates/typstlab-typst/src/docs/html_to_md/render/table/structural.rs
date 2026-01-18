@@ -61,6 +61,13 @@ impl StructuralTableRenderer {
     /// Render inline node to string (O(1))
     #[allow(dead_code)] // Used in render_cell_inline()
     fn render_inline_node(&self, node: &Node) -> String {
+        // Record step for O(n) verification
+        #[cfg(test)]
+        {
+            use super::super::tests::performance::test_counter;
+            test_counter::inc();
+        }
+
         match node {
             Node::Text(text) => Self::escape_pipe(&text.value),
             Node::InlineCode(code) => format!("`{}`", Self::escape_pipe(&code.value)),

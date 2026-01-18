@@ -30,13 +30,20 @@ pub(crate) mod test_counter {
 }
 
 /// Helper: Count total nodes in mdast tree
-fn count_nodes(node: &Node) -> usize {
+///
+/// Used for O(n) verification and by renderers to track node traversal.
+pub(crate) fn count_nodes(node: &Node) -> usize {
     1 + match node {
         Node::Root(root) => root.children.iter().map(count_nodes).sum(),
         Node::Paragraph(para) => para.children.iter().map(count_nodes).sum(),
         Node::Table(table) => table.children.iter().map(count_nodes).sum(),
         Node::TableRow(row) => row.children.iter().map(count_nodes).sum(),
         Node::TableCell(cell) => cell.children.iter().map(count_nodes).sum(),
+        Node::Heading(h) => h.children.iter().map(count_nodes).sum(),
+        Node::Emphasis(em) => em.children.iter().map(count_nodes).sum(),
+        Node::Strong(s) => s.children.iter().map(count_nodes).sum(),
+        Node::Link(l) => l.children.iter().map(count_nodes).sum(),
+        Node::InlineCode(_) | Node::Text(_) => 0,
         _ => 0,
     }
 }
@@ -129,8 +136,9 @@ fn steps_per_node(steps: usize, nodes: usize) -> f64 {
 }
 
 #[test]
-#[ignore] // Placeholder: will pass when renderers are implemented
 fn test_render_o_n_performance() {
+    use super::super::create_composite_renderer;
+
     // Generate mdast trees of different sizes
     let tree_100 = create_test_tree(100); // ~100 nodes
     let tree_1000 = create_test_tree(1000); // ~1000 nodes
@@ -146,22 +154,19 @@ fn test_render_o_n_performance() {
         nodes_100, nodes_1000, nodes_10000
     );
 
-    // Count steps for each size (placeholder - will fail until renderer implemented)
+    // Count steps for each size
+    let renderer = create_composite_renderer();
+
     let steps_100 = with_step_counter(|| {
-        // TODO: Implement in Phase 5
-        // let renderer = create_composite_renderer();
-        // renderer.render(&tree_100);
-        eprintln!("Renderer not yet implemented (Phase 0 placeholder)");
+        let _ = renderer.render(&tree_100);
     });
 
     let steps_1000 = with_step_counter(|| {
-        // TODO: Implement in Phase 5
-        eprintln!("Renderer not yet implemented (Phase 0 placeholder)");
+        let _ = renderer.render(&tree_1000);
     });
 
     let steps_10000 = with_step_counter(|| {
-        // TODO: Implement in Phase 5
-        eprintln!("Renderer not yet implemented (Phase 0 placeholder)");
+        let _ = renderer.render(&tree_10000);
     });
 
     // Verify O(n) scaling: steps-per-node should be constant
@@ -218,17 +223,18 @@ fn test_render_o_n_performance() {
 }
 
 #[test]
-#[ignore] // Placeholder: will pass when renderers are implemented
 fn test_render_worst_case_deep_nesting() {
+    use super::super::create_composite_renderer;
+
     // Worst case: deeply nested structure (depth 100)
     let tree = create_deeply_nested_tree(100);
     let node_count = count_nodes(&tree);
 
     println!("Deep nesting tree: {} nodes (depth 100)", node_count);
 
+    let renderer = create_composite_renderer();
     let steps = with_step_counter(|| {
-        // TODO: Implement in Phase 5
-        eprintln!("Renderer not yet implemented (Phase 0 placeholder)");
+        let _ = renderer.render(&tree);
     });
 
     println!("Steps: {}, Node count: {}", steps, node_count);
@@ -243,17 +249,18 @@ fn test_render_worst_case_deep_nesting() {
 }
 
 #[test]
-#[ignore] // Placeholder: will pass when renderers are implemented
 fn test_render_worst_case_wide_tables() {
+    use super::super::create_composite_renderer;
+
     // Worst case: wide tables (100 rows × 50 columns = 5000 cells)
     let tree = create_wide_table(100, 50);
     let node_count = count_nodes(&tree);
 
     println!("Wide table tree: {} nodes (100×50)", node_count);
 
+    let renderer = create_composite_renderer();
     let steps = with_step_counter(|| {
-        // TODO: Implement in Phase 5
-        eprintln!("Renderer not yet implemented (Phase 0 placeholder)");
+        let _ = renderer.render(&tree);
     });
 
     println!("Steps: {}, Node count: {}", steps, node_count);

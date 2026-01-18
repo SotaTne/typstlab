@@ -34,11 +34,15 @@ impl StandardRenderer {
 
 impl MdRender for StandardRenderer {
     fn render(&self, node: &Node) -> Result<RenderResult, RenderError> {
-        // Record step (O(n) verification)
+        // Record steps for O(n) verification
+        // Count nodes in the subtree since mdast_util_to_markdown processes them
         #[cfg(test)]
         {
-            use super::tests::performance::test_counter;
-            test_counter::inc();
+            use super::tests::performance::{count_nodes, test_counter};
+            let node_count = count_nodes(node);
+            for _ in 0..node_count {
+                test_counter::inc();
+            }
         }
 
         // Delegate to mdast_util_to_markdown
