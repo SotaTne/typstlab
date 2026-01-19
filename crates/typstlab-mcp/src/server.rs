@@ -21,6 +21,34 @@ impl McpServer {
         Ok(Self { project })
     }
 
+    /// List available resources
+    pub fn list_resources(&self) -> Vec<Resource> {
+        vec![Resource {
+            uri: "typstlab://rules".to_string(),
+            name: "Project Rules".to_string(),
+            mime_type: Some("application/json".to_string()),
+            description: Some("Project configuration from typstlab.toml".to_string()),
+        }]
+    }
+
+    /// Read a specific resource
+    pub fn read_resource(&self, uri: &str) -> Result<ResourceContent> {
+        match uri {
+            "typstlab://rules" => {
+                let content = serde_json::to_string_pretty(self.project.config())?;
+                Ok(ResourceContent {
+                    uri: uri.to_string(),
+                    mime_type: Some("application/json".to_string()),
+                    text: content,
+                })
+            }
+            _ => Err(typstlab_core::error::TypstlabError::Generic(format!(
+                "Unknown resource: {}",
+                uri
+            ))),
+        }
+    }
+
     /// Handle a tool call
     pub fn handle_tool_call(&self, tool_name: &str, input: Value) -> Result<Value> {
         match tool_name {
@@ -113,6 +141,21 @@ pub struct Safety {
     pub writes_sot: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct Resource {
+    pub uri: String,
+    pub name: String,
+    pub mime_type: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResourceContent {
+    pub uri: String,
+    pub mime_type: Option<String>,
+    pub text: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,5 +203,27 @@ version = "0.12.0"
 
         let server = McpServer::new(temp.path().to_path_buf());
         assert!(server.is_err());
+    }
+
+    #[test]
+    fn test_list_resources() {
+        let temp = temp_dir_in_workspace();
+        create_test_project_config(temp.path());
+
+        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
+        let resources = server.list_resources();
+        assert!(resources.iter().any(|r| r.uri == "typstlab://rules"));
+    }
+
+    #[test]
+    fn test_read_rules_resource() {
+        let temp = temp_dir_in_workspace();
+        create_test_project_config(temp.path());
+
+        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
+        let content = server.read_resource("typstlab://rules").unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&content.text).unwrap();
+        assert_eq!(json["project"]["name"], "test-project");
     }
 }
