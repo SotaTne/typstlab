@@ -48,15 +48,18 @@ impl MdRender for StandardRenderer {
         // Delegate to mdast_util_to_markdown
         match mdast_util_to_markdown::to_markdown(node) {
             Ok(md) => {
+                // Trim trailing newlines to avoid double newlines when Compositor adds spacing
+                let trimmed = md.trim_end_matches('\n').to_string();
+
                 // Determine result type from node
                 let result = match node {
-                    Node::Root(_) => RenderResult::Block(vec![md]),
+                    Node::Root(_) => RenderResult::Block(vec![trimmed]),
                     Node::Paragraph(_)
                     | Node::Heading(_)
                     | Node::Code(_)
                     | Node::Blockquote(_)
-                    | Node::List(_) => RenderResult::Block(vec![md]),
-                    _ => RenderResult::Inline(md),
+                    | Node::List(_) => RenderResult::Block(vec![trimmed]),
+                    _ => RenderResult::Inline(trimmed),
                 };
                 Ok(result)
             }

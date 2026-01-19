@@ -13,6 +13,7 @@
 //!
 //! O(n) guarantee: delegates to O(n) components, single composition pass.
 
+use super::paragraph::ParagraphRenderer;
 use super::table::StructuralTableRenderer;
 use super::{Compositor, MdRender, RenderError, RenderResult, StandardRenderer};
 use markdown::mdast::Node;
@@ -27,6 +28,7 @@ use markdown::mdast::Node;
 /// O(n) where n = total nodes. Step counter tracks all render() calls.
 #[allow(dead_code)] // Used in Phase 6+
 pub struct CompositeRenderer {
+    paragraph: ParagraphRenderer,
     standard: StandardRenderer,
     table: StructuralTableRenderer,
     compositor: Compositor,
@@ -43,6 +45,7 @@ impl CompositeRenderer {
     #[allow(dead_code)] // Used in Phase 6+
     pub fn new() -> Self {
         CompositeRenderer {
+            paragraph: ParagraphRenderer::new(),
             standard: StandardRenderer::new(),
             table: StructuralTableRenderer::new(),
             compositor: Compositor::new(),
@@ -70,8 +73,8 @@ impl CompositeRenderer {
         // Dispatch to appropriate renderer
         match node {
             Node::Root(root) => {
-                // Handle Root by rendering children
-                // This enables StructuralTableRenderer for nested tables
+                // Handle Root by rendering children individually
+                // This enables StructuralTableRenderer for tables
                 self.render_many(&root.children)
             }
             Node::Table(_) => {
@@ -108,6 +111,7 @@ impl CompositeRenderer {
             .iter()
             .map(|node| match node {
                 Node::Table(_) => self.table.render(node),
+                Node::Paragraph(_) => self.paragraph.render(node), // Fast!
                 _ => self.standard.render(node),
             })
             .collect();
