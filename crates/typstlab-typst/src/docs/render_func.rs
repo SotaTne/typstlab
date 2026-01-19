@@ -3,7 +3,7 @@
 //! Converts function definitions from docs.json to formatted Markdown.
 
 use super::html_to_md;
-use super::render::{extract_html_from_details, format_function_signature};
+use super::render::{default_value_to_text, extract_html_from_details, format_function_signature};
 use super::schema::{FuncContent, ParamContent};
 use thiserror::Error;
 
@@ -153,7 +153,7 @@ fn format_parameter(param: &ParamContent) -> Result<String, RenderError> {
 
     // Default value
     if let Some(default) = &param.default {
-        let default_str = serde_json::to_string(default).unwrap_or_else(|_| "?".to_string());
+        let default_str = default_value_to_text(default)?;
         md.push_str(&format!(", default: `{}`", default_str));
     }
 
@@ -448,6 +448,92 @@ mod tests {
         assert!(
             result.contains("key") && result.contains("value"),
             "Should show object default value as JSON"
+        );
+    }
+
+    /// Test HTML in default value is converted to plain text
+    /// Real issue from docs.json where default values contain HTML markup
+    #[test]
+    fn test_default_value_html_stripped() {
+        let func_json = serde_json::json!({
+            "name": "cancel",
+            "title": "Cancel",
+            "category": "math",
+            "oneliner": "Displays a diagonal line through content.",
+            "element": true,
+            "details": "<p>Displays a diagonal line through content.</p>",
+            "params": [{
+                "name": "length",
+                "details": "<p>The length of the line.</p>",
+                "example": null,
+                "types": ["relative"],
+                "strings": [],
+                "default": "<code><span class=\"typ-num\">100%</span> <span class=\"typ-op\">+</span> <span class=\"typ-num\">3pt</span></code>",
+                "positional": false,
+                "named": true,
+                "required": false,
+                "variadic": false,
+                "settable": true
+            }],
+            "returns": ["content"],
+            "scope": []
+        });
+
+        let result = render_func_body(&func_json).expect("Should render HTML default");
+
+        // Verify HTML tags are stripped from default value
+        assert!(result.contains("default:"), "Should show default label");
+        assert!(
+            result.contains("100% + 3pt"),
+            "Should extract plain text from HTML: found\n{}",
+            result
+        );
+        assert!(
+            !result.contains("<code>") && !result.contains("<span>"),
+            "Should not contain HTML tags in output: found\n{}",
+            result
+        );
+    }
+
+    /// Test simple HTML in default value
+    #[test]
+    fn test_default_value_simple_html() {
+        let func_json = serde_json::json!({
+            "name": "test_func",
+            "title": "Test",
+            "category": "test",
+            "oneliner": "Test function.",
+            "element": true,
+            "details": "<p>Test.</p>",
+            "params": [{
+                "name": "size",
+                "details": "<p>The size.</p>",
+                "example": null,
+                "types": ["auto"],
+                "strings": [],
+                "default": "<code><span class=\"typ-key\">auto</span></code>",
+                "positional": false,
+                "named": true,
+                "required": false,
+                "variadic": false,
+                "settable": true
+            }],
+            "returns": ["content"],
+            "scope": []
+        });
+
+        let result = render_func_body(&func_json).expect("Should render simple HTML default");
+
+        // Verify HTML is stripped to plain text
+        assert!(
+            result.contains("default: `auto`"),
+            "Should show 'auto' without HTML tags: found\n{}",
+            result
+        );
+        assert!(
+            !result.contains("<code>") && !result.contains("<span>"),
+            "Should not contain HTML tags: found\n{}",
+            result
         );
     }
 }

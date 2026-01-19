@@ -72,7 +72,9 @@ pub fn format_function_signature(func: &FuncContent) -> String {
             // Add default value
             if let Some(default) = &p.default {
                 ps.push_str(" = ");
-                ps.push_str(&serde_json::to_string(default).unwrap_or_else(|_| "?".to_string()));
+                ps.push_str(
+                    &super::default_value_to_text(default).unwrap_or_else(|_| "?".to_string()),
+                );
             }
 
             ps
