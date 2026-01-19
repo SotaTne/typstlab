@@ -5,6 +5,7 @@ pub mod download_json;
 pub mod generate;
 pub mod html_to_md;
 pub mod html_to_mdast;
+pub mod links;
 pub mod render;
 pub mod render_bodies;
 pub mod render_func;
@@ -16,6 +17,7 @@ use std::time::Duration;
 
 // Re-exports
 pub use download::{DocsError, MAX_DOCS_SIZE};
+pub use links::rewrite_docs_link;
 
 /// High-level API: Download and generate Typst documentation
 ///
