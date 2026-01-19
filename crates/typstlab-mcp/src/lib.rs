@@ -2,6 +2,7 @@
 pub use rmcp;
 
 // Export tools module
+pub mod server;
 pub mod tools;
 
 // Re-export the 4 MCP tools with rmcp_tool macro applied

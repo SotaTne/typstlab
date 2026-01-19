@@ -23,53 +23,93 @@ impl McpServer {
 
     /// List available resources
     pub fn list_resources(&self) -> Vec<Resource> {
-        vec![Resource {
-            uri: "typstlab://rules".to_string(),
-            name: "Project Rules".to_string(),
-            mime_type: Some("application/json".to_string()),
-            description: Some("Project configuration from typstlab.toml".to_string()),
-        }]
+        vec![
+            Resource {
+                uri: "typstlab://rules".to_string(),
+                name: "Project Rules".to_string(),
+                mime_type: Some("application/json".to_string()),
+                description: Some("Project configuration from typstlab.toml".to_string()),
+            },
+            Resource {
+                uri: "typstlab://docs".to_string(),
+                name: "Documentation".to_string(),
+                mime_type: Some("text/markdown".to_string()),
+                description: Some("Generated documentation from .typstlab/kb".to_string()),
+            },
+        ]
     }
 
     /// Read a specific resource
     pub fn read_resource(&self, uri: &str) -> Result<ResourceContent> {
-        match uri {
-            "typstlab://rules" => {
-                let content = serde_json::to_string_pretty(self.project.config())?;
-                Ok(ResourceContent {
-                    uri: uri.to_string(),
-                    mime_type: Some("application/json".to_string()),
-                    text: content,
-                })
-            }
-            _ => Err(typstlab_core::error::TypstlabError::Generic(format!(
-                "Unknown resource: {}",
-                uri
-            ))),
+        if uri == "typstlab://rules" {
+            let content = serde_json::to_string_pretty(self.project.config())?;
+            return Ok(ResourceContent {
+                uri: uri.to_string(),
+                mime_type: Some("application/json".to_string()),
+                text: content,
+            });
         }
+
+        if let Some(path_str) = uri.strip_prefix("typstlab://docs/") {
+            // Defend against path traversal
+            let path = std::path::Path::new(path_str);
+            if path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                return Err(typstlab_core::error::TypstlabError::Generic(format!(
+                    "Invalid path (traversal attempt): {}",
+                    path_str
+                )));
+            }
+
+            let docs_root = self.project.root.join(".typstlab/kb/docs");
+            let file_path = docs_root.join(path);
+
+            // Check if file is within docs root (canonicalization check)
+            // Note: This requires file existence, so we read it directly.
+            if !file_path.exists() {
+                return Err(typstlab_core::error::TypstlabError::Generic(format!(
+                    "File not found: {}",
+                    path_str
+                )));
+            }
+
+            let text = std::fs::read_to_string(file_path)?;
+            return Ok(ResourceContent {
+                uri: uri.to_string(),
+                mime_type: Some("text/markdown".to_string()),
+                text,
+            });
+        }
+
+        Err(typstlab_core::error::TypstlabError::Generic(format!(
+            "Unknown resource: {}",
+            uri
+        )))
     }
 
     /// Handle a tool call
     pub fn handle_tool_call(&self, tool_name: &str, input: Value) -> Result<Value> {
         match tool_name {
             "rules_list" => {
-                let input: tools::RulesListInput = serde_json::from_value(input)?;
-                let output = tools::rules_list(input, &self.project.root)?;
+                let input: tools::rules::RulesListInput = serde_json::from_value(input)?;
+                let output = tools::rules::rules_list(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
             "rules_get" => {
-                let input: tools::RulesGetInput = serde_json::from_value(input)?;
-                let output = tools::rules_get(input, &self.project.root)?;
+                let input: tools::rules::RulesGetInput = serde_json::from_value(input)?;
+                let output = tools::rules::rules_get(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
             "rules_page" => {
-                let input: tools::RulesPageInput = serde_json::from_value(input)?;
-                let output = tools::rules_page(input, &self.project.root)?;
+                let input: tools::rules::RulesPageInput = serde_json::from_value(input)?;
+                let output = tools::rules::rules_page(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
             "rules_search" => {
-                let input: tools::RulesSearchInput = serde_json::from_value(input)?;
-                let output = tools::rules_search(input, &self.project.root)?;
+                let input: tools::rules::RulesSearchInput = serde_json::from_value(input)?;
+                let output = tools::rules::rules_search(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
             _ => Err(typstlab_core::error::TypstlabError::Generic(format!(
@@ -225,5 +265,26 @@ version = "0.12.0"
 
         let json: serde_json::Value = serde_json::from_str(&content.text).unwrap();
         assert_eq!(json["project"]["name"], "test-project");
+    }
+
+    #[test]
+    fn test_read_docs_resource() {
+        let temp = temp_dir_in_workspace();
+        create_test_project_config(temp.path());
+
+        // Create a dummy document file
+        let docs_dir = temp.path().join(".typstlab/kb/docs");
+        std::fs::create_dir_all(&docs_dir).unwrap();
+        std::fs::write(docs_dir.join("intro.md"), "# Introduction").unwrap();
+
+        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
+
+        // Test listing
+        let resources = server.list_resources();
+        assert!(resources.iter().any(|r| r.uri == "typstlab://docs"));
+
+        // Test reading
+        let content = server.read_resource("typstlab://docs/intro.md").unwrap();
+        assert_eq!(content.text, "# Introduction");
     }
 }
