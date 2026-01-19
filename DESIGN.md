@@ -1452,6 +1452,30 @@ typstlab typst docs sync
    - 本文のh1見出しは削除（frontmatterのtitleで代替）
 5. 階層的ディレクトリ構造で`.typstlab/kb/typst/docs/`に保存
    - route → filepath マッピング（path traversal防止）
+   - **リンク形式**: v0.2.0以降、ディレクトリに`index.md`を使用しない新形式を採用
+     - 変換ルール（`rewrite_docs_link()`）:
+       - Root: `/DOCS-BASE/` → `../index.md`（ルートのみ例外）
+       - Directories: `/DOCS-BASE/tutorial/` → `../tutorial.md`
+       - Files: `/DOCS-BASE/tutorial/writing` → `../tutorial/writing.md`
+       - Fragments: `/DOCS-BASE/tutorial/#section` → `../tutorial.md#section`（保持）
+       - Query strings: `/DOCS-BASE/api?v=1` → `../api.md?v=1`（保持）
+       - External URLs: `https://...` → 変更なし
+       - Other schemes: `mailto:`, `tel:`, `#...` → 変更なし
+     - セキュリティ: パストラバーサル (`..`) を含むパスは変換しない
+     - ファイル構造例:
+
+       ```plaintext
+       .typstlab/kb/typst/docs/
+         index.md                    # ルート
+         tutorial.md                 # トップレベルディレクトリ
+         tutorial/
+           writing.md                # ネストされたページ
+           formatting.md
+         reference/
+           styling.md
+       ```
+
+     - **破壊的変更**: 既存の`tutorial/index.md`などは削除され、`tutorial.md`として再生成
 6. state.json を更新
 
 **アーキテクチャ設計判断**:
