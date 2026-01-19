@@ -4,7 +4,7 @@ mod context;
 mod output;
 
 use clap::Parser;
-use cli::{Cli, Commands, DocsCommands, PaperCommands, TypstCommands};
+use cli::{Cli, Commands, DocsCommands, McpCommands, PaperCommands, TypstCommands};
 
 fn main() {
     let cli = Cli::parse();
@@ -34,6 +34,9 @@ fn main() {
                 DocsCommands::Clear => commands::typst::docs::clear(cli.verbose),
                 DocsCommands::Status { json } => commands::typst::docs::status(json, cli.verbose),
             },
+        },
+        Commands::Mcp(mcp_cmd) => match mcp_cmd {
+            McpCommands::Stdio => commands::mcp::run_stdio(),
         },
     };
 

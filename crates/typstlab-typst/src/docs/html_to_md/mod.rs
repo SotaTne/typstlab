@@ -64,7 +64,7 @@ pub fn convert(html: &str, depth: usize) -> Result<String, ConversionError> {
     let renderer = render::create_composite_renderer();
     match renderer.render(&mdast) {
         Ok(md) => Ok(md),
-        Err(e) => {
+        Err(_e) => {
             // Rendering failed: fallback to plain text
             // eprintln!(
             //     "CompositeRenderer failed: {}, falling back to plain text",

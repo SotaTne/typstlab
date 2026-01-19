@@ -33,19 +33,19 @@ impl BlockquoteRenderer {
     }
 
     /// Render inline nodes to Markdown string
-    fn render_inline_nodes(&self, nodes: &[Node]) -> String {
+    fn render_inline_nodes(nodes: &[Node]) -> String {
         nodes
             .iter()
             .map(|node| match node {
                 Node::Text(Text { value, .. }) => value.clone(),
                 Node::Emphasis(Emphasis { children, .. }) => {
-                    format!("*{}*", self.render_inline_nodes(children))
+                    format!("*{}*", Self::render_inline_nodes(children))
                 }
                 Node::Strong(Strong { children, .. }) => {
-                    format!("**{}**", self.render_inline_nodes(children))
+                    format!("**{}**", Self::render_inline_nodes(children))
                 }
                 Node::Link(Link { children, url, .. }) => {
-                    format!("[{}]({})", self.render_inline_nodes(children), url)
+                    format!("[{}]({})", Self::render_inline_nodes(children), url)
                 }
                 Node::InlineCode(InlineCode { value, .. }) => {
                     format!("`{}`", value)
@@ -56,25 +56,25 @@ impl BlockquoteRenderer {
     }
 
     /// Render blockquote children to lines (without > prefix yet)
-    fn render_blockquote_content(&self, children: &[Node]) -> Vec<String> {
+    fn render_blockquote_content(children: &[Node]) -> Vec<String> {
         let mut lines = Vec::new();
 
         for child in children {
             match child {
                 Node::Paragraph(Paragraph { children, .. }) => {
                     // Paragraph becomes single line
-                    lines.push(self.render_inline_nodes(children));
+                    lines.push(Self::render_inline_nodes(children));
                 }
                 Node::Heading(Heading {
                     depth, children, ..
                 }) => {
                     // Heading with proper # symbols
-                    let content = self.render_inline_nodes(children);
+                    let content = Self::render_inline_nodes(children);
                     lines.push(format!("{} {}", "#".repeat(*depth as usize), content));
                 }
                 Node::Blockquote(nested) => {
                     // Nested blockquote - render recursively
-                    let nested_lines = self.render_blockquote_content(&nested.children);
+                    let nested_lines = Self::render_blockquote_content(&nested.children);
                     for line in nested_lines {
                         lines.push(format!("> {}", line));
                     }
@@ -99,7 +99,7 @@ impl MdRender for BlockquoteRenderer {
         };
 
         // Render content lines
-        let content_lines = self.render_blockquote_content(children);
+        let content_lines = Self::render_blockquote_content(children);
 
         // Prefix each line with >
         let quoted_lines: Vec<String> = content_lines

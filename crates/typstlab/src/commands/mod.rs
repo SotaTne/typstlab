@@ -3,6 +3,7 @@
 pub mod build;
 pub mod doctor;
 pub mod generate;
+pub mod mcp;
 pub mod new;
 pub mod status;
 pub mod sync;

@@ -41,19 +41,19 @@ impl ParagraphRenderer {
     /// # Returns
     ///
     /// Markdown string (no trailing newlines)
-    fn render_inline_nodes(&self, nodes: &[Node]) -> String {
+    fn render_inline_nodes(nodes: &[Node]) -> String {
         nodes
             .iter()
             .map(|node| match node {
                 Node::Text(Text { value, .. }) => value.clone(),
                 Node::Emphasis(Emphasis { children, .. }) => {
-                    format!("*{}*", self.render_inline_nodes(children))
+                    format!("*{}*", Self::render_inline_nodes(children))
                 }
                 Node::Strong(Strong { children, .. }) => {
-                    format!("**{}**", self.render_inline_nodes(children))
+                    format!("**{}**", Self::render_inline_nodes(children))
                 }
                 Node::Link(Link { children, url, .. }) => {
-                    format!("[{}]({})", self.render_inline_nodes(children), url)
+                    format!("[{}]({})", Self::render_inline_nodes(children), url)
                 }
                 Node::InlineCode(InlineCode { value, .. }) => {
                     format!("`{}`", value)
@@ -74,7 +74,7 @@ impl MdRender for ParagraphRenderer {
         };
 
         // Render inline content
-        let content = self.render_inline_nodes(children);
+        let content = Self::render_inline_nodes(children);
 
         // Return as single-line block (Compositor will add spacing)
         Ok(RenderResult::Block(vec![content]))

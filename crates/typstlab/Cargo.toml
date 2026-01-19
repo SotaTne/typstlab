@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 typstlab-core = { path = "../typstlab-core" }
 typstlab-typst = { path = "../typstlab-typst" }
+typstlab-mcp = { path = "../typstlab-mcp" }
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -2690,6 +2690,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "typstlab-core",
+ "typstlab-mcp",
  "typstlab-testkit",
  "typstlab-typst",
  "url",

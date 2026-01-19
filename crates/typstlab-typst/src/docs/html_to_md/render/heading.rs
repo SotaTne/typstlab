@@ -41,19 +41,19 @@ impl HeadingRenderer {
     /// # Returns
     ///
     /// Markdown string (no trailing newlines)
-    fn render_inline_nodes(&self, nodes: &[Node]) -> String {
+    fn render_inline_nodes(nodes: &[Node]) -> String {
         nodes
             .iter()
             .map(|node| match node {
                 Node::Text(Text { value, .. }) => value.clone(),
                 Node::Emphasis(Emphasis { children, .. }) => {
-                    format!("*{}*", self.render_inline_nodes(children))
+                    format!("*{}*", Self::render_inline_nodes(children))
                 }
                 Node::Strong(Strong { children, .. }) => {
-                    format!("**{}**", self.render_inline_nodes(children))
+                    format!("**{}**", Self::render_inline_nodes(children))
                 }
                 Node::Link(Link { children, url, .. }) => {
-                    format!("[{}]({})", self.render_inline_nodes(children), url)
+                    format!("[{}]({})", Self::render_inline_nodes(children), url)
                 }
                 Node::InlineCode(InlineCode { value, .. }) => {
                     format!("`{}`", value)
@@ -77,7 +77,7 @@ impl MdRender for HeadingRenderer {
         };
 
         // Render inline content
-        let content = self.render_inline_nodes(children);
+        let content = Self::render_inline_nodes(children);
 
         // Format with appropriate number of # symbols
         let heading = format!("{} {}", "#".repeat(*depth as usize), content);

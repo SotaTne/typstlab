@@ -31,19 +31,19 @@ impl ListRenderer {
     }
 
     /// Render inline nodes to Markdown string
-    fn render_inline_nodes(&self, nodes: &[Node]) -> String {
+    fn render_inline_nodes(nodes: &[Node]) -> String {
         nodes
             .iter()
             .map(|node| match node {
                 Node::Text(Text { value, .. }) => value.clone(),
                 Node::Emphasis(Emphasis { children, .. }) => {
-                    format!("*{}*", self.render_inline_nodes(children))
+                    format!("*{}*", Self::render_inline_nodes(children))
                 }
                 Node::Strong(Strong { children, .. }) => {
-                    format!("**{}**", self.render_inline_nodes(children))
+                    format!("**{}**", Self::render_inline_nodes(children))
                 }
                 Node::Link(Link { children, url, .. }) => {
-                    format!("[{}]({})", self.render_inline_nodes(children), url)
+                    format!("[{}]({})", Self::render_inline_nodes(children), url)
                 }
                 Node::InlineCode(InlineCode { value, .. }) => {
                     format!("`{}`", value)
@@ -61,7 +61,7 @@ impl ListRenderer {
             match child {
                 Node::Paragraph(Paragraph { children, .. }) => {
                     // Inline content becomes single line
-                    lines.push(self.render_inline_nodes(children));
+                    lines.push(Self::render_inline_nodes(children));
                 }
                 Node::List(nested_list) => {
                     // Nested list - render with increased indentation

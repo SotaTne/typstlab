@@ -382,6 +382,7 @@ mod tests {
     ///
     /// Codex Requirement 1 - Mandatory Test 1/5
     #[test]
+    #[allow(clippy::collapsible_if)]
     fn test_link_conversion() {
         let html = r#"<a href="/DOCS-BASE/reference/func">Function Reference</a>"#;
 
@@ -408,12 +409,12 @@ mod tests {
         // Test unordered list
         let html_ul = r#"<ul><li>Item 1</li><li>Item 2</li></ul>"#;
 
-        let result_ul = convert(html_ul, 1).expect("Should convert unordered list");
+        let _result_ul = convert(html_ul, 1).expect("Should convert unordered list");
         // ...
         // Test ordered list
         let html_ol = r#"<ol><li>First</li><li>Second</li></ol>"#;
 
-        let result_ol = convert(html_ol, 1).expect("Should convert ordered list");
+        let _result_ol = convert(html_ol, 1).expect("Should convert ordered list");
         // ...
     }
 
@@ -427,7 +428,7 @@ mod tests {
             <tbody><tr><td>Alpha</td><td>1</td></tr></tbody>
         </table>"#;
 
-        let result = convert(html, 1).expect("Should convert table");
+        let _result = convert(html, 1).expect("Should convert table");
         // ...
     }
 
@@ -438,7 +439,7 @@ mod tests {
     fn test_blockquote_conversion() {
         let html = r#"<blockquote><p>Important note</p></blockquote>"#;
 
-        let result = convert(html, 1).expect("Should convert blockquote");
+        let _result = convert(html, 1).expect("Should convert blockquote");
         // ...
     }
 

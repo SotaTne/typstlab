@@ -70,6 +70,10 @@ pub enum Commands {
         #[arg(long)]
         apply: bool,
     },
+
+    /// Run Model Context Protocol server
+    #[command(subcommand)]
+    Mcp(McpCommands),
 }
 
 #[derive(Subcommand)]
@@ -131,6 +135,12 @@ pub enum DocsCommands {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Subcommand)]
+pub enum McpCommands {
+    /// Run the MCP server over stdio
+    Stdio,
 }
 
 #[derive(Subcommand)]

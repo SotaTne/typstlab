@@ -1790,21 +1790,31 @@ typstlab mcp serve --offline
 
 **Exit code**: 中断まで実行
 
-#### 5.10.2 Provided MCP Tools
+#### 5.10.2 MCP Tools Architecture
 
-##### rules_list
+typstlab MCP サーバーは、AI エージェントが目的を明確に区別できるよう、ツール名にプレフィックス規則を採用する。
 
-List files in rules/ directories with pagination.
+| Prefix | Category | Description | Safety |
+| --- | --- | --- | --- |
+| `cmd_*` | **Command** | CLI コマンド (`typstlab <cmd>`) のラッパー。副作用（ビルド、生成、状態変更）を伴う実行系ツール。 | `writes: true` (often) |
+| `docs_*` | **Documentation** | ドキュメントの閲覧・検索・構造探索を行うツール。 | `reads: true`, `writes: false` |
+| `feat_*` | **Feature** | AI エージェント向けの便利機能・複合機能。CLI には直接対応しない高レベルなタスク（例：画像生成して確認）を提供する。 | Varies |
+| `rules_*` | **Rules** | プロジェクトの規約 (`rules/`) や設定を参照するツール。 | `reads: true`, `writes: false` |
+
+#### 5.10.3 Provided MCP Tools
+
+##### Rules Tools (`rules_*`)
+
+###### rules_browse
+
+List files/directories in rules paths.
+(Replaces previous `rules_list`. Use `read_resource` to read content.)
 
 **Input Schema**:
 
 ```json
 {
-  "scope": "project" | "paper",
-  "paper_id": "<id>",  // required if scope=paper
-  "subdir": "paper" | "scripts" | "data" | "misc" | null,
-  "cursor": "<opaque>",  // optional, for pagination
-  "limit": 50  // default 50, max 200
+  "path": "rules"  // Path relative to project root. Must allow access to `rules/` or `papers/*/rules/`
 }
 ```
 
@@ -1812,72 +1822,31 @@ List files in rules/ directories with pagination.
 
 ```json
 {
-  "files": [
+  "items": [
     {
-      "name": "getting-started.md",
-      "path": "rules/paper/getting-started.md",
-      "size": 1024,
-      "modified": "2026-01-05T10:00:00Z"
+      "name": "paper",
+      "type": "directory",
+      "path": "rules/paper"
+    },
+    {
+      "name": "guidelines.md",
+      "type": "file",
+      "path": "rules/guidelines.md"
     }
-  ],
-  "total": 10,
-  "has_more": false,
-  "next_cursor": null
+  ]
 }
 ```
 
 **Path Resolution**:
 
-- `scope=project, subdir=null` → `rules/`
-- `scope=project, subdir=paper` → `rules/paper/`
-- `scope=paper, subdir=null` → `papers/<id>/rules/`
-- `scope=paper, subdir=data` → `papers/<id>/rules/data/`
+- `path="rules"` → `rules/`
+- `path="papers/id/rules"` → `papers/id/rules/`
 
 **Constraints**:
 
 - Only .md files
 - No hidden files (starting with .)
 - No symlinks or files resolving outside project root
-- Cursor-based pagination
-
-**Safety classification (v0.1)**:
-
-- `network`: false
-- `reads`: true（rules/ 配下を読む）
-- `writes`: false
-- `writes_sot`: false
-
-##### rules_get
-
-Retrieve full content of a rules file.
-
-**Input Schema**:
-
-```json
-{
-  "path": "rules/paper/guidelines.md"
-}
-```
-
-**Output Schema**:
-
-```json
-{
-  "path": "rules/paper/guidelines.md",
-  "content": "# Guidelines\n...",
-  "size": 2048,
-  "lines": 42,
-  "modified": "2026-01-05T10:00:00Z",
-  "sha256": null  // always null in v0.1
-}
-```
-
-**Constraints**:
-
-- max_bytes: 262144 (256KB)
-- Path must be project-relative
-- Must resolve within project root
-- Error if file > 256KB
 
 **Safety classification (v0.1)**:
 
@@ -1886,59 +1855,18 @@ Retrieve full content of a rules file.
 - `writes`: false
 - `writes_sot`: false
 
-##### rules_page
+###### rules_search
 
-Retrieve file content in line-based chunks.
-
-**Input Schema**:
-
-```json
-{
-  "path": "rules/data/formats.md",
-  "cursor": "<opaque>",  // optional, references line number
-  "max_lines": 200  // default 200, max 400
-}
-```
-
-**Output Schema**:
-
-```json
-{
-  "path": "rules/data/formats.md",
-  "content": "...",
-  "start_line": 1,
-  "end_line": 200,
-  "total_lines": 500,
-  "has_more": true,
-  "next_cursor": "<opaque>"
-}
-```
-
-**Critical Constraint**:
-
-- **LINE-BASED PAGING** (not byte-based) to prevent UTF-8 corruption
-- Cursor encodes line number
-- Never split multi-byte characters
-
-**Safety classification (v0.1)**:
-
-- `network`: false
-- `reads`: true
-- `writes`: false
-- `writes_sot`: false
-
-##### rules_search
-
-Full-text search across all rules files.
+Context-aware full-text search across rules.
+Can search within a specific paper's rules, the project root rules, or both.
 
 **Input Schema**:
 
 ```json
 {
   "query": "citation format",
-  "scope": "project" | "paper" | "all",
-  "paper_id": "<id>",  // required if scope=paper
-  "limit": 20  // default 20, max 50
+  "paper_id": "paper1",    // optional. If specified, searches papers/<id>/rules/
+  "include_root": true     // default true. If true, also searches rules/
 }
 ```
 
@@ -1951,11 +1879,9 @@ Full-text search across all rules files.
       "path": "rules/paper/citations.md",
       "line": 42,
       "excerpt": "...use APA citation format for...",
-      "context_before": "In this project, we",
-      "context_after": "all references."
+      "origin": "root" // "root" | "paper"
     }
-  ],
-  "total": 5
+  ]
 }
 ```
 
@@ -1971,6 +1897,142 @@ Full-text search across all rules files.
 - `reads`: true
 - `writes`: false
 - `writes_sot`: false
+
+##### Command Tools (`cmd_*`)
+
+###### cmd_generate
+
+paper.toml からテンプレートファイル（`_generated/`）を生成する。
+（CLI の `typstlab generate` に相当）
+
+**Input Schema**:
+
+```json
+{
+  "paper_id": "paper1"
+}
+```
+
+**Output Schema**:
+
+```json
+{
+  "status": "success",
+  "message": "Successfully generated paper artifacts: paper1"
+}
+```
+
+**Safety classification (v0.1)**:
+
+- `network`: true (Template 解決で発生しうるため)
+- `reads`: true
+- `writes`: true (`_generated/` への書き込み)
+- `writes_sot`: false (SOT は変更しない)
+
+##### Documentation Tools (`docs_*`)
+
+###### docs_browse
+
+ドキュメントのディレクトリ構造を探索する。
+
+**Input Schema**:
+
+```json
+{
+  "path": "docs/reference" // optional, default root
+}
+```
+
+**Output Schema**:
+
+```json
+{
+  "items": [
+    {
+      "name": "syntax.md",
+      "type": "file"
+    },
+    {
+      "name": "visualize",
+      "type": "directory"
+    }
+  ]
+}
+```
+
+**Safety classification (v0.1)**:
+
+- `network`: false
+- `reads`: true
+- `writes`: false
+- `writes_sot`: false
+
+###### docs_search
+
+ドキュメント内を検索する。
+
+**Input Schema**:
+
+```json
+{
+  "query": "function definition"
+}
+```
+
+**Output Schema**:
+
+```json
+{
+  "matches": [
+    {
+      "path": "docs/reference/syntax.md",
+      "line": 15,
+      "content": "..."
+    }
+  ]
+}
+```
+
+**Safety classification (v0.1)**:
+
+- `network`: false
+- `reads`: true
+- `writes`: false
+- `writes_sot`: false
+
+##### Feature Tools (`feat_*`)
+
+###### feat_build_to_image_paper
+
+Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用の成果物を生成する。
+（エージェントが視覚的に出力確認を行うために使用）
+
+**Input Schema**:
+
+```json
+{
+  "paper_id": "paper1",
+  "format": "png" // "png" | "svg", default "png"
+}
+```
+
+**Output Schema**:
+
+```json
+{
+  "images": [
+    "dist/paper1/page1.png",
+    "dist/paper1/page2.png"
+  ]
+}
+```
+
+**Safety classification (v0.1)**:
+
+- `network`: true (パッケージダウンロードのため)
+- `reads`: true
+- `writes`: true (dist/ への書き込み)
+- `writes_sot`: false (SOT は変更しない)
 
 **Error Schema** (common to all tools):
 

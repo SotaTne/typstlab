@@ -77,7 +77,7 @@ pub fn download_docs_json(version: &str, verbose: bool) -> Result<Vec<u8>, DocsJ
     let options = github::DownloadOptions {
         expected_size: None,
         progress: if verbose {
-            Some(|downloaded, _total| {
+            Some(|_downloaded, _total| {
                 // eprintln!("Downloaded {} bytes", downloaded);
             })
         } else {

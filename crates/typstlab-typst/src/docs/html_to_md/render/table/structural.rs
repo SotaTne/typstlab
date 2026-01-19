@@ -53,14 +53,16 @@ impl StructuralTableRenderer {
     fn render_cell_inline(&self, cell: &TableCell) -> String {
         cell.children
             .iter()
-            .map(|child| self.render_inline_node(child))
+            .map(Self::render_inline_node)
             .collect::<Vec<_>>()
             .join("") // inline nodes: no separators
     }
 
     /// Render inline node to string (O(1))
     #[allow(dead_code)] // Used in render_cell_inline()
-    fn render_inline_node(&self, node: &Node) -> String {
+    /// Render inline node to string (O(1))
+    #[allow(dead_code)] // Used in render_cell_inline()
+    fn render_inline_node(node: &Node) -> String {
         // Record step for O(n) verification
         #[cfg(test)]
         {
@@ -75,7 +77,7 @@ impl StructuralTableRenderer {
                 let content = em
                     .children
                     .iter()
-                    .map(|child| self.render_inline_node(child))
+                    .map(Self::render_inline_node)
                     .collect::<Vec<_>>()
                     .join("");
                 format!("*{}*", content)
@@ -84,7 +86,7 @@ impl StructuralTableRenderer {
                 let content = strong
                     .children
                     .iter()
-                    .map(|child| self.render_inline_node(child))
+                    .map(Self::render_inline_node)
                     .collect::<Vec<_>>()
                     .join("");
                 format!("**{}**", content)
@@ -93,7 +95,7 @@ impl StructuralTableRenderer {
                 let text = link
                     .children
                     .iter()
-                    .map(|child| self.render_inline_node(child))
+                    .map(Self::render_inline_node)
                     .collect::<Vec<_>>()
                     .join("");
                 format!("[{}]({})", text, link.url)
@@ -101,7 +103,7 @@ impl StructuralTableRenderer {
             Node::Paragraph(para) => para
                 .children
                 .iter()
-                .map(|child| self.render_inline_node(child))
+                .map(Self::render_inline_node)
                 .collect::<Vec<_>>()
                 .join(""),
             _ => String::new(),
