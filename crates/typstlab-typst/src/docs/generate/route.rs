@@ -42,7 +42,7 @@ use thiserror::Error;
 ///
 /// let target = Path::new("/tmp/docs");
 /// let path = route_to_filepath(target, "/DOCS-BASE/tutorial/writing/").unwrap();
-/// assert_eq!(path, Path::new("/tmp/docs/tutorial/writing/index.md"));
+/// assert_eq!(path, Path::new("/tmp/docs/tutorial/writing.md"));
 /// ```
 pub fn route_to_filepath(target_dir: &Path, route: &str) -> Result<PathBuf, RouteError> {
     // Remove /DOCS-BASE/ prefix
@@ -94,10 +94,9 @@ fn build_filepath(target_dir: &Path, relative_route: &str) -> Result<PathBuf, Ro
         // Root: index.md
         path.push("index.md");
     } else if relative_route.ends_with('/') {
-        // Directory: dir/index.md
+        // Directory: dir.md (not dir/index.md)
         let dir_name = relative_route.trim_end_matches('/');
-        path.push(dir_name);
-        path.push("index.md");
+        path.push(format!("{}.md", dir_name));
     } else {
         // File: dir/file.md
         path.push(format!("{}.md", relative_route));
@@ -137,7 +136,22 @@ mod tests {
     fn test_route_to_filepath_directory() {
         let target = Path::new("/tmp/docs");
         let path = route_to_filepath(target, "/DOCS-BASE/tutorial/").expect("Should map directory");
-        assert_eq!(path, Path::new("/tmp/docs/tutorial/index.md"));
+        assert_eq!(path, Path::new("/tmp/docs/tutorial.md"));
+    }
+
+    #[test]
+    fn test_route_to_filepath_nested_directory() {
+        let target = Path::new("/tmp/docs");
+        let path = route_to_filepath(target, "/DOCS-BASE/reference/styling/")
+            .expect("Should map nested directory");
+        assert_eq!(path, Path::new("/tmp/docs/reference/styling.md"));
+    }
+
+    #[test]
+    fn test_route_to_filepath_root_still_index() {
+        let target = Path::new("/tmp/docs");
+        let path = route_to_filepath(target, "/DOCS-BASE/").expect("Should map root");
+        assert_eq!(path, Path::new("/tmp/docs/index.md"));
     }
 
     #[test]

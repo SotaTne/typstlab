@@ -365,3 +365,137 @@ fn test_emphasis_strong_combinations() {
     assert!(result.contains("**"));
     assert!(result.contains("*"));
 }
+
+/// Test: Link rewriting - directory with trailing slash converts to .md
+#[test]
+#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
+fn test_link_rewrite_directory_to_md() {
+    let html = r#"<a href="/DOCS-BASE/tutorial/">Tutorial</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("../tutorial.md"),
+        "Expected ../tutorial.md, got: {}",
+        result
+    );
+    assert!(
+        !result.contains("index.md"),
+        "Should not contain index.md, got: {}",
+        result
+    );
+}
+
+/// Test: Link rewriting - preserves fragments
+#[test]
+#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
+fn test_link_rewrite_with_fragment() {
+    let html = r#"<a href="/DOCS-BASE/tutorial/#section">Link</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("../tutorial.md#section"),
+        "Expected ../tutorial.md#section, got: {}",
+        result
+    );
+}
+
+/// Test: Link rewriting - preserves query strings
+#[test]
+#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
+fn test_link_rewrite_with_query() {
+    let html = r#"<a href="/DOCS-BASE/api?version=1">API</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("../api.md?version=1"),
+        "Expected ../api.md?version=1, got: {}",
+        result
+    );
+}
+
+/// Test: Link rewriting - query and fragment together
+#[test]
+#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
+fn test_link_rewrite_with_query_and_fragment() {
+    let html = r#"<a href="/DOCS-BASE/api?v=1#intro">API</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("../api.md?v=1#intro"),
+        "Expected ../api.md?v=1#intro, got: {}",
+        result
+    );
+}
+
+/// Test: Link rewriting - nested directory
+#[test]
+#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
+fn test_link_rewrite_nested_directory() {
+    let html = r#"<a href="/DOCS-BASE/reference/styling/">Styling</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("../reference/styling.md"),
+        "Expected ../reference/styling.md, got: {}",
+        result
+    );
+}
+
+/// Test: Link rewriting - root to index.md
+#[test]
+#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
+fn test_link_rewrite_root() {
+    let html = r#"<a href="/DOCS-BASE/">Home</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("../index.md"),
+        "Expected ../index.md for root, got: {}",
+        result
+    );
+}
+
+/// Test: Link rewriting - external URLs unchanged
+#[test]
+fn test_link_rewrite_external_url_unchanged() {
+    let html = r#"<a href="https://typst.app/">Typst</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("https://typst.app/"),
+        "External URL should be unchanged, got: {}",
+        result
+    );
+    assert!(
+        !result.contains(".."),
+        "External URL should not be rewritten, got: {}",
+        result
+    );
+}
+
+/// Test: Link rewriting - mailto unchanged
+#[test]
+fn test_link_rewrite_mailto_unchanged() {
+    let html = r#"<a href="mailto:test@example.com">Email</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("mailto:test@example.com"),
+        "Mailto should be unchanged, got: {}",
+        result
+    );
+}
+
+/// Test: Link rewriting - file without trailing slash
+#[test]
+#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
+fn test_link_rewrite_file_without_trailing_slash() {
+    let html = r#"<a href="/DOCS-BASE/tutorial/writing">Writing</a>"#;
+    let result = html_to_md::convert(html).unwrap();
+
+    assert!(
+        result.contains("../tutorial/writing.md"),
+        "Expected ../tutorial/writing.md, got: {}",
+        result
+    );
+}

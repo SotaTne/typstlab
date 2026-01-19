@@ -192,15 +192,11 @@ mod tests {
         assert_eq!(count, 2);
 
         // Parent file
-        let parent_path = temp.path().join("tutorial").join("index.md");
+        let parent_path = temp.path().join("tutorial.md");
         assert!(parent_path.exists());
 
         // Child file
-        let child_path = temp
-            .path()
-            .join("tutorial")
-            .join("writing")
-            .join("index.md");
+        let child_path = temp.path().join("tutorial").join("writing.md");
         assert!(child_path.exists());
     }
 
