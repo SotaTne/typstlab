@@ -112,6 +112,14 @@ impl McpServer {
                 let output = tools::rules::rules_search(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
+            "build" => {
+                let args: BuildArgs = serde_json::from_value(input)?;
+                typstlab_core::project::generate_paper(&self.project, &args.paper_id)?;
+                Ok(serde_json::json!({
+                    "status": "success",
+                    "message": format!("Successfully built paper: {}", args.paper_id)
+                }))
+            }
             _ => Err(typstlab_core::error::TypstlabError::Generic(format!(
                 "Unknown tool: {}",
                 tool_name
@@ -162,8 +170,23 @@ impl McpServer {
                     writes_sot: false,
                 },
             },
+            ToolInfo {
+                name: "build".to_string(),
+                description: "Build a specific paper".to_string(),
+                safety: Safety {
+                    network: true, // May download packages
+                    reads: true,
+                    writes: true, // Writes artifacts
+                    writes_sot: true,
+                },
+            },
         ]
     }
+}
+
+#[derive(serde::Deserialize)]
+struct BuildArgs {
+    paper_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -220,7 +243,7 @@ version = "0.12.0"
 
         let server = McpServer::new(temp.path().to_path_buf()).unwrap();
         let tools = server.list_tools();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 5);
         assert!(tools.iter().any(|t| t.name == "rules_list"));
         assert!(tools.iter().any(|t| t.name == "rules_get"));
         assert!(tools.iter().any(|t| t.name == "rules_page"));
@@ -286,5 +309,44 @@ version = "0.12.0"
         // Test reading
         let content = server.read_resource("typstlab://docs/intro.md").unwrap();
         assert_eq!(content.text, "# Introduction");
+    }
+
+    #[test]
+    fn test_tool_build_success() {
+        let temp = temp_dir_in_workspace();
+        create_test_project_config(temp.path());
+
+        // Create a dummy paper config
+        let paper_dir = temp.path().join("papers/paper1");
+        std::fs::create_dir_all(&paper_dir).unwrap();
+        std::fs::write(
+            paper_dir.join("paper.toml"),
+            r#"
+[paper]
+id = "paper1"
+title = "Test Paper"
+language = "en"
+date = "2026-01-14"
+
+[output]
+name = "paper1"
+"#,
+        )
+        .unwrap();
+
+        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
+
+        // Check tool listing
+        let tools = server.list_tools();
+        assert!(tools.iter().any(|t| t.name == "build"));
+
+        // Call build tool
+        let args = serde_json::json!({
+            "paper_id": "paper1"
+        });
+        // We expect this to fail initially as "build" key is not handled, or succeed if we implement it.
+        // For TDD, we assert success, but expect it to panic or return error until implemented.
+        let result = server.handle_tool_call("build", args);
+        assert!(result.is_ok());
     }
 }
