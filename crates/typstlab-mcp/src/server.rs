@@ -3,15 +3,22 @@ use serde_json::Value;
 use std::path::PathBuf;
 use typstlab_core::error::Result;
 
+use anyhow::Context;
+use typstlab_core::project::Project;
+
 /// MCP Server for typstlab
 pub struct McpServer {
-    project_root: PathBuf,
+    project: Project,
 }
 
 impl McpServer {
     /// Create a new MCP server
-    pub fn new(project_root: PathBuf) -> Self {
-        Self { project_root }
+    pub fn new(root: PathBuf) -> anyhow::Result<Self> {
+        let project = Project::find_root(&root)
+            .context("Failed to search for project root")?
+            .ok_or_else(|| anyhow::anyhow!("Project root not found in {}", root.display()))?;
+
+        Ok(Self { project })
     }
 
     /// Handle a tool call
@@ -19,22 +26,22 @@ impl McpServer {
         match tool_name {
             "rules_list" => {
                 let input: tools::RulesListInput = serde_json::from_value(input)?;
-                let output = tools::rules_list(input, &self.project_root)?;
+                let output = tools::rules_list(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
             "rules_get" => {
                 let input: tools::RulesGetInput = serde_json::from_value(input)?;
-                let output = tools::rules_get(input, &self.project_root)?;
+                let output = tools::rules_get(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
             "rules_page" => {
                 let input: tools::RulesPageInput = serde_json::from_value(input)?;
-                let output = tools::rules_page(input, &self.project_root)?;
+                let output = tools::rules_page(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
             "rules_search" => {
                 let input: tools::RulesSearchInput = serde_json::from_value(input)?;
-                let output = tools::rules_search(input, &self.project_root)?;
+                let output = tools::rules_search(input, &self.project.root)?;
                 Ok(serde_json::to_value(output)?)
             }
             _ => Err(typstlab_core::error::TypstlabError::Generic(format!(
@@ -109,15 +116,49 @@ pub struct Safety {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use typstlab_testkit::temp_dir_in_workspace;
+
+    fn create_test_project_config(root: &std::path::Path) {
+        let config = r#"
+[project]
+name = "test-project"
+init_date = "2026-01-14"
+
+[typst]
+version = "0.12.0"
+"#;
+        std::fs::write(root.join("typstlab.toml"), config).unwrap();
+    }
 
     #[test]
     fn test_list_tools() {
-        let server = McpServer::new(PathBuf::from("/tmp/test"));
+        let temp = temp_dir_in_workspace();
+        create_test_project_config(temp.path());
+
+        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
         let tools = server.list_tools();
         assert_eq!(tools.len(), 4);
         assert!(tools.iter().any(|t| t.name == "rules_list"));
         assert!(tools.iter().any(|t| t.name == "rules_get"));
         assert!(tools.iter().any(|t| t.name == "rules_page"));
         assert!(tools.iter().any(|t| t.name == "rules_search"));
+    }
+
+    #[test]
+    fn test_init_with_valid_project() {
+        let temp = temp_dir_in_workspace();
+        create_test_project_config(temp.path());
+
+        let server = McpServer::new(temp.path().to_path_buf());
+        assert!(server.is_ok());
+    }
+
+    #[test]
+    fn test_init_fails_without_config() {
+        let temp = temp_dir_in_workspace();
+        // Do not create typstlab.toml
+
+        let server = McpServer::new(temp.path().to_path_buf());
+        assert!(server.is_err());
     }
 }
