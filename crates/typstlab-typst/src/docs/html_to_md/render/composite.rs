@@ -13,6 +13,7 @@
 //!
 //! O(n) guarantee: delegates to O(n) components, single composition pass.
 
+use super::blockquote::BlockquoteRenderer;
 use super::heading::HeadingRenderer;
 use super::list::ListRenderer;
 use super::paragraph::ParagraphRenderer;
@@ -30,6 +31,7 @@ use markdown::mdast::Node;
 /// O(n) where n = total nodes. Step counter tracks all render() calls.
 #[allow(dead_code)] // Used in Phase 6+
 pub struct CompositeRenderer {
+    blockquote: BlockquoteRenderer,
     heading: HeadingRenderer,
     list: ListRenderer,
     paragraph: ParagraphRenderer,
@@ -49,6 +51,7 @@ impl CompositeRenderer {
     #[allow(dead_code)] // Used in Phase 6+
     pub fn new() -> Self {
         CompositeRenderer {
+            blockquote: BlockquoteRenderer::new(),
             heading: HeadingRenderer::new(),
             list: ListRenderer::new(),
             paragraph: ParagraphRenderer::new(),
@@ -120,6 +123,7 @@ impl CompositeRenderer {
                 Node::Paragraph(_) => self.paragraph.render(node), // Fast!
                 Node::Heading(_) => self.heading.render(node),     // Fast!
                 Node::List(_) => self.list.render(node),           // Fast!
+                Node::Blockquote(_) => self.blockquote.render(node), // Fast!
                 _ => self.standard.render(node),
             })
             .collect();

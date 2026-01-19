@@ -18,6 +18,7 @@
 //! All renderers guarantee O(n) complexity where n = node count.
 //! Verified with step counters in `tests/performance.rs`.
 
+mod blockquote;
 mod composite;
 mod compositor;
 mod heading;
@@ -26,6 +27,8 @@ mod paragraph;
 mod standard;
 mod table;
 
+#[allow(unused_imports)] // Used in Phase 10+
+pub use blockquote::BlockquoteRenderer;
 #[allow(unused_imports)] // Used in Phase 6+
 pub use composite::CompositeRenderer;
 #[allow(unused_imports)] // Used in Phase 5+
