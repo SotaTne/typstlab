@@ -20,6 +20,7 @@
 
 mod composite;
 mod compositor;
+mod heading;
 mod paragraph;
 mod standard;
 mod table;
@@ -28,6 +29,8 @@ mod table;
 pub use composite::CompositeRenderer;
 #[allow(unused_imports)] // Used in Phase 5+
 pub use compositor::Compositor;
+#[allow(unused_imports)] // Used in Phase 10+
+pub use heading::HeadingRenderer;
 #[allow(unused_imports)] // Used in Phase 10+
 pub use paragraph::ParagraphRenderer;
 #[allow(unused_imports)] // Used in Phase 5+
