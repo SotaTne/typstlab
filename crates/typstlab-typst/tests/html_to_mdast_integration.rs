@@ -141,7 +141,7 @@ fn test_mixed_inline_formatting() {
     // Verify inline elements preserved
     assert!(result.contains("`array.map()`"));
     assert!(result.contains("*transformation*"));
-    assert!(result.contains("[array documentation](../reference/array)"));
+    assert!(result.contains("[array documentation](../reference/array.md)"));
     assert!(result.contains("**more details**"));
 }
 
@@ -177,7 +177,7 @@ fn test_link_with_formatted_text() {
     let result = html_to_md::convert(html).expect("Should convert link with formatted text");
 
     // Verify link contains formatted children
-    assert!(result.contains("[**Introduction** to *Typst*](../tutorial/intro)"));
+    assert!(result.contains("[**Introduction** to *Typst*](../tutorial/intro.md)"));
 }
 
 /// Test: Deeply nested structure
@@ -242,10 +242,10 @@ fn test_internal_link_rewriting() {
 
     let result = html_to_md::convert(html).expect("Should rewrite links");
 
-    // Verify all /DOCS-BASE/ links rewritten to ../
-    assert!(result.contains("[Home](../)"));
-    assert!(result.contains("[Reference](../reference/)"));
-    assert!(result.contains("[Tutorial](../tutorial/intro/)"));
+    // Verify all /DOCS-BASE/ links rewritten to .md format
+    assert!(result.contains("[Home](../index.md)"));
+    assert!(result.contains("[Reference](../reference.md)"));
+    assert!(result.contains("[Tutorial](../tutorial/intro.md)"));
     assert!(!result.contains("/DOCS-BASE/"));
 }
 
@@ -303,7 +303,7 @@ fn test_multiple_paragraphs_mixed_content() {
 
     // Verify content
     assert!(result.contains("**bold**"));
-    assert!(result.contains("[a link](../link)"));
+    assert!(result.contains("[a link](../link.md)"));
     assert!(result.contains("`inline code`"));
     assert!(result.contains("*emphasis*"));
 }
@@ -368,7 +368,6 @@ fn test_emphasis_strong_combinations() {
 
 /// Test: Link rewriting - directory with trailing slash converts to .md
 #[test]
-#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
 fn test_link_rewrite_directory_to_md() {
     let html = r#"<a href="/DOCS-BASE/tutorial/">Tutorial</a>"#;
     let result = html_to_md::convert(html).unwrap();
@@ -387,7 +386,6 @@ fn test_link_rewrite_directory_to_md() {
 
 /// Test: Link rewriting - preserves fragments
 #[test]
-#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
 fn test_link_rewrite_with_fragment() {
     let html = r#"<a href="/DOCS-BASE/tutorial/#section">Link</a>"#;
     let result = html_to_md::convert(html).unwrap();
@@ -401,7 +399,6 @@ fn test_link_rewrite_with_fragment() {
 
 /// Test: Link rewriting - preserves query strings
 #[test]
-#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
 fn test_link_rewrite_with_query() {
     let html = r#"<a href="/DOCS-BASE/api?version=1">API</a>"#;
     let result = html_to_md::convert(html).unwrap();
@@ -415,7 +412,6 @@ fn test_link_rewrite_with_query() {
 
 /// Test: Link rewriting - query and fragment together
 #[test]
-#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
 fn test_link_rewrite_with_query_and_fragment() {
     let html = r#"<a href="/DOCS-BASE/api?v=1#intro">API</a>"#;
     let result = html_to_md::convert(html).unwrap();
@@ -429,7 +425,6 @@ fn test_link_rewrite_with_query_and_fragment() {
 
 /// Test: Link rewriting - nested directory
 #[test]
-#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
 fn test_link_rewrite_nested_directory() {
     let html = r#"<a href="/DOCS-BASE/reference/styling/">Styling</a>"#;
     let result = html_to_md::convert(html).unwrap();
@@ -443,7 +438,6 @@ fn test_link_rewrite_nested_directory() {
 
 /// Test: Link rewriting - root to index.md
 #[test]
-#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
 fn test_link_rewrite_root() {
     let html = r#"<a href="/DOCS-BASE/">Home</a>"#;
     let result = html_to_md::convert(html).unwrap();
@@ -488,7 +482,6 @@ fn test_link_rewrite_mailto_unchanged() {
 
 /// Test: Link rewriting - file without trailing slash
 #[test]
-#[ignore = "Waiting for Phase 3: builders.rs and render_bodies.rs link rewriting"]
 fn test_link_rewrite_file_without_trailing_slash() {
     let html = r#"<a href="/DOCS-BASE/tutorial/writing">Writing</a>"#;
     let result = html_to_md::convert(html).unwrap();

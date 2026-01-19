@@ -34,10 +34,11 @@ pub(super) fn build_link(
 ) -> Node {
     let link_children = converter.accumulate_inline_children(handle);
 
-    // Fix internal links: /DOCS-BASE/ → ../
+    // Rewrite internal links using smart URL parser
     let url = href
-        .unwrap_or_else(|| "#".to_string())
-        .replace("/DOCS-BASE/", "../");
+        .as_deref()
+        .map(|s| crate::docs::links::rewrite_docs_link(s).into_owned())
+        .unwrap_or_else(|| "#".to_string());
 
     Node::Link(Link {
         children: link_children,

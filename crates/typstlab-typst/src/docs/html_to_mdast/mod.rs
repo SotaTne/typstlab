@@ -394,9 +394,9 @@ mod tests {
 
                 // Verify Link node
                 if let Node::Link(link) = &para.children[0] {
-                    // URL should be rewritten: /DOCS-BASE/ → ../
+                    // URL should be rewritten: /DOCS-BASE/ → .md format
                     assert_eq!(
-                        link.url, "../reference/func",
+                        link.url, "../reference/func.md",
                         "Should rewrite internal links"
                     );
 

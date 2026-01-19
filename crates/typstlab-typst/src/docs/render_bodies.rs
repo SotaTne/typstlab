@@ -101,8 +101,8 @@ pub fn render_category_body(content: &serde_json::Value) -> Result<String, Rende
     if !cat.items.is_empty() {
         md.push_str("## Items\n\n");
         for item in &cat.items {
-            // Fix internal links: /DOCS-BASE/ → ../
-            let fixed_route = item.route.replace("/DOCS-BASE/", "../");
+            // Rewrite internal links using smart URL parser
+            let fixed_route = crate::docs::links::rewrite_docs_link(&item.route).into_owned();
             md.push_str(&format!("- [{}]({})", item.name, fixed_route));
             if let Some(oneliner) = &item.oneliner {
                 md.push_str(&format!(" - {}", oneliner));
