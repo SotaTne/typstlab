@@ -16,13 +16,13 @@ fn test_paragraph_performance_100_items() {
 
     // Warmup
     for _ in 0..5 {
-        let _ = html_to_md::convert(&html);
+        let _ = html_to_md::convert(&html, 1);
     }
 
     // Measure
     let start = Instant::now();
     for _ in 0..10 {
-        html_to_md::convert(&html).expect("Conversion should succeed");
+        html_to_md::convert(&html, 1).expect("Conversion should succeed");
     }
     let duration = start.elapsed();
 
@@ -55,13 +55,13 @@ fn test_heading_performance() {
 
     // Warmup
     for _ in 0..5 {
-        let _ = html_to_md::convert(html);
+        let _ = html_to_md::convert(html, 1);
     }
 
     // Measure
     let start = Instant::now();
     for _ in 0..100 {
-        html_to_md::convert(html).expect("Conversion should succeed");
+        html_to_md::convert(html, 1).expect("Conversion should succeed");
     }
     let duration = start.elapsed();
 
@@ -96,13 +96,13 @@ fn test_list_performance() {
 
     // Warmup
     for _ in 0..5 {
-        let _ = html_to_md::convert(html);
+        let _ = html_to_md::convert(html, 1);
     }
 
     // Measure
     let start = Instant::now();
     for _ in 0..100 {
-        html_to_md::convert(html).expect("Conversion should succeed");
+        html_to_md::convert(html, 1).expect("Conversion should succeed");
     }
     let duration = start.elapsed();
 
@@ -131,13 +131,13 @@ fn test_blockquote_performance() {
 
     // Warmup
     for _ in 0..5 {
-        let _ = html_to_md::convert(html);
+        let _ = html_to_md::convert(html, 1);
     }
 
     // Measure
     let start = Instant::now();
     for _ in 0..100 {
-        html_to_md::convert(html).expect("Conversion should succeed");
+        html_to_md::convert(html, 1).expect("Conversion should succeed");
     }
     let duration = start.elapsed();
 
@@ -176,13 +176,13 @@ fn test_mixed_content_performance() {
 
     // Warmup
     for _ in 0..5 {
-        let _ = html_to_md::convert(html);
+        let _ = html_to_md::convert(html, 1);
     }
 
     // Measure
     let start = Instant::now();
     for _ in 0..100 {
-        html_to_md::convert(html).expect("Conversion should succeed");
+        html_to_md::convert(html, 1).expect("Conversion should succeed");
     }
     let duration = start.elapsed();
 

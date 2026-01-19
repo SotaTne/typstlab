@@ -16,7 +16,7 @@ fn test_typst_code_block_with_preview() {
         <p>This produces a blue rectangle.</p>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert Typst code example");
+    let result = html_to_md::convert(html, 1).expect("Should convert Typst code example");
 
     // Verify structure
     assert!(result.contains("The `rect` function creates a rectangle"));
@@ -43,7 +43,7 @@ fn test_nested_list_with_inline_code() {
         </ul>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert nested list");
+    let result = html_to_md::convert(html, 1).expect("Should convert nested list");
 
     // Verify list structure
     assert!(
@@ -92,7 +92,7 @@ fn test_table_with_rich_content() {
         </table>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert table");
+    let result = html_to_md::convert(html, 1).expect("Should convert table");
 
     // Debug: Print actual output
     eprintln!("Actual table output:\n{}", result);
@@ -118,7 +118,7 @@ fn test_blockquote_multiline() {
         </blockquote>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert blockquote");
+    let result = html_to_md::convert(html, 1).expect("Should convert blockquote");
 
     // Verify blockquote structure
     assert!(result.contains("> **Note:**"));
@@ -136,7 +136,7 @@ fn test_mixed_inline_formatting() {
         </p>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert mixed inline");
+    let result = html_to_md::convert(html, 1).expect("Should convert mixed inline");
 
     // Verify inline elements preserved
     assert!(result.contains("`array.map()`"));
@@ -157,7 +157,7 @@ fn test_empty_elements() {
         </ul>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should handle empty elements");
+    let result = html_to_md::convert(html, 1).expect("Should handle empty elements");
 
     // Verify empty elements don't break structure
     assert!(result.contains("Content"));
@@ -174,7 +174,7 @@ fn test_link_with_formatted_text() {
         </p>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert link with formatted text");
+    let result = html_to_md::convert(html, 1).expect("Should convert link with formatted text");
 
     // Verify link contains formatted children
     assert!(result.contains("[**Introduction** to *Typst*](../tutorial/intro.md)"));
@@ -199,7 +199,7 @@ fn test_deeply_nested_structure() {
         </ul>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should handle deep nesting");
+    let result = html_to_md::convert(html, 1).expect("Should handle deep nesting");
 
     // Verify nested list structure (indentation may vary)
     assert!(result.contains("Level 1"));
@@ -219,7 +219,7 @@ fn test_ordered_list_rich_content() {
         </ol>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert ordered list");
+    let result = html_to_md::convert(html, 1).expect("Should convert ordered list");
 
     // Verify ordered list numbering
     assert!(result.contains("1. **First**"));
@@ -240,7 +240,7 @@ fn test_internal_link_rewriting() {
         </p>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should rewrite links");
+    let result = html_to_md::convert(html, 1).expect("Should rewrite links");
 
     // Verify all /DOCS-BASE/ links rewritten to .md format
     assert!(result.contains("[Home](../index.md)"));
@@ -259,7 +259,7 @@ fn test_code_block_special_chars() {
 }</code></pre>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should preserve special chars in code");
+    let result = html_to_md::convert(html, 1).expect("Should preserve special chars in code");
 
     // Verify code fence and content
     assert!(result.contains("```"), "Should have code fence");
@@ -275,7 +275,7 @@ fn test_code_block_special_chars() {
 fn test_inline_code_whitespace() {
     let html = r#"<p>Use <code>  indented code  </code> carefully.</p>"#;
 
-    let result = html_to_md::convert(html).expect("Should handle code whitespace");
+    let result = html_to_md::convert(html, 1).expect("Should handle code whitespace");
 
     // Verify inline code present (whitespace may be normalized by markdown-rs)
     assert!(result.contains("`"), "Should contain inline code markers");
@@ -295,7 +295,7 @@ fn test_multiple_paragraphs_mixed_content() {
         <p>Third paragraph with <code>inline code</code> and <em>emphasis</em>.</p>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert multiple paragraphs");
+    let result = html_to_md::convert(html, 1).expect("Should convert multiple paragraphs");
 
     // Verify paragraph separation (blank lines between)
     let lines: Vec<&str> = result.lines().collect();
@@ -324,7 +324,7 @@ fn test_table_without_thead() {
         </table>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should handle table without thead");
+    let result = html_to_md::convert(html, 1).expect("Should handle table without thead");
 
     // Verify table content is present
     assert!(result.contains("Cell 1"), "Should contain cell 1");
@@ -338,7 +338,7 @@ fn test_table_without_thead() {
 fn test_link_missing_href() {
     let html = r#"<p>Text with <a>link without href</a> should still work.</p>"#;
 
-    let result = html_to_md::convert(html).expect("Should handle link without href");
+    let result = html_to_md::convert(html, 1).expect("Should handle link without href");
 
     // Verify fallback link created
     assert!(result.contains("[link without href](#)"));
@@ -356,7 +356,7 @@ fn test_emphasis_strong_combinations() {
         </p>
     "#;
 
-    let result = html_to_md::convert(html).expect("Should convert emphasis combinations");
+    let result = html_to_md::convert(html, 1).expect("Should convert emphasis combinations");
 
     // Verify markdown formatting
     assert!(result.contains("*Italic only*"));
@@ -370,7 +370,7 @@ fn test_emphasis_strong_combinations() {
 #[test]
 fn test_link_rewrite_directory_to_md() {
     let html = r#"<a href="/DOCS-BASE/tutorial/">Tutorial</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("../tutorial.md"),
@@ -388,7 +388,7 @@ fn test_link_rewrite_directory_to_md() {
 #[test]
 fn test_link_rewrite_with_fragment() {
     let html = r#"<a href="/DOCS-BASE/tutorial/#section">Link</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("../tutorial.md#section"),
@@ -401,7 +401,7 @@ fn test_link_rewrite_with_fragment() {
 #[test]
 fn test_link_rewrite_with_query() {
     let html = r#"<a href="/DOCS-BASE/api?version=1">API</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("../api.md?version=1"),
@@ -414,7 +414,7 @@ fn test_link_rewrite_with_query() {
 #[test]
 fn test_link_rewrite_with_query_and_fragment() {
     let html = r#"<a href="/DOCS-BASE/api?v=1#intro">API</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("../api.md?v=1#intro"),
@@ -427,7 +427,7 @@ fn test_link_rewrite_with_query_and_fragment() {
 #[test]
 fn test_link_rewrite_nested_directory() {
     let html = r#"<a href="/DOCS-BASE/reference/styling/">Styling</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("../reference/styling.md"),
@@ -440,7 +440,7 @@ fn test_link_rewrite_nested_directory() {
 #[test]
 fn test_link_rewrite_root() {
     let html = r#"<a href="/DOCS-BASE/">Home</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("../index.md"),
@@ -453,7 +453,7 @@ fn test_link_rewrite_root() {
 #[test]
 fn test_link_rewrite_external_url_unchanged() {
     let html = r#"<a href="https://typst.app/">Typst</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("https://typst.app/"),
@@ -471,7 +471,7 @@ fn test_link_rewrite_external_url_unchanged() {
 #[test]
 fn test_link_rewrite_mailto_unchanged() {
     let html = r#"<a href="mailto:test@example.com">Email</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("mailto:test@example.com"),
@@ -484,7 +484,7 @@ fn test_link_rewrite_mailto_unchanged() {
 #[test]
 fn test_link_rewrite_file_without_trailing_slash() {
     let html = r#"<a href="/DOCS-BASE/tutorial/writing">Writing</a>"#;
-    let result = html_to_md::convert(html).unwrap();
+    let result = html_to_md::convert(html, 1).unwrap();
 
     assert!(
         result.contains("../tutorial/writing.md"),

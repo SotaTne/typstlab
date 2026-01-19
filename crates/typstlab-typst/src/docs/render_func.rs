@@ -31,7 +31,7 @@ use thiserror::Error;
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_func_body(content: &serde_json::Value) -> Result<String, RenderError> {
+pub fn render_func_body(content: &serde_json::Value, depth: usize) -> Result<String, RenderError> {
     // Parse FuncContent from JSON
     let func: FuncContent = serde_json::from_value(content.clone())?;
 
@@ -52,7 +52,7 @@ pub fn render_func_body(content: &serde_json::Value) -> Result<String, RenderErr
     if let Some(details) = &func.details {
         let details_html = extract_html_from_details(details);
         if !details_html.is_empty() {
-            let details_md = html_to_md::convert(&details_html)?;
+            let details_md = html_to_md::convert(&details_html, depth)?;
             md.push_str(&details_md);
             md.push_str("\n\n");
         }
@@ -63,7 +63,7 @@ pub fn render_func_body(content: &serde_json::Value) -> Result<String, RenderErr
         md.push_str("## Example\n\n");
         let example_html = extract_html_from_details(example);
         if !example_html.is_empty() {
-            let example_md = html_to_md::convert(&example_html)?;
+            let example_md = html_to_md::convert(&example_html, depth)?;
             md.push_str(&example_md);
             md.push_str("\n\n");
         }
@@ -73,7 +73,7 @@ pub fn render_func_body(content: &serde_json::Value) -> Result<String, RenderErr
     if !func.params.is_empty() {
         md.push_str("## Parameters\n\n");
         for param in &func.params {
-            md.push_str(&format_parameter(param)?);
+            md.push_str(&format_parameter(param, depth)?);
         }
         md.push('\n');
     }
@@ -88,7 +88,7 @@ pub fn render_func_body(content: &serde_json::Value) -> Result<String, RenderErr
     if !func.scope.is_empty() {
         md.push_str("## Methods\n\n");
         for method in &func.scope {
-            md.push_str(&format_scoped_function(method)?);
+            md.push_str(&format_scoped_function(method, depth)?);
             md.push('\n');
         }
     }
@@ -117,7 +117,7 @@ pub fn render_func_body(content: &serde_json::Value) -> Result<String, RenderErr
 /// # Errors
 ///
 /// Returns error if HTML conversion fails
-fn format_parameter(param: &ParamContent) -> Result<String, RenderError> {
+fn format_parameter(param: &ParamContent, depth: usize) -> Result<String, RenderError> {
     let mut md = String::new();
 
     // Parameter name with type
@@ -163,7 +163,7 @@ fn format_parameter(param: &ParamContent) -> Result<String, RenderError> {
     if let Some(details) = &param.details {
         let details_html = extract_html_from_details(details);
         if !details_html.is_empty() {
-            let details_md = html_to_md::convert(&details_html)?;
+            let details_md = html_to_md::convert(&details_html, depth)?;
             for line in details_md.lines() {
                 md.push_str("  ");
                 md.push_str(line);
@@ -176,7 +176,7 @@ fn format_parameter(param: &ParamContent) -> Result<String, RenderError> {
     if let Some(example) = &param.example {
         let example_html = extract_html_from_details(example);
         if !example_html.is_empty() {
-            let example_md = html_to_md::convert(&example_html)?;
+            let example_md = html_to_md::convert(&example_html, depth)?;
             md.push_str("  \n  Example:\n");
             for line in example_md.lines() {
                 md.push_str("  ");
@@ -209,7 +209,7 @@ fn format_parameter(param: &ParamContent) -> Result<String, RenderError> {
 /// # Errors
 ///
 /// Returns error if HTML conversion fails
-fn format_scoped_function(func: &FuncContent) -> Result<String, RenderError> {
+fn format_scoped_function(func: &FuncContent, depth: usize) -> Result<String, RenderError> {
     let mut md = String::new();
 
     // Method heading
@@ -228,7 +228,7 @@ fn format_scoped_function(func: &FuncContent) -> Result<String, RenderError> {
     if let Some(details) = &func.details {
         let details_html = extract_html_from_details(details);
         if !details_html.is_empty() {
-            let details_md = html_to_md::convert(&details_html)?;
+            let details_md = html_to_md::convert(&details_html, depth)?;
             md.push_str(&details_md);
             md.push_str("\n\n");
         }
@@ -251,7 +251,7 @@ mod tests {
         let body = entry.body.expect("Entry should have body");
         assert_eq!(body.kind, "func", "Body kind should be func");
 
-        let result = render_func_body(&body.content).expect("Rendering should succeed");
+        let result = render_func_body(&body.content, 1).expect("Rendering should succeed");
 
         // Verify signature present
         assert!(
@@ -296,7 +296,7 @@ mod tests {
         // Test rendering one of the methods
         let method = &type_content.scope[0];
         let method_json = serde_json::to_value(method).expect("Should serialize method");
-        let result = render_func_body(&method_json).expect("Rendering should succeed");
+        let result = render_func_body(&method_json, 1).expect("Rendering should succeed");
 
         // Verify method-specific sections
         assert!(
@@ -375,7 +375,7 @@ mod tests {
             "scope": []
         });
 
-        let result = render_func_body(&func_json).expect("Should render variadic param");
+        let result = render_func_body(&func_json, 1).expect("Should render variadic param");
 
         // Verify variadic flag is shown
         assert!(
@@ -408,7 +408,7 @@ mod tests {
             "scope": []
         });
 
-        let result = render_func_body(&func_json).expect("Should render array default");
+        let result = render_func_body(&func_json, 1).expect("Should render array default");
 
         // Verify default value is shown as JSON
         assert!(result.contains("default:"), "Should show default label");
@@ -441,7 +441,7 @@ mod tests {
             "scope": []
         });
 
-        let result = render_func_body(&func_json).expect("Should render object default");
+        let result = render_func_body(&func_json, 1).expect("Should render object default");
 
         // Verify default value is shown as JSON
         assert!(result.contains("default:"), "Should show default label");
@@ -479,7 +479,7 @@ mod tests {
             "scope": []
         });
 
-        let result = render_func_body(&func_json).expect("Should render HTML default");
+        let result = render_func_body(&func_json, 1).expect("Should render HTML default");
 
         // Verify HTML tags are stripped from default value
         assert!(result.contains("default:"), "Should show default label");
@@ -522,7 +522,7 @@ mod tests {
             "scope": []
         });
 
-        let result = render_func_body(&func_json).expect("Should render simple HTML default");
+        let result = render_func_body(&func_json, 1).expect("Should render simple HTML default");
 
         // Verify HTML is stripped to plain text
         assert!(

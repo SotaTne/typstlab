@@ -42,6 +42,7 @@ use crate::docs::schema::FuncContent;
 ///     params: vec![],
 ///     returns: vec!["array".to_string()],
 ///     scope: vec![],
+///     category: None,
 /// };
 ///
 /// assert_eq!(format_function_signature(&func), "`array.map() -> array`");
@@ -116,6 +117,7 @@ mod tests {
             params: vec![],
             returns: vec!["none".to_string()],
             scope: vec![],
+            category: None,
         };
 
         assert_eq!(format_function_signature(&func), "`assert() -> none`");
@@ -137,6 +139,7 @@ mod tests {
             params: vec![],
             returns: vec!["array".to_string()],
             scope: vec![],
+            category: None,
         };
 
         assert_eq!(format_function_signature(&func), "`array.map() -> array`");
@@ -185,6 +188,7 @@ mod tests {
             ],
             returns: vec!["int".to_string()],
             scope: vec![],
+            category: None,
         };
 
         assert_eq!(
@@ -209,6 +213,7 @@ mod tests {
             params: vec![],
             returns: vec![],
             scope: vec![],
+            category: None,
         };
 
         assert_eq!(format_function_signature(&func), "`func()`");

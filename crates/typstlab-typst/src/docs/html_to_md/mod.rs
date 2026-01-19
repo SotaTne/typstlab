@@ -47,18 +47,18 @@ const MAX_HTML_SIZE: usize = 5_000_000;
 /// ```
 /// use typstlab_typst::docs::html_to_md::convert;
 ///
-/// let html = "<p>Hello, world!</p>";
-/// let md = convert(html).expect("Should convert");
-/// assert!(md.contains("Hello, world!"));
+/// let html = "<p>Hello</p>";
+/// let md = convert(html, 1).expect("Should convert");
+/// assert_eq!(md, "Hello");
 /// ```
-pub fn convert(html: &str) -> Result<String, ConversionError> {
+pub fn convert(html: &str, depth: usize) -> Result<String, ConversionError> {
     // Validate HTML size before parsing
     if html.len() > MAX_HTML_SIZE {
         return Err(ConversionError::HtmlTooLarge(html.len()));
     }
 
     // Stage 1: HTML → mdast
-    let mdast = html_to_mdast::convert(html)?;
+    let mdast = html_to_mdast::convert(html, depth)?;
 
     // Stage 2: mdast → Markdown (via CompositeRenderer)
     let renderer = render::create_composite_renderer();
@@ -66,10 +66,10 @@ pub fn convert(html: &str) -> Result<String, ConversionError> {
         Ok(md) => Ok(md),
         Err(e) => {
             // Rendering failed: fallback to plain text
-            eprintln!(
-                "CompositeRenderer failed: {}, falling back to plain text",
-                e
-            );
+            // eprintln!(
+            //     "CompositeRenderer failed: {}, falling back to plain text",
+            //     e
+            // );
             Ok(extract_plain_text(&mdast))
         }
     }
@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn test_convert_simple_paragraph() {
         let html = "<p>Hello, world!</p>";
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         // mdast_util_to_markdown adds trailing newline (CommonMark standard)
         assert!(md.trim().starts_with("Hello, world!"));
     }
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn test_convert_headings() {
         let html = "<h1>Title</h1><h2>Section</h2><h3>Subsection</h3>";
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         assert!(md.contains("# Title"));
         assert!(md.contains("## Section"));
         assert!(md.contains("### Subsection"));
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn test_convert_inline_code() {
         let html = "<p>Use <code>print()</code> function</p>";
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         assert!(md.contains("`print()`"));
     }
 
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn test_convert_code_block() {
         let html = "<pre><code>let x = 1;</code></pre>";
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         // mdast_util_to_markdown uses ``` without language by default
         assert!(md.contains("```"));
         assert!(md.contains("let x = 1;"));
@@ -266,7 +266,7 @@ mod tests {
     fn test_convert_typst_syntax() {
         let html =
             r#"<code><span class="typ-func">#image</span><span class="typ-punct">(</span></code>"#;
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         // Typst syntax spans are flattened to inline code
         assert!(md.contains("`#image(`") || md.contains("#image("));
     }
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_inline_code_outside_block() {
         let html = "<p>Use <code>func()</code> to call.</p>";
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         assert!(md.contains("`func()`"));
     }
 
@@ -283,7 +283,7 @@ mod tests {
     #[test]
     fn test_size_limit() {
         let large_html = "x".repeat(MAX_HTML_SIZE + 1);
-        let result = convert(&large_html);
+        let result = convert(&large_html, 1);
         assert!(result.is_err());
         match result.unwrap_err() {
             ConversionError::HtmlTooLarge(size) => {
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn test_dangerous_tags_ignored() {
         let html = r#"<p>Safe</p><script>alert("xss")</script><p>Also safe</p>"#;
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         assert!(md.contains("Safe"));
         assert!(md.contains("Also safe"));
         assert!(!md.contains("alert"));
@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn test_style_and_link_tags_ignored() {
         let html = r#"<p>Content</p><style>.malicious { }</style><link rel="stylesheet" href="evil.css"><p>More content</p>"#;
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         assert!(md.contains("Content"));
         assert!(md.contains("More content"));
         assert!(!md.contains("malicious"));
@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn test_empty_html() {
         let html = "";
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         assert_eq!(md, "");
     }
 
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn test_multiple_paragraphs() {
         let html = "<p>First paragraph.</p><p>Second paragraph.</p>";
-        let md = convert(html).expect("Should convert");
+        let md = convert(html, 1).expect("Should convert");
         assert!(md.contains("First paragraph."));
         assert!(md.contains("Second paragraph."));
     }

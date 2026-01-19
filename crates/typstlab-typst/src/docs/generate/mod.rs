@@ -43,7 +43,7 @@ use thiserror::Error;
 ///
 /// let entries: Vec<DocsEntry> = vec![]; // Load from JSON
 /// let count = generate_markdown_files(&entries, Path::new(".typstlab/kb/typst/docs"), false).unwrap();
-/// println!("Generated {} files", count);
+// println!("Generated {} files", count);
 /// ```
 pub fn generate_markdown_files(
     entries: &[DocsEntry],

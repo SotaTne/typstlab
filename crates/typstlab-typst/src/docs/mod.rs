@@ -95,14 +95,14 @@ pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usiz
     let entries: Vec<schema::DocsEntry> = serde_json::from_slice(&json_bytes)?;
 
     if verbose {
-        eprintln!("Parsed {} top-level documentation entries", entries.len());
+        // eprintln!("Parsed {} top-level documentation entries", entries.len());
     }
 
     // Generate Markdown files
     let count = generate::generate_markdown_files(&entries, target_dir, verbose)?;
 
     if verbose {
-        eprintln!("Generated {} documentation files", count);
+        // eprintln!("Generated {} documentation files", count);
     }
 
     // Lock automatically released when _lock_guard is dropped

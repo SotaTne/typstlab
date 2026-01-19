@@ -37,7 +37,7 @@ pub(super) fn build_link(
     // Rewrite internal links using smart URL parser
     let url = href
         .as_deref()
-        .map(|s| crate::docs::links::rewrite_docs_link(s).into_owned())
+        .map(|s| crate::docs::links::rewrite_docs_link(s, converter.depth).into_owned())
         .unwrap_or_else(|| "#".to_string());
 
     Node::Link(Link {

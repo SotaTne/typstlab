@@ -39,12 +39,20 @@ use thiserror::Error;
 pub fn generate_body_markdown(entry: &DocsEntry) -> Result<String, BodyRenderError> {
     let mut markdown = String::new();
 
+    // Calculate depth relative to root for link rewriting
+    let relative_route = entry
+        .route
+        .strip_prefix("/DOCS-BASE/")
+        .unwrap_or(&entry.route);
+
+    let depth = relative_route.trim_end_matches('/').matches('/').count();
+
     if let Some(body) = &entry.body {
         match body.kind.as_str() {
             "html" => {
                 // HTML content: convert to Markdown
                 let html = body.as_html()?;
-                let converted = html_to_md::convert(html)?;
+                let converted = html_to_md::convert(html, depth)?;
                 // Remove duplicate h1 if it matches title
                 let cleaned = remove_duplicate_heading(&converted, &entry.title);
                 markdown.push_str(&cleaned);
@@ -52,31 +60,31 @@ pub fn generate_body_markdown(entry: &DocsEntry) -> Result<String, BodyRenderErr
             }
             "func" => {
                 // Function definition: render with specialized function
-                let func_md = render_func::render_func_body(&body.content)?;
+                let func_md = render_func::render_func_body(&body.content, depth)?;
                 markdown.push_str(&func_md);
                 markdown.push_str("\n\n");
             }
             "type" => {
                 // Type definition: render with specialized function
-                let type_md = render_bodies::render_type_body(&body.content)?;
+                let type_md = render_bodies::render_type_body(&body.content, depth)?;
                 markdown.push_str(&type_md);
                 markdown.push_str("\n\n");
             }
             "category" => {
                 // Category listing: render with specialized function
-                let cat_md = render_bodies::render_category_body(&body.content)?;
+                let cat_md = render_bodies::render_category_body(&body.content, depth)?;
                 markdown.push_str(&cat_md);
                 markdown.push_str("\n\n");
             }
             "group" => {
                 // Function group: render with specialized function
-                let group_md = render_bodies::render_group_body(&body.content)?;
+                let group_md = render_bodies::render_group_body(&body.content, depth)?;
                 markdown.push_str(&group_md);
                 markdown.push_str("\n\n");
             }
             "symbols" => {
                 // Symbol table: render with specialized function
-                let sym_md = render_bodies::render_symbols_body(&body.content)?;
+                let sym_md = render_bodies::render_symbols_body(&body.content, depth)?;
                 markdown.push_str(&sym_md);
                 markdown.push_str("\n\n");
             }
@@ -307,5 +315,25 @@ mod tests {
         // Verify category body rendered
         assert!(result.contains("## Items"), "Should have Items section");
         assert!(result.contains("- ["), "Should have list items");
+    }
+
+    #[test]
+    fn test_integration_nested_link() {
+        // Creates an entry that is deeply nested: /DOCS-BASE/reference/math/attach
+        // This simulates depth = 3.
+        let mut entry = test_entry(
+            "Nested",
+            Some(r#"<a href="/DOCS-BASE/reference/math/stretch">Stretch</a>"#),
+        );
+        entry.route = "/DOCS-BASE/reference/math/attach".to_string();
+
+        let result = generate_body_markdown(&entry).expect("Failed to generate markdown");
+
+        // Depth 2 (reference/math/attach) should produce "../../" prefix
+        assert!(
+            result.contains("../../reference/math/stretch.md"),
+            "Should have correct relative link for nested document, got: {}",
+            result
+        );
     }
 }

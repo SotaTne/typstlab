@@ -184,6 +184,10 @@ pub struct FuncContent {
     #[serde(default)]
     pub keywords: Vec<String>,
 
+    /// Category (e.g., "math", "foundations")
+    #[serde(default)]
+    pub category: Option<String>,
+
     /// Brief one-line description
     #[serde(default)]
     pub oneliner: Option<String>,

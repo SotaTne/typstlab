@@ -67,7 +67,7 @@ pub fn download_docs_json(version: &str, verbose: bool) -> Result<Vec<u8>, DocsJ
     let url = build_docs_json_url(version)?;
 
     if verbose {
-        eprintln!("Downloading docs.json from {}...", url);
+        // eprintln!("Downloading docs.json from {}...", url);
     }
 
     // Build client
@@ -78,7 +78,7 @@ pub fn download_docs_json(version: &str, verbose: bool) -> Result<Vec<u8>, DocsJ
         expected_size: None,
         progress: if verbose {
             Some(|downloaded, _total| {
-                eprintln!("Downloaded {} bytes", downloaded);
+                // eprintln!("Downloaded {} bytes", downloaded);
             })
         } else {
             None
@@ -102,7 +102,7 @@ pub fn download_docs_json(version: &str, verbose: bool) -> Result<Vec<u8>, DocsJ
     }
 
     if verbose {
-        eprintln!("Downloaded {} bytes", bytes.len());
+        // eprintln!("Downloaded {} bytes", bytes.len());
     }
 
     Ok(bytes)

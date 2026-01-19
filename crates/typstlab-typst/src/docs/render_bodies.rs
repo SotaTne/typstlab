@@ -32,7 +32,7 @@ use thiserror::Error;
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_type_body(content: &serde_json::Value) -> Result<String, RenderError> {
+pub fn render_type_body(content: &serde_json::Value, depth: usize) -> Result<String, RenderError> {
     let type_content: TypeContent = serde_json::from_value(content.clone())?;
 
     let mut md = String::new();
@@ -41,7 +41,7 @@ pub fn render_type_body(content: &serde_json::Value) -> Result<String, RenderErr
     if let Some(details) = &type_content.details {
         let details_html = extract_html_from_details(details);
         if !details_html.is_empty() {
-            md.push_str(&html_to_md::convert(&details_html)?);
+            md.push_str(&html_to_md::convert(&details_html, depth)?);
             md.push_str("\n\n");
         }
     }
@@ -50,14 +50,14 @@ pub fn render_type_body(content: &serde_json::Value) -> Result<String, RenderErr
     if let Some(constructor) = &type_content.constructor {
         md.push_str("## Constructor\n\n");
         let constructor_json = serde_json::to_value(constructor)?;
-        md.push_str(&render_func::render_func_body(&constructor_json)?);
+        md.push_str(&render_func::render_func_body(&constructor_json, depth)?);
     }
 
     // Methods/properties
     if !type_content.scope.is_empty() {
         md.push_str("## Methods\n\n");
         for method in &type_content.scope {
-            md.push_str(&format_scoped_function(method)?);
+            md.push_str(&format_scoped_function(method, depth)?);
         }
     }
 
@@ -83,7 +83,10 @@ pub fn render_type_body(content: &serde_json::Value) -> Result<String, RenderErr
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_category_body(content: &serde_json::Value) -> Result<String, RenderError> {
+pub fn render_category_body(
+    content: &serde_json::Value,
+    depth: usize,
+) -> Result<String, RenderError> {
     let cat: CategoryContent = serde_json::from_value(content.clone())?;
 
     let mut md = String::new();
@@ -92,7 +95,7 @@ pub fn render_category_body(content: &serde_json::Value) -> Result<String, Rende
     if let Some(details) = &cat.details {
         let details_html = extract_html_from_details(details);
         if !details_html.is_empty() {
-            md.push_str(&html_to_md::convert(&details_html)?);
+            md.push_str(&html_to_md::convert(&details_html, depth)?);
             md.push_str("\n\n");
         }
     }
@@ -102,7 +105,8 @@ pub fn render_category_body(content: &serde_json::Value) -> Result<String, Rende
         md.push_str("## Items\n\n");
         for item in &cat.items {
             // Rewrite internal links using smart URL parser
-            let fixed_route = crate::docs::links::rewrite_docs_link(&item.route).into_owned();
+            let fixed_route =
+                crate::docs::links::rewrite_docs_link(&item.route, depth).into_owned();
             md.push_str(&format!("- [{}]({})", item.name, fixed_route));
             if let Some(oneliner) = &item.oneliner {
                 md.push_str(&format!(" - {}", oneliner));
@@ -134,7 +138,7 @@ pub fn render_category_body(content: &serde_json::Value) -> Result<String, Rende
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_group_body(content: &serde_json::Value) -> Result<String, RenderError> {
+pub fn render_group_body(content: &serde_json::Value, depth: usize) -> Result<String, RenderError> {
     let group: GroupContent = serde_json::from_value(content.clone())?;
 
     let mut md = String::new();
@@ -143,7 +147,7 @@ pub fn render_group_body(content: &serde_json::Value) -> Result<String, RenderEr
     if let Some(details) = &group.details {
         let details_html = extract_html_from_details(details);
         if !details_html.is_empty() {
-            md.push_str(&html_to_md::convert(&details_html)?);
+            md.push_str(&html_to_md::convert(&details_html, depth)?);
             md.push_str("\n\n");
         }
     }
@@ -165,8 +169,9 @@ pub fn render_group_body(content: &serde_json::Value) -> Result<String, RenderEr
                 func.name.clone()
             };
 
-            // Fix internal links: /DOCS-BASE/ → ../
-            let fixed_route = format!("../{}", route);
+            // Fix internal links: /DOCS-BASE/ → prefix/
+            let prefix = "../".repeat(depth);
+            let fixed_route = format!("{}{}.md", prefix, route);
 
             md.push_str(&format!("- [{}]({})", func.title, fixed_route));
             if let Some(oneliner) = &func.oneliner {
@@ -193,7 +198,8 @@ pub fn render_group_body(content: &serde_json::Value) -> Result<String, RenderEr
                 elem.name.clone()
             };
 
-            let fixed_route = format!("../{}", route);
+            let prefix = "../".repeat(depth);
+            let fixed_route = format!("{}{}.md", prefix, route);
 
             md.push_str(&format!("- [{}]({})", elem.title, fixed_route));
             if let Some(oneliner) = &elem.oneliner {
@@ -226,7 +232,10 @@ pub fn render_group_body(content: &serde_json::Value) -> Result<String, RenderEr
 /// Returns error if:
 /// - JSON parsing fails
 /// - HTML conversion fails
-pub fn render_symbols_body(content: &serde_json::Value) -> Result<String, RenderError> {
+pub fn render_symbols_body(
+    content: &serde_json::Value,
+    depth: usize,
+) -> Result<String, RenderError> {
     let symbols: SymbolsContent = serde_json::from_value(content.clone())?;
 
     let mut md = String::new();
@@ -235,7 +244,7 @@ pub fn render_symbols_body(content: &serde_json::Value) -> Result<String, Render
     if let Some(details) = &symbols.details {
         let details_html = extract_html_from_details(details);
         if !details_html.is_empty() {
-            md.push_str(&html_to_md::convert(&details_html)?);
+            md.push_str(&html_to_md::convert(&details_html, depth)?);
             md.push_str("\n\n");
         }
     }
@@ -298,7 +307,7 @@ pub fn render_symbols_body(content: &serde_json::Value) -> Result<String, Render
 /// # Errors
 ///
 /// Returns error if HTML conversion fails
-fn format_scoped_function(func: &FuncContent) -> Result<String, RenderError> {
+fn format_scoped_function(func: &FuncContent, depth: usize) -> Result<String, RenderError> {
     let mut md = String::new();
 
     // Method heading
@@ -318,7 +327,7 @@ fn format_scoped_function(func: &FuncContent) -> Result<String, RenderError> {
     if let Some(details) = &func.details {
         let details_html = extract_html_from_details(details);
         if !details_html.is_empty() {
-            let details_md = html_to_md::convert(&details_html)?;
+            let details_md = html_to_md::convert(&details_html, depth)?;
             md.push_str(&details_md);
             md.push_str("\n\n");
         }
@@ -341,7 +350,7 @@ mod tests {
         let body = entry.body.expect("Entry should have body");
         assert_eq!(body.kind, "type", "Body kind should be type");
 
-        let result = render_type_body(&body.content).expect("Rendering should succeed");
+        let result = render_type_body(&body.content, 1).expect("Rendering should succeed");
 
         // Verify constructor section
         assert!(
@@ -364,7 +373,7 @@ mod tests {
         let body = entry.body.expect("Entry should have body");
         assert_eq!(body.kind, "category", "Body kind should be category");
 
-        let result = render_category_body(&body.content).expect("Rendering should succeed");
+        let result = render_category_body(&body.content, 1).expect("Rendering should succeed");
 
         // Verify items section
         assert!(result.contains("## Items"), "Should have Items section");
@@ -381,7 +390,7 @@ mod tests {
         let body = entry.body.expect("Entry should have body");
         assert_eq!(body.kind, "group", "Body kind should be group");
 
-        let result = render_group_body(&body.content).expect("Rendering should succeed");
+        let result = render_group_body(&body.content, 1).expect("Rendering should succeed");
 
         // Verify functions section
         assert!(
@@ -400,7 +409,7 @@ mod tests {
         let body = entry.body.expect("Entry should have body");
         assert_eq!(body.kind, "symbols", "Body kind should be symbols");
 
-        let result = render_symbols_body(&body.content).expect("Rendering should succeed");
+        let result = render_symbols_body(&body.content, 1).expect("Rendering should succeed");
 
         // Verify symbols table
         assert!(result.contains("## Symbols"), "Should have Symbols section");
