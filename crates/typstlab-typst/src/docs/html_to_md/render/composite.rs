@@ -14,6 +14,7 @@
 //! O(n) guarantee: delegates to O(n) components, single composition pass.
 
 use super::heading::HeadingRenderer;
+use super::list::ListRenderer;
 use super::paragraph::ParagraphRenderer;
 use super::table::StructuralTableRenderer;
 use super::{Compositor, MdRender, RenderError, RenderResult, StandardRenderer};
@@ -30,6 +31,7 @@ use markdown::mdast::Node;
 #[allow(dead_code)] // Used in Phase 6+
 pub struct CompositeRenderer {
     heading: HeadingRenderer,
+    list: ListRenderer,
     paragraph: ParagraphRenderer,
     standard: StandardRenderer,
     table: StructuralTableRenderer,
@@ -48,6 +50,7 @@ impl CompositeRenderer {
     pub fn new() -> Self {
         CompositeRenderer {
             heading: HeadingRenderer::new(),
+            list: ListRenderer::new(),
             paragraph: ParagraphRenderer::new(),
             standard: StandardRenderer::new(),
             table: StructuralTableRenderer::new(),
@@ -116,6 +119,7 @@ impl CompositeRenderer {
                 Node::Table(_) => self.table.render(node),
                 Node::Paragraph(_) => self.paragraph.render(node), // Fast!
                 Node::Heading(_) => self.heading.render(node),     // Fast!
+                Node::List(_) => self.list.render(node),           // Fast!
                 _ => self.standard.render(node),
             })
             .collect();
