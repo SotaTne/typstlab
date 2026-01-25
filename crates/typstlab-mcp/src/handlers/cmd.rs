@@ -159,7 +159,7 @@ impl CmdTool {
         Tool::new(
             Cow::Borrowed("cmd_typst_docs_status"),
             "Get Typst docs sync status",
-            rmcp::handler::server::common::schema_for_type::<serde_json::Value>(),
+            rmcp::handler::server::common::schema_for_type::<TypstDocsStatusArgs>(),
         )
         .with_safety(Safety {
             network: false,
@@ -427,6 +427,9 @@ pub struct BuildArgs {
     #[serde(default)]
     pub full: bool,
 }
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct TypstDocsStatusArgs {}
 
 #[cfg(test)]
 mod tests {
