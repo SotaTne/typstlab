@@ -111,7 +111,8 @@ pub(crate) async fn rules_list(
                 let rel_path = path
                     .strip_prefix(&project_root)
                     .map_err(|e| errors::internal_error(e.to_string()))?
-                    .to_string_lossy();
+                    .to_string_lossy()
+                    .replace('\\', "/");
 
                 files.push(json!({
                     "path": rel_path,
