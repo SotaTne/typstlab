@@ -1,6 +1,8 @@
 use super::types::DocsSearchArgs;
 use crate::errors;
+use crate::handlers::LineRange;
 use crate::handlers::common::{ops, types::SearchConfig};
+use crate::handlers::docs::DocsMatches;
 use crate::server::TypstlabServer;
 use rmcp::{ErrorData as McpError, model::*};
 use serde_json::json;
@@ -49,14 +51,14 @@ pub(crate) async fn docs_search(
     let _guard = token.clone().drop_guard();
 
     // Run search in blocking thread
-    let result = tokio::task::spawn_blocking(move || {
+    let mut result = tokio::task::spawn_blocking(move || {
         ops::search_dir_sync(
             &docs_root_path,
             &project_root_path,
             &config,
             token,
-            |path, content| {
-                let mut file_matches = Vec::new();
+            |path, content, metadata| {
+                let mut file_matches: Vec<DocsMatches> = Vec::new();
                 // Use docs_root relative path for search results (cross-platform)
                 let rel_path = path
                     .strip_prefix(&docs_root_path)
@@ -64,13 +66,26 @@ pub(crate) async fn docs_search(
                     .to_string_lossy()
                     .replace('\\', "/"); // Cross-platform consistency
 
+                let mtime = metadata
+                    .modified()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+
                 for (line_index, line) in content.lines().enumerate() {
                     if line.to_lowercase().contains(&query_lowercase) {
-                        file_matches.push(json!({
-                            "path": rel_path,
-                            "line": line_index + 1,
-                            "content": line.trim(),
-                        }));
+                        file_matches.push(DocsMatches {
+                            uri: format!("typstlab://docs/docs/{}", rel_path),
+                            path: rel_path.clone(),
+                            line: line_index + 1,
+                            preview: line.trim().to_string(),
+                            line_range: LineRange {
+                                start: line_index,
+                                end: line_index,
+                            },
+                            mtime,
+                        });
 
                         if file_matches.len() >= MAX_MATCHES_PER_FILE {
                             break;
@@ -83,10 +98,16 @@ pub(crate) async fn docs_search(
                     Some(file_matches)
                 }
             },
+            args,
         )
     })
     .await
     .map_err(|e| errors::internal_error(format!("Search task panicked: {}", e)))??;
+
+    // DESIGN.md 5.10.9: Clear matches if truncated by file scan limit
+    if result.truncated && result.scanned_files >= MAX_SCAN_FILES {
+        result.matches.clear();
+    }
 
     Ok(CallToolResult::success(vec![Content::text(
         serde_json::to_string(&result).map_err(errors::from_display)?,

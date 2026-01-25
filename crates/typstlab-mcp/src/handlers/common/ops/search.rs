@@ -7,15 +7,18 @@ use walkdir::WalkDir;
 use super::safety::check_entry_safety;
 
 /// Search recursively synchronously (blocking).
-pub fn search_dir_sync<F>(
+pub fn search_dir_sync<T, F, Q>(
     root: &Path,
     project_root: &Path, // Added project_root
     config: &SearchConfig,
     token: CancellationToken,
     mapper: F,
-) -> Result<SearchResult, rmcp::ErrorData>
+    query: Q,
+) -> Result<SearchResult<T, Q>, rmcp::ErrorData>
 where
-    F: Fn(&Path, &str) -> Option<Vec<serde_json::Value>>,
+    F: Fn(&Path, &str, &std::fs::Metadata) -> Option<Vec<T>>,
+    Q: serde::Serialize,
+    T: serde::Serialize,
 {
     let mut matches = Vec::new();
     let mut truncated = false;
@@ -23,6 +26,7 @@ where
 
     if !root.exists() {
         return Ok(SearchResult {
+            query,
             matches: vec![],
             truncated: false,
             scanned_files: 0,
@@ -31,7 +35,11 @@ where
 
     check_entry_safety(root, project_root)?;
 
-    for entry in WalkDir::new(root).follow_links(false).into_iter() {
+    for entry in WalkDir::new(root)
+        .sort_by_file_name()
+        .follow_links(false)
+        .into_iter()
+    {
         if token.is_cancelled() {
             return Err(errors::request_cancelled());
         }
@@ -68,15 +76,9 @@ where
 
         if scanned >= config.max_files {
             truncated = true;
-            // Keep matches invalidation behavior?
-            // Previous behavior: `matches.clear()` if truncated by file limit.
-            // But if we hit limit, we might want to return what we found so far + truncated=true?
-            // "DESIGN.md 5.10.9: Check limits before processing"
-            // And previous code did `matches.clear(); break;`. Return empty if file limit hit.
-            // Let's preserve that behavior for consistency.
-            matches.clear();
             break;
         }
+
         scanned += 1;
 
         if token.is_cancelled() {
@@ -93,7 +95,7 @@ where
             Err(_) => continue,
         };
 
-        if let Some(file_matches) = mapper(path, &content) {
+        if let Some(file_matches) = mapper(path, &content, &metadata) {
             matches.extend(file_matches);
             if matches.len() >= config.max_matches {
                 matches.truncate(config.max_matches);
@@ -104,6 +106,7 @@ where
     }
 
     Ok(SearchResult {
+        query,
         matches,
         truncated,
         scanned_files: scanned,

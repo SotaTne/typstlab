@@ -137,8 +137,32 @@ async fn test_rules_search_includes_excerpt() {
     .unwrap();
     let text = res.content[0].as_text().unwrap();
     let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
-    let excerpt = json["matches"][0]["excerpt"].as_str().unwrap();
-    assert_eq!(excerpt, "l1\nl2\nmatch here\nl4\nl5");
+    let matches = json["matches"].as_array().unwrap();
+    let first_match = &matches[0];
+
+    // Check preview (was excerpt)
+    let preview = first_match["preview"].as_str().unwrap();
+    assert_eq!(preview, "l1\nl2\nmatch here\nl4\nl5");
+
+    // Check origin
+    let origin = first_match["origin"].as_str().unwrap();
+    assert_eq!(origin, "root");
+
+    // Check new fields
+    let uri = first_match["uri"].as_str().unwrap();
+    assert_eq!(uri, "typstlab://rules/rules/search.md");
+
+    let mtime = first_match["mtime"].as_i64();
+    assert!(mtime.is_some(), "mtime should be present");
+    // Ideally we'd assert mtime > 0, but we'll accept any integer for structure check first
+
+    let line_range = &first_match["line_range"];
+    // "match here" is line 3 (index 2).
+    // Context is +/- 2 lines.
+    // Lines: l1(0), l2(1), match(2), l4(3), l5(4)
+    // Start should be 0, End should be 4
+    assert_eq!(line_range["start"], 0);
+    assert_eq!(line_range["end"], 4);
 }
 
 #[tokio::test]

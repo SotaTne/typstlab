@@ -43,7 +43,7 @@ async fn test_max_scan_files_truncation_returns_empty_matches() {
         } else {
             "other"
         };
-        tokio::fs::write(docs_dir.join(format!("file_{}.md", i)), content)
+        tokio::fs::write(docs_dir.join(format!("file_{:03}.md", i)), content)
             .await
             .unwrap();
     }
@@ -77,8 +77,12 @@ async fn test_max_matches_truncation_caps_results() {
 
     // Create files that produce total > MAX_MATCHES
     // Each file has 1 match, create 55 files
-    for i in 0..(MAX_MATCHES + 5) {
-        tokio::fs::write(docs_dir.join(format!("match_{}.md", i)), "match_query")
+    // Create 20 files, each having 10 matches (capped to 3 per file).
+    // Total matches = 20 * 3 = 60 > MAX_MATCHES (50).
+    // Files 20 < MAX_SCAN_FILES (50), so file limit not hit.
+    for i in 0..20 {
+        let content = "match_query\n".repeat(10);
+        tokio::fs::write(docs_dir.join(format!("match_{:03}.md", i)), content)
             .await
             .unwrap();
     }

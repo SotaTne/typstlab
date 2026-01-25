@@ -1,6 +1,6 @@
 //! Rules関連の型定義と共通ヘルパー
 
-use crate::errors;
+use crate::{errors, handlers::LineRange};
 use rmcp::{ErrorData as McpError, schemars, serde};
 use std::path::{Component, Path, PathBuf};
 use tokio::fs;
@@ -32,12 +32,23 @@ pub struct RulesListArgs {
     pub include_root: bool,
 }
 
-#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema, Clone)]
 pub struct RulesSearchArgs {
     pub query: String,
     pub paper_id: Option<String>,
     #[serde(default = "default_true")]
     pub include_root: bool,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct RulesMatches {
+    pub uri: String,
+    pub path: String,
+    pub line: usize,
+    pub preview: String,
+    pub line_range: LineRange,
+    pub origin: &'static str,
+    pub mtime: u64,
 }
 
 pub(crate) fn default_true() -> bool {

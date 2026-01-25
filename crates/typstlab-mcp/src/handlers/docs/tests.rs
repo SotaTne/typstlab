@@ -81,13 +81,37 @@ async fn test_docs_search() {
     let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
     let matches = json["matches"].as_array().unwrap();
     assert!(!matches.is_empty());
-    let match_path = matches[0]["path"].as_str().unwrap();
+
+    let first_match = &matches[0];
+    let match_path = first_match["path"].as_str().unwrap();
     assert!(
         match_path.ends_with("b.md"),
         "Path '{match_path}' did not end with 'b.md'"
     );
-    assert!(matches[0]["line"] == 1);
-    let content = matches[0]["content"].as_str().unwrap();
+    assert_eq!(first_match["line"], 1);
+
+    // Verify new fields
+    let uri = first_match["uri"].as_str().unwrap();
+    // Assuming docs root relative to project root is .typstlab/kb/typst/docs
+    // And browse returns paths prefixed with "docs/"
+    // So URI should be typstlab://docs/docs/b.md
+    assert_eq!(
+        uri, "typstlab://docs/docs/b.md",
+        "URI should match typstlab scheme"
+    );
+
+    let mtime = first_match["mtime"].as_i64();
+    // mtime might be implemented as option or 0 initially, but we want it to be valid timestamp eventually
+    // For TDD, let's assert it exists. In implementation phase we will make it real.
+    // If current implementation puts 0, this test passes constraint "exists".
+    // Better: assert!(mtime.is_some()); if it's a number.
+    assert!(mtime.is_some(), "mtime should be present");
+
+    let line_range = &first_match["line_range"];
+    assert_eq!(line_range["start"], 0); // 0-indexed internal, matches line 1
+    assert_eq!(line_range["end"], 0); // single line match
+
+    let content = first_match["preview"].as_str().unwrap(); // "preview" instead of "content"
     assert!(content.contains("rust programming"));
     assert!(!text.text.contains("a.md"));
 }
@@ -99,7 +123,7 @@ async fn test_docs_search_respects_file_scan_limit() {
     fs::create_dir_all(&docs_dir).await.unwrap();
 
     for i in 0..(MAX_SCAN_FILES + 5) {
-        let name = format!("f{i}.md");
+        let name = format!("f{i:04}.md");
         let content = if i == MAX_SCAN_FILES + 2 {
             "needle"
         } else {

@@ -39,8 +39,9 @@ pub struct BrowseItem {
 
 /// Result of a search operation
 #[derive(Debug, serde::Serialize)]
-pub struct SearchResult {
-    pub matches: Vec<serde_json::Value>,
+pub struct SearchResult<T, Q> {
+    pub query: Q,
+    pub matches: Vec<T>,
     pub truncated: bool,
     #[serde(skip)]
     // Internal field for debugging/logging; not serialized to JSON

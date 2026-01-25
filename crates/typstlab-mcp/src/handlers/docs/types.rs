@@ -1,13 +1,15 @@
 use rmcp::{ErrorData as McpError, schemars, serde};
 use std::path::{Path, PathBuf};
 
+use crate::handlers::LineRange;
+
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct DocsBrowseArgs {
     #[serde(default)]
     pub path: Option<String>,
 }
 
-#[derive(serde::Deserialize, schemars::JsonSchema)]
+#[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct DocsSearchArgs {
     pub query: String,
 }
@@ -33,4 +35,14 @@ pub(crate) async fn resolve_docs_path(
     }
 
     Ok(resolved)
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct DocsMatches {
+    pub uri: String,
+    pub path: String,
+    pub line: usize,
+    pub preview: String,
+    pub line_range: LineRange,
+    pub mtime: u64,
 }

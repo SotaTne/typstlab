@@ -21,13 +21,14 @@ fn test_search_mapper_logic() {
         root, // project_root
         &config,
         token,
-        |path, content| {
+        |path, content, _metadata| {
             assert!(path.ends_with("test.md"));
             assert_eq!(content, "line1\nline2\nline3");
 
             // Return 2 matches
             Some(vec![json!({"line": 1}), json!({"line": 3})])
         },
+        "dummy_query".to_string(),
     )
     .unwrap();
 
@@ -52,10 +53,11 @@ fn test_search_limit_matches() {
         root, // project_root
         &config,
         token,
-        |_, _| {
+        |_, _, _| {
             // Return 2 matches
             Some(vec![json!({"id": 1}), json!({"id": 2})])
         },
+        "dummy_query".to_string(),
     )
     .unwrap();
 

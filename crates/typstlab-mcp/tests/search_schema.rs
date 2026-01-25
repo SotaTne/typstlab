@@ -127,7 +127,7 @@ async fn test_max_scan_files_truncation() {
             // それ以外はマッチしない
             format!("other {}", i)
         };
-        async_fs::write(docs_dir.join(format!("file_{}.md", i)), content)
+        async_fs::write(docs_dir.join(format!("file_{:03}.md", i)), content)
             .await
             .unwrap();
     }
@@ -173,13 +173,13 @@ async fn test_max_matches_truncation() {
 
     // MAX_MATCHES + 10 個のマッチが発生するファイルを作成
     // 各ファイルに検索語を含める
-    for i in 0..(MAX_MATCHES + 10) {
-        async_fs::write(
-            docs_dir.join(format!("match_{}.md", i)),
-            "This file contains the search term searchme on line 1\nAnd more content",
-        )
-        .await
-        .unwrap();
+    // MAX_MATCHES + 10 個のマッチが発生するよう、20ファイルx3マッチ(cap) = 60マッチ作成
+    // ファイル数はMAX_SCAN_FILES(50)未満にする
+    for i in 0..20 {
+        let content = "searchme on line 1\n".repeat(10);
+        async_fs::write(docs_dir.join(format!("match_{:03}.md", i)), content)
+            .await
+            .unwrap();
     }
 
     let ctx = McpContext::new(temp.path().to_path_buf());

@@ -92,7 +92,7 @@ async fn test_rules_search_normal_success() {
     let json = parse_result(&res);
     let matches = json["matches"].as_array().unwrap();
     assert!(!matches.is_empty());
-    assert!(matches[0]["excerpt"].as_str().unwrap().contains("APA"));
+    assert!(matches[0]["preview"].as_str().unwrap().contains("APA"));
 }
 
 #[tokio::test]

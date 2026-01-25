@@ -41,3 +41,9 @@ impl ToolExt for Tool {
         self
     }
 }
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, serde::Serialize)]
+pub struct LineRange {
+    pub start: usize,
+    pub end: usize, // end is exclusive
+}

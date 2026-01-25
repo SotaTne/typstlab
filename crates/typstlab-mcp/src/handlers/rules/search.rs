@@ -2,7 +2,9 @@
 
 use super::types::{RulesSearchArgs, collect_search_dirs};
 use crate::errors;
+use crate::handlers::LineRange;
 use crate::handlers::common::{ops, types::SearchConfig};
+use crate::handlers::rules::RulesMatches;
 use crate::server::TypstlabServer;
 use rmcp::{ErrorData as McpError, model::*};
 use serde_json::json;
@@ -11,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 use typstlab_core::config::consts::search::{MAX_MATCHES, MAX_MATCHES_PER_FILE, MAX_SCAN_FILES};
 
 struct ExtendedSearchResult {
-    matches: Vec<serde_json::Value>,
+    matches: Vec<RulesMatches>,
     truncated: bool,
     #[allow(dead_code)]
     scanned_files: usize,
@@ -52,7 +54,7 @@ pub(crate) async fn rules_search(
     let _guard = token.clone().drop_guard();
 
     let outcome =
-        search_rules_dirs_blocking(project_root, query_lowercase, search_dirs, token).await?;
+        search_rules_dirs_blocking(project_root, query_lowercase, search_dirs, token, args).await?;
 
     Ok(CallToolResult::success(vec![Content::text(
         serde_json::to_string(&json!({
@@ -71,6 +73,7 @@ async fn search_rules_dirs_blocking(
     query: String,
     search_dirs: Vec<(std::path::PathBuf, &'static str)>,
     token: CancellationToken,
+    pure_query: RulesSearchArgs,
 ) -> Result<ExtendedSearchResult, McpError> {
     let res = tokio::task::spawn_blocking(move || {
         let mut total_matches = Vec::new();
@@ -126,9 +129,9 @@ async fn search_rules_dirs_blocking(
                 &project_root,
                 &sub_config,
                 token.clone(),
-                |path, content| {
+                |path, content, metadata| {
                     // Mapper logic
-                    let mut file_matches = Vec::new();
+                    let mut file_matches: Vec<RulesMatches> = Vec::new();
                     let lines: Vec<&str> = content.lines().collect();
 
                     // Relative path from PROJECT ROOT
@@ -138,18 +141,28 @@ async fn search_rules_dirs_blocking(
                         .to_string_lossy()
                         .replace('\\', "/");
 
+                    let mtime = metadata
+                        .modified()
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
                     for (line_index, line) in lines.iter().enumerate() {
                         if line.to_lowercase().contains(&query) {
                             let start = line_index.saturating_sub(2);
                             let end = (line_index + 2).min(lines.len().saturating_sub(1));
                             let excerpt = lines[start..=end].join("\n");
 
-                            file_matches.push(json!({
-                                "path": rel_path,
-                                "line": line_index + 1,
-                                "excerpt": excerpt,
-                                "origin": origin,
-                            }));
+                            file_matches.push(RulesMatches {
+                                uri: format!("typstlab://rules/{}", rel_path),
+                                path: rel_path.clone(),
+                                line: line_index + 1,
+                                preview: excerpt,
+                                line_range: LineRange { start, end },
+                                origin,
+                                mtime,
+                            });
 
                             if file_matches.len() >= MAX_MATCHES_PER_FILE {
                                 break;
@@ -162,6 +175,7 @@ async fn search_rules_dirs_blocking(
                         Some(file_matches)
                     }
                 },
+                pure_query.clone(),
             );
 
             let res = match outcome {
