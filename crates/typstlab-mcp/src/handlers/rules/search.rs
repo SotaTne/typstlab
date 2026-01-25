@@ -24,6 +24,8 @@ pub(crate) async fn rules_search(
     args: RulesSearchArgs,
     token: CancellationToken,
 ) -> Result<CallToolResult, McpError> {
+    // Implementation note: follows DESIGN.md 5.10.5.1 – per-line substring
+    // matching, case-insensitive, no boolean parsing.
     // Validate paper_id before using it in path construction
     if let Some(paper_id) = args.paper_id.as_ref() {
         typstlab_core::path::validate_paper_id(paper_id).map_err(errors::from_core_error)?;

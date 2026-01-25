@@ -94,7 +94,7 @@ impl RulesTool {
     fn rules_search_attr() -> Tool {
         Tool::new(
             Cow::Borrowed("rules_search"),
-            "Search through markdown files in rules directories",
+            "Search through markdown files in rules directories (line-based substring match)",
             rmcp::handler::server::common::schema_for_type::<RulesSearchArgs>(),
         )
         .with_safety(Safety {
@@ -108,7 +108,7 @@ impl RulesTool {
     fn rules_get_attr() -> Tool {
         Tool::new(
             Cow::Borrowed("rules_get"),
-            "Get the content of a rule file",
+            "Get the content of a rule file (same validation as read_resource)",
             rmcp::handler::server::common::schema_for_type::<RulesGetArgs>(),
         )
         .with_safety(Safety {

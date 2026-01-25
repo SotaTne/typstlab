@@ -71,7 +71,7 @@ impl DocsTool {
     fn docs_search_attr() -> Tool {
         Tool::new(
             Cow::Borrowed("docs_search"),
-            "Search documentation files",
+            "Search documentation files (line-based substring match, case-insensitive)",
             rmcp::handler::server::common::schema_for_type::<DocsSearchArgs>(),
         )
         .with_safety(Safety {
@@ -85,7 +85,7 @@ impl DocsTool {
     fn docs_get_attr() -> Tool {
         Tool::new(
             Cow::Borrowed("docs_get"),
-            "Get the content of a documentation file",
+            "Get the content of a documentation file (identical validation/read_resource path)",
             rmcp::handler::server::common::schema_for_type::<DocsGetArgs>(),
         )
         .with_safety(Safety {
@@ -185,6 +185,9 @@ impl DocsTool {
         args: DocsSearchArgs,
         token: CancellationToken, // Added token
     ) -> Result<CallToolResult, McpError> {
+        // Implementation note: DESIGN.md 5.10.5.1 requires a simple
+        // substring match over each line, case-insensitive, without
+        // interpreting whitespace as logical AND/OR.
         // Validate query before processing
         let trimmed_query = args.query.trim();
         if trimmed_query.is_empty() {

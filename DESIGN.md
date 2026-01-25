@@ -2068,6 +2068,22 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
   具体的には、`rules_*`/`docs_*` のレスポンスに含まれる `path` を再入力として渡した際に、同一対象へアクセスできること（E2E で検証する）。  
   返却形式（区切り文字や基準ディレクトリの表現）は実装詳細とせず、**E2E テストで互換性を担保**する。
 
+#### 5.10.5.1 検索と取得の挙動（実装の約束事）
+
+- **検索 (`rules_search` / `docs_search`)**  
+  - ファイルを WalkDir で再帰走査し、`.md` ファイルを `std::fs::read_to_string` で全行読み込んで `line.to_lowercase().contains(query_lowercase)` の部分一致（単一サブストリング）を行う。複数語は `query` をそのまま使うため `foo bar` のような複合語を AND/OR で分割しない。  
+  - 行ごとに `path` / `line` / `content` を JSON 化し、最大 `MAX_MATCHES` 件まで収集。`MAX_MATCHES_PER_FILE` 件を超えたらそのファイル内の追加抽出を止める。  
+  - `matches`/`truncated`/`missing` のスキーマを必ず守り、`missing=true` は対象ディレクトリが存在しないとき、`truncated=true` はファイル数・マッチ件数の上限に達したときに立てる。  
+  - パスはプロジェクトルート相対で `/` に統一し、`docs_search` は `docs/<relative>` を返す。  
+  - クエリの AND 条件や正規表現、全文検索インデックス化は現時点では実装していない。将来的に追加する場合は DESIGN.md 上で明示的に仕様を拡張する。
+
+- **取得 (`rules_page`, `rules_get`, `read_resource`)**  
+  - `resolve_safe_path` → `resolve_rules_path` / `resolve_docs_path` で `has_absolute_or_rooted_component` / `..` / canonicalize チェックを順番に実施し、失敗は `PATH_ESCAPE`/`INVALID_INPUT` で返す。  
+  - 取得対象がディレクトリでないことを確認し、`.md` であること、`MAX_FILE_BYTES` を超えないことを検証。超過時は `FILE_TOO_LARGE`。  
+  - `read_resource` 系は `CancellationToken` を使い、IO 前後と `tokio::select!` で `token.cancelled()` を競合させてキャンセルを伝播させる。  
+  - `rules_page` は `offset/limit` で行を切り出し、`rules_get` は全部を返すがどちらも `read_resource` の内部ロジックと同じ `resolve_rules_path` に依存する。`rules_get` も `MAX_FILE_BYTES`/`.md` チェックを共有。
+  - 取得の際 `path` を再入力した場合は `read_resource`（`typstlab://rules/<path>` または `typstlab://docs/<path>`）で同じファイルに必ず到達できる。
+
 #### 5.10.6 エラーコード標準化
 
 標準コードを以下に固定し、ツール横断で使用する。旧コードが必要な場合は互換マッピングを実装する。
