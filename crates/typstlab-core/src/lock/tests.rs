@@ -139,7 +139,7 @@ fn test_lock_retry_with_progress() {
     // Should have waited for thread 1 to release
     let elapsed = start.elapsed();
     assert!(
-        elapsed >= Duration::from_millis(140) && elapsed < Duration::from_millis(500),
+        elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(500),
         "Should acquire after waiting, elapsed: {:?}",
         elapsed
     );

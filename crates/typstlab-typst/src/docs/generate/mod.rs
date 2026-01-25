@@ -214,10 +214,16 @@ mod tests {
         // Load expected output
         let expected = include_str!("../../../../../fixtures/typst/v0.12.0/overview.md");
 
-        // Compare (trim whitespace for comparison)
+        fn normalize_newlines(value: &str) -> String {
+            value.replace("\r\n", "\n")
+        }
+
+        let result_normalized = normalize_newlines(&result);
+        let expected_normalized = normalize_newlines(expected);
+
         assert_eq!(
-            result.trim(),
-            expected.trim(),
+            result_normalized.trim(),
+            expected_normalized.trim(),
             "Generated markdown should match expected output"
         );
 
