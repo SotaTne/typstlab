@@ -1,81 +1,108 @@
+use crate::errors;
+use crate::handlers::common::types::{BrowseItem, BrowseResult, SearchConfig, SearchResult};
 use std::path::Path;
-use tokio::fs;
+use tokio_util::sync::CancellationToken;
 use typstlab_core::path::has_absolute_or_rooted_component;
+use walkdir::WalkDir;
 
-use super::types::{BrowseItem, BrowseResult, SearchConfig, SearchMatch, SearchResult};
+/// Check if a path entry is safe to process.
+/// `path`: The path to check
+/// `project_root`: The root of the project to ensure no escape
+pub fn check_entry_safety(path: &Path, project_root: &Path) -> Result<(), rmcp::ErrorData> {
+    // 1. Symlink check (Strictly forbidden)
+    // Note: If path is project_root/rules (symlink), we should probably allow it IF it points inside project?
+    // User requirement: "rules/docs のルート自体がシンボリックリンクでも許容される... プロジェクト外へのエスケープを完全に防げていない"
+    // So strictly forbid symlinks even for roots if they point outside?
+    // Actually typically symlinks are forbidden entirely in this project design to avoid complexity.
+    let metadata = std::fs::symlink_metadata(path).map_err(|e| {
+        rmcp::ErrorData::internal_error(format!("Failed to read metadata: {}", e), None)
+    })?;
 
-/// Browse a directory and return its contents
-///
-/// # Arguments
-/// * `root` - The root directory to browse from
-/// * `relative_path` - Optional relative path within the root
-/// * `file_extensions` - File extensions to include (e.g., ["md", "typ"])
-///
-/// # Returns
-/// A BrowseResult containing the directory listing or indicating if the directory is missing
-pub async fn browse_directory(
+    if metadata.is_symlink() {
+        return Err(errors::path_escape("Symlinks are not allowed"));
+    }
+
+    // 2. Canonicalize check (Path escape)
+    let canonical_path = std::fs::canonicalize(path).map_err(|e| {
+        // If file doesn't exist, canonicalize fails. Check existence before?
+        // Caller usually ensures existence or we handle error.
+        rmcp::ErrorData::internal_error(format!("Canonicalize failed: {}", e), None)
+    })?;
+
+    let canonical_root = std::fs::canonicalize(project_root).map_err(|e| {
+        rmcp::ErrorData::internal_error(format!("Canonicalize project root failed: {}", e), None)
+    })?;
+
+    if !canonical_path.starts_with(&canonical_root) {
+        return Err(errors::path_escape("Path escapes project root"));
+    }
+
+    Ok(())
+}
+
+/// Browse a directory synchronously (blocking).
+pub fn browse_dir_sync(
     root: &Path,
+    project_root: &Path, // Added project_root
     relative_path: Option<&str>,
     file_extensions: &[String],
+    limit: usize, // Added limit
+    token: CancellationToken,
 ) -> Result<BrowseResult, rmcp::ErrorData> {
     let target_dir = if let Some(rel_path) = relative_path {
         let rel = Path::new(rel_path);
-
-        // Validate path
         if has_absolute_or_rooted_component(rel) {
-            return Err(rmcp::ErrorData::invalid_params(
-                "Path cannot be absolute or rooted",
-                None,
-            ));
+            return Err(errors::path_escape("Path cannot be absolute or rooted"));
         }
-
-        if rel.components().any(|c| c.as_os_str() == "..") {
-            return Err(rmcp::ErrorData::invalid_params(
-                "Path cannot contain ..",
-                None,
-            ));
+        if rel
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(errors::path_escape("Path cannot contain .."));
         }
-
         root.join(rel)
     } else {
         root.to_path_buf()
     };
 
-    // Check if directory exists
-    if !target_dir.exists() {
+    if !target_dir.exists() || !target_dir.is_dir() {
         return Ok(BrowseResult {
             missing: true,
             items: vec![],
+            truncated: false,
         });
     }
 
+    // Check safety of the target directory itself against PROJECT root
+    check_entry_safety(&target_dir, project_root)?;
+
     let mut items = Vec::new();
-    let mut entries = fs::read_dir(&target_dir).await.map_err(|e| {
-        rmcp::ErrorData::internal_error(format!("Failed to read directory: {}", e), None)
-    })?;
+    let mut truncated = false;
 
-    while let Some(entry) = entries.next_entry().await.map_err(|e| {
-        rmcp::ErrorData::internal_error(format!("Failed to read entry: {}", e), None)
-    })? {
+    let entries = std::fs::read_dir(&target_dir).map_err(errors::from_display)?;
+
+    for entry in entries {
+        if token.is_cancelled() {
+            return Err(errors::request_cancelled());
+        }
+
+        if items.len() >= limit {
+            truncated = true;
+            break;
+        }
+
+        let entry = entry.map_err(errors::from_display)?;
         let path = entry.path();
-        let metadata = entry.metadata().await.map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Failed to read metadata: {}", e), None)
-        })?;
 
-        // Skip symlinks that point outside the root
-        if metadata.is_symlink()
-            && let Ok(canonical) = fs::canonicalize(&path).await
-            && let Ok(root_canonical) = fs::canonicalize(root).await
-            && !canonical.starts_with(&root_canonical)
-        {
+        if let Err(e) = check_entry_safety(&path, project_root) {
+            tracing::warn!("Skipping unsafe entry {:?}: {:?}", path, e);
             continue;
         }
 
-        let name = entry.file_name().to_string_lossy().to_string();
+        let metadata = entry.metadata().map_err(errors::from_display)?;
         let item_type = if metadata.is_dir() {
             "directory"
         } else {
-            // Check file extension
             if let Some(ext) = path.extension() {
                 let ext_str = ext.to_string_lossy().to_string();
                 if !file_extensions.contains(&ext_str) {
@@ -87,122 +114,127 @@ pub async fn browse_directory(
             "file"
         };
 
+        let relative_path = path
+            .strip_prefix(project_root)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| entry.file_name().to_string_lossy().to_string());
+
         items.push(BrowseItem {
-            name,
+            name: entry.file_name().to_string_lossy().to_string(),
+            path: relative_path,
             item_type: item_type.to_string(),
         });
     }
 
+    items.sort_by(|a, b| a.name.cmp(&b.name));
+
     Ok(BrowseResult {
         missing: false,
         items,
+        truncated,
     })
 }
 
-/// Search for a query string in files within a directory
-///
-/// # Arguments
-/// * `root` - The root directory to search in
-/// * `query` - The search query (case-insensitive)
-/// * `config` - Search configuration (limits, file types, etc.)
-///
-/// # Returns
-/// A SearchResult containing matches and truncation status
-pub async fn search_directory(
+/// Search recursively synchronously (blocking).
+pub fn search_dir_sync<F>(
     root: &Path,
-    query: &str,
+    project_root: &Path, // Added project_root
     config: &SearchConfig,
-) -> Result<SearchResult, rmcp::ErrorData> {
-    let query_lower = query.to_lowercase();
+    token: CancellationToken,
+    mapper: F,
+) -> Result<SearchResult, rmcp::ErrorData>
+where
+    F: Fn(&Path, &str) -> Option<Vec<serde_json::Value>>,
+{
     let mut matches = Vec::new();
-    let mut files_scanned = 0;
     let mut truncated = false;
+    let mut scanned = 0usize;
 
     if !root.exists() {
         return Ok(SearchResult {
             matches: vec![],
             truncated: false,
+            scanned_files: 0,
         });
     }
 
-    let mut stack = vec![root.to_path_buf()];
+    check_entry_safety(root, project_root)?;
 
-    while let Some(dir) = stack.pop() {
-        if files_scanned >= config.max_files {
-            truncated = true;
-            matches.clear();
-            break;
+    for entry in WalkDir::new(root).follow_links(false).into_iter() {
+        if token.is_cancelled() {
+            return Err(errors::request_cancelled());
         }
 
-        let mut entries = match fs::read_dir(&dir).await {
+        let entry = match entry {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                tracing::debug!("WalkDir error: {}", e);
+                continue;
+            }
         };
 
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let path = entry.path();
-            let metadata = match entry.metadata().await {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
+        // Scan Limits: Count processed files
+        if entry.file_type().is_dir() {
+            continue;
+        }
 
-            // Skip symlinks that point outside the root
-            if metadata.is_symlink()
-                && let Ok(canonical) = fs::canonicalize(&path).await
-                && let Ok(root_canonical) = fs::canonicalize(root).await
-                && !canonical.starts_with(&root_canonical)
+        // Safety check
+        let path = entry.path();
+        if check_entry_safety(path, project_root).is_err() {
+            continue;
+        }
+
+        if let Some(ext) = path.extension() {
+            if !config
+                .file_extensions
+                .contains(&ext.to_string_lossy().to_string())
             {
                 continue;
             }
+        } else {
+            continue;
+        }
 
-            if metadata.is_dir() {
-                stack.push(path);
-            } else if metadata.is_file() {
-                // Check file extension
-                if let Some(ext) = path.extension() {
-                    let ext_str = ext.to_string_lossy().to_string();
-                    if !config.file_extensions.contains(&ext_str) {
-                        continue;
-                    }
-                } else {
-                    continue;
-                }
+        if scanned >= config.max_files {
+            truncated = true;
+            // Keep matches invalidation behavior?
+            // Previous behavior: `matches.clear()` if truncated by file limit.
+            // But if we hit limit, we might want to return what we found so far + truncated=true?
+            // "DESIGN.md 5.10.9: Check limits before processing"
+            // And previous code did `matches.clear(); break;`. Return empty if file limit hit.
+            // Let's preserve that behavior for consistency.
+            matches.clear();
+            break;
+        }
+        scanned += 1;
 
-                files_scanned += 1;
-                if files_scanned > config.max_files {
-                    truncated = true;
-                    matches.clear();
-                    break;
-                }
+        if token.is_cancelled() {
+            return Err(errors::request_cancelled());
+        }
 
-                // Read and search file
-                if let Ok(content) = fs::read_to_string(&path).await {
-                    for (line_num, line) in content.lines().enumerate() {
-                        if line.to_lowercase().contains(&query_lower) {
-                            let relative_path = path
-                                .strip_prefix(root)
-                                .unwrap_or(&path)
-                                .to_string_lossy()
-                                .to_string();
+        let metadata = std::fs::metadata(path).map_err(errors::from_display)?;
+        if metadata.len() > typstlab_core::config::consts::search::MAX_FILE_BYTES {
+            continue;
+        }
 
-                            matches.push(SearchMatch {
-                                path: relative_path,
-                                line: line_num + 1,
-                                content: line.to_string(),
-                            });
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
 
-                            if matches.len() >= config.max_matches {
-                                return Ok(SearchResult {
-                                    matches,
-                                    truncated: false,
-                                });
-                            }
-                        }
-                    }
-                }
+        if let Some(file_matches) = mapper(path, &content) {
+            matches.extend(file_matches);
+            if matches.len() >= config.max_matches {
+                matches.truncate(config.max_matches);
+                truncated = true;
+                break;
             }
         }
     }
 
-    Ok(SearchResult { matches, truncated })
+    Ok(SearchResult {
+        matches,
+        truncated,
+        scanned_files: scanned,
+    })
 }

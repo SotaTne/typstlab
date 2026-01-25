@@ -13,8 +13,9 @@ use std::path::Path;
 #[cfg(test)]
 use typstlab_testkit::temp_dir_in_workspace;
 
-const MAX_RESOURCE_BYTES: u64 = 1024 * 1024;
+use typstlab_core::config::consts::search::MAX_FILE_BYTES;
 
+#[derive(Clone)]
 pub struct TypstlabServer {
     pub context: McpContext,
     pub tool_router: ToolRouter<TypstlabServer>,
@@ -80,7 +81,7 @@ impl ServerHandler for TypstlabServer {
             },
             server_info: Implementation {
                 name: "typstlab".into(),
-                version: "0.1.0".into(),
+                version: env!("CARGO_PKG_VERSION").into(),
                 icons: None,
                 title: Some("typstlab".into()),
                 website_url: None,
@@ -123,7 +124,7 @@ impl ServerHandler for TypstlabServer {
                     name: "rules".into(),
                     title: None,
                     description: Some("Project rules and guidelines".into()),
-                    mime_type: Some("text/markdown".into()),
+                    mime_type: Some("application/json".into()),
                     size: None,
                     icons: None,
                     meta: None,
@@ -136,7 +137,7 @@ impl ServerHandler for TypstlabServer {
                     name: "docs".into(),
                     title: None,
                     description: Some("Typst documentation".into()),
-                    mime_type: Some("text/markdown".into()),
+                    mime_type: Some("application/json".into()),
                     size: None,
                     icons: None,
                     meta: None,
@@ -149,186 +150,193 @@ impl ServerHandler for TypstlabServer {
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
-        self.read_resource_by_uri(request.uri.as_str()).await
+        // Use cancellation token from request context
+        self.read_resource_by_uri(request.uri.as_str(), context.ct)
+            .await
     }
 }
 
 impl TypstlabServer {
-    async fn read_resource_by_uri(&self, uri: &str) -> Result<ReadResourceResult, ErrorData> {
-        if uri == "typstlab://rules" {
-            let root = self.context.project_root.join("rules");
-            if !root.exists() {
-                return Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(
-                        serde_json::to_string(&serde_json::json!({ "items": [] }))
-                            .map_err(|err| ErrorData::internal_error(err.to_string(), None))?,
-                        uri,
-                    )],
-                });
-            }
-            let items =
-                crate::handlers::rules::rules_browse_items(&root, &self.context.project_root)
-                    .await?;
-            let text = serde_json::to_string(&serde_json::json!({
-                "items": items,
-                "missing": false,
-            }))
-            .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
-            return Ok(ReadResourceResult {
-                contents: vec![ResourceContents::text(text, uri)],
-            });
-        }
+    pub async fn test_read_resource_by_uri(
+        &self,
+        uri: &str,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        // For testing, create a dummy token
+        self.read_resource_by_uri(uri, tokio_util::sync::CancellationToken::new())
+            .await
+    }
 
+    async fn read_resource_by_uri(
+        &self,
+        uri: &str,
+        token: tokio_util::sync::CancellationToken,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        if uri == "typstlab://rules" {
+            return self.handle_rules_resource(uri, token).await;
+        }
         if uri == "typstlab://docs" {
-            let root = self.context.project_root.join(".typstlab/kb/typst/docs");
-            if !root.exists() {
-                return Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(
-                        serde_json::to_string(&serde_json::json!({
-                            "items": [],
-                            "missing": true,
-                        }))
-                        .map_err(|err| ErrorData::internal_error(err.to_string(), None))?,
-                        uri,
-                    )],
-                });
-            }
-            let mut items = Vec::new();
-            let mut dir = tokio::fs::read_dir(&root)
-                .await
-                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
-            while let Some(entry) = dir
-                .next_entry()
-                .await
-                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?
-            {
-                let file_type = entry
-                    .file_type()
-                    .await
-                    .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
-                if file_type.is_symlink() {
-                    continue;
-                }
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with('.') {
-                    continue;
-                }
-                let entry_path = entry.path();
-                let entry_type = if entry_path.is_dir() {
-                    "directory"
-                } else if entry_path.extension().and_then(|ext| ext.to_str()) == Some("md") {
-                    "file"
-                } else {
-                    continue;
-                };
-                items.push(serde_json::json!({
-                    "name": name,
-                    "type": entry_type,
-                }));
-            }
-            items.sort_by_key(|i| {
-                i.get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string()
-            });
-            let text = serde_json::to_string(&serde_json::json!({ "items": items }))
-                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
-            return Ok(ReadResourceResult {
-                contents: vec![ResourceContents::text(text, uri)],
-            });
+            return self.handle_docs_resource(uri, token).await;
         }
 
         if let Some(path) = uri.strip_prefix("typstlab://rules/") {
-            if path.is_empty() {
-                return Err(ErrorData::invalid_params(
-                    "Resource path required".to_string(),
-                    None,
-                ));
-            }
-            let _requested = std::path::Path::new(path);
-            // resolve_rules_path expects paths starting with "rules/" or "papers/<id>/rules"
-            // URI: typstlab://rules/guidelines.md -> path: "guidelines.md" -> need: "rules/guidelines.md"
-            let full_path = format!("rules/{}", path);
-            let target = crate::handlers::rules::resolve_rules_path(
-                &self.context.project_root,
-                Path::new(&full_path),
-            )
-            .await?;
-            if !target.exists() || !target.is_file() {
-                return Err(ErrorData::resource_not_found(
-                    format!("Resource not found: {}", uri),
-                    None,
-                ));
-            }
-            if target.extension().and_then(|ext| ext.to_str()) != Some("md") {
-                return Err(ErrorData::resource_not_found(
-                    format!("Resource not found: {}", uri),
-                    None,
-                ));
-            }
-            let metadata = tokio::fs::metadata(&target)
-                .await
-                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
-            if metadata.len() > MAX_RESOURCE_BYTES {
-                return Err(crate::errors::error_with_code(
-                    crate::errors::FILE_TOO_LARGE,
-                    format!("Resource exceeds {} bytes", MAX_RESOURCE_BYTES),
-                ));
-            }
-            let content = tokio::fs::read_to_string(&target)
-                .await
-                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
-            return Ok(ReadResourceResult {
-                contents: vec![ResourceContents::text(content, uri)],
-            });
+            return self.handle_rules_file(uri, path).await;
         }
-
         if let Some(path) = uri.strip_prefix("typstlab://docs/") {
-            if path.is_empty() {
-                return Err(ErrorData::invalid_params(
-                    "Resource path required".to_string(),
-                    None,
-                ));
-            }
-            let docs_root = self.context.project_root.join(".typstlab/kb/typst/docs");
-            let requested = std::path::Path::new(path);
-            let target = crate::handlers::docs::resolve_docs_path(&docs_root, requested).await?;
-            if !target.exists() || !target.is_file() {
-                return Err(ErrorData::resource_not_found(
-                    format!("Resource not found: {}", uri),
-                    None,
-                ));
-            }
-            if target.extension().and_then(|ext| ext.to_str()) != Some("md") {
-                return Err(ErrorData::resource_not_found(
-                    format!("Resource not found: {}", uri),
-                    None,
-                ));
-            }
-            let metadata = tokio::fs::metadata(&target)
-                .await
-                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
-            if metadata.len() > MAX_RESOURCE_BYTES {
-                return Err(crate::errors::error_with_code(
-                    crate::errors::FILE_TOO_LARGE,
-                    format!("Resource exceeds {} bytes", MAX_RESOURCE_BYTES),
-                ));
-            }
-            let content = tokio::fs::read_to_string(&target)
-                .await
-                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
-            return Ok(ReadResourceResult {
-                contents: vec![ResourceContents::text(content, uri)],
-            });
+            return self.handle_docs_file(uri, path).await;
         }
 
-        Err(ErrorData::resource_not_found(
-            format!("Resource not found: {}", uri),
-            None,
-        ))
+        Err(crate::errors::resource_not_found(format!(
+            "Resource not found: {}",
+            uri
+        )))
+    }
+
+    async fn handle_rules_resource(
+        &self,
+        uri: &str,
+        token: tokio_util::sync::CancellationToken,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        let root = self.context.project_root.join("rules");
+        let project_root = self.context.project_root.clone();
+        let uri = uri.to_string();
+
+        let browse_res = tokio::task::spawn_blocking(move || {
+            crate::handlers::common::ops::browse_dir_sync(
+                &root,
+                &project_root,
+                None, // relative_path
+                &["md".to_string()],
+                1000,
+                token,
+            )
+        })
+        .await
+        .map_err(crate::errors::from_display)??;
+
+        let text = serde_json::to_string(&serde_json::json!({
+            "items": browse_res.items,
+            "missing": browse_res.missing,
+            "truncated": browse_res.truncated,
+        }))
+        .map_err(crate::errors::from_display)?;
+
+        Ok(ReadResourceResult {
+            contents: vec![ResourceContents::text(text, uri)],
+        })
+    }
+
+    async fn handle_docs_resource(
+        &self,
+        uri: &str,
+        token: tokio_util::sync::CancellationToken,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        let root = self.context.project_root.join(".typstlab/kb/typst/docs");
+        let project_root = self.context.project_root.clone();
+        let uri = uri.to_string();
+
+        let browse_res = tokio::task::spawn_blocking(move || {
+            // browse_dir_sync applies check_entry_safety internally to target_dir if it exists.
+            // However, we want to ensure root safety even if it doesn't strictly exist yet?
+            // browse_dir_sync returns missing=true if not exist.
+            // But check_entry_safety is called AFTER exists() check in browse_dir_sync.
+            // If it's a symlink to /etc, and exists, browse_dir_sync will fail with PATH_ESCAPE.
+            crate::handlers::common::ops::browse_dir_sync(
+                &root,
+                &project_root,
+                None,
+                &["md".to_string()],
+                1000,
+                token,
+            )
+        })
+        .await
+        .map_err(crate::errors::from_display)??;
+
+        let text = serde_json::to_string(&serde_json::json!({
+            "items": browse_res.items,
+            "missing": browse_res.missing,
+            "truncated": browse_res.truncated,
+        }))
+        .map_err(crate::errors::from_display)?;
+
+        Ok(ReadResourceResult {
+            contents: vec![ResourceContents::text(text, uri)],
+        })
+    }
+
+    // Extracted file handlers to keep methods small
+    async fn handle_rules_file(
+        &self,
+        uri: &str,
+        path: &str,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        if path.is_empty() {
+            return Err(crate::errors::invalid_params("Resource path required"));
+        }
+        let rules_path = Path::new("rules").join(path);
+        let target =
+            crate::handlers::rules::resolve_rules_path(&self.context.project_root, &rules_path)
+                .await?;
+
+        self.read_file_resource(uri, &target).await
+    }
+
+    async fn handle_docs_file(
+        &self,
+        uri: &str,
+        path: &str,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        if path.is_empty() {
+            return Err(crate::errors::invalid_params("Resource path required"));
+        }
+        let docs_root = self.context.project_root.join(".typstlab/kb/typst/docs");
+        let target = crate::handlers::docs::resolve_docs_path(
+            &self.context.project_root,
+            &docs_root,
+            Path::new(path),
+        )
+        .await?;
+
+        self.read_file_resource(uri, &target).await
+    }
+
+    async fn read_file_resource(
+        &self,
+        uri: &str,
+        target: &Path,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        if !target.exists() || !target.is_file() {
+            return Err(crate::errors::resource_not_found(format!(
+                "Resource not found: {}",
+                uri
+            )));
+        }
+        if target.extension().and_then(|ext| ext.to_str()) != Some("md") {
+            return Err(crate::errors::resource_not_found(format!(
+                "Resource not found: {}",
+                uri
+            )));
+        }
+        let metadata = tokio::fs::metadata(target)
+            .await
+            .map_err(crate::errors::from_display)?;
+
+        if metadata.len() > MAX_FILE_BYTES {
+            return Err(crate::errors::file_too_large(format!(
+                "Resource exceeds {} bytes",
+                MAX_FILE_BYTES
+            )));
+        }
+
+        let content = tokio::fs::read_to_string(target)
+            .await
+            .map_err(crate::errors::from_display)?;
+
+        Ok(ReadResourceResult {
+            contents: vec![ResourceContents::text(content, uri)],
+        })
     }
 }
 
@@ -381,7 +389,10 @@ mod tests {
         let server = TypstlabServer::new(ctx, false);
 
         let res = server
-            .read_resource_by_uri("typstlab://rules")
+            .read_resource_by_uri(
+                "typstlab://rules",
+                tokio_util::sync::CancellationToken::new(),
+            )
             .await
             .expect("read resource");
         let content = &res.contents[0];
@@ -389,7 +400,10 @@ mod tests {
             ResourceContents::TextResourceContents { text, .. } => text,
             _ => panic!("expected text content"),
         };
-        assert!(text.contains("\"path\":\"rules/a.md\""));
+        assert!(
+            text.contains("\"path\":\"rules/a.md\""),
+            "listing should include relative path"
+        );
     }
 
     #[tokio::test]
@@ -403,7 +417,10 @@ mod tests {
         let server = TypstlabServer::new(ctx, false);
 
         let res = server
-            .read_resource_by_uri("typstlab://docs")
+            .read_resource_by_uri(
+                "typstlab://docs",
+                tokio_util::sync::CancellationToken::new(),
+            )
             .await
             .expect("read resource");
         let content = &res.contents[0];
@@ -413,48 +430,49 @@ mod tests {
         };
         assert!(text.contains("\"name\":\"b.md\""));
     }
-}
-#[tokio::test]
-async fn test_offline_mode_includes_status() {
-    let temp = temp_dir_in_workspace();
-    let ctx = McpContext::new(temp.path().to_path_buf());
-    let server = TypstlabServer::new(ctx, true); // offline = true
 
-    // cmd_status should be available in offline mode
-    let tools = server.tool_router.list_all();
-    let status_tool = tools.iter().find(|t| t.name == "cmd_status");
-    assert!(
-        status_tool.is_some(),
-        "cmd_status should be available in offline mode"
-    );
-}
+    #[tokio::test]
+    async fn test_offline_mode_includes_status() {
+        let temp = temp_dir_in_workspace();
+        let ctx = McpContext::new(temp.path().to_path_buf());
+        let server = TypstlabServer::new(ctx, true); // offline = true
 
-#[tokio::test]
-async fn test_offline_mode_excludes_build() {
-    let temp = temp_dir_in_workspace();
-    let ctx = McpContext::new(temp.path().to_path_buf());
-    let server = TypstlabServer::new(ctx, true); // offline = true
+        // cmd_status should be available in offline mode
+        let tools = server.tool_router.list_all();
+        let status_tool = tools.iter().find(|t| t.name == "cmd_status");
+        assert!(
+            status_tool.is_some(),
+            "cmd_status should be available in offline mode"
+        );
+    }
 
-    // cmd_build should NOT be available in offline mode
-    let tools = server.tool_router.list_all();
-    let build_tool = tools.iter().find(|t| t.name == "cmd_build");
-    assert!(
-        build_tool.is_none(),
-        "cmd_build should NOT be available in offline mode"
-    );
-}
+    #[tokio::test]
+    async fn test_offline_mode_excludes_build() {
+        let temp = temp_dir_in_workspace();
+        let ctx = McpContext::new(temp.path().to_path_buf());
+        let server = TypstlabServer::new(ctx, true); // offline = true
 
-#[tokio::test]
-async fn test_offline_mode_excludes_generate() {
-    let temp = temp_dir_in_workspace();
-    let ctx = McpContext::new(temp.path().to_path_buf());
-    let server = TypstlabServer::new(ctx, true); // offline = true
+        // cmd_build should NOT be available in offline mode
+        let tools = server.tool_router.list_all();
+        let build_tool = tools.iter().find(|t| t.name == "cmd_build");
+        assert!(
+            build_tool.is_none(),
+            "cmd_build should NOT be available in offline mode"
+        );
+    }
 
-    // cmd_generate should NOT be available in offline mode
-    let tools = server.tool_router.list_all();
-    let generate_tool = tools.iter().find(|t| t.name == "cmd_generate");
-    assert!(
-        generate_tool.is_none(),
-        "cmd_generate should NOT be available in offline mode"
-    );
+    #[tokio::test]
+    async fn test_offline_mode_excludes_generate() {
+        let temp = temp_dir_in_workspace();
+        let ctx = McpContext::new(temp.path().to_path_buf());
+        let server = TypstlabServer::new(ctx, true); // offline = true
+
+        // cmd_generate should NOT be available in offline mode
+        let tools = server.tool_router.list_all();
+        let generate_tool = tools.iter().find(|t| t.name == "cmd_generate");
+        assert!(
+            generate_tool.is_none(),
+            "cmd_generate should NOT be available in offline mode"
+        );
+    }
 }

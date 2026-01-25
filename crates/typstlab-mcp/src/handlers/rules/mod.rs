@@ -10,7 +10,6 @@ mod types;
 pub use types::*;
 
 // Re-export helper functions used externally
-pub(crate) use browse::rules_browse_items;
 
 use crate::handlers::{Safety, ToolExt};
 use crate::server::TypstlabServer;
@@ -30,19 +29,21 @@ impl RulesTool {
         ToolRouter::new()
             .with_route(ToolRoute::new_dyn(Self::rules_browse_attr(), |mut ctx| {
                 let server = ctx.service;
+                let token = ctx.request_context.ct.clone(); // Use request token
                 let args_res = Parameters::<RulesBrowseArgs>::from_context_part(&mut ctx);
                 async move {
                     let Parameters(args) = args_res?;
-                    browse::rules_browse(server, args).await
+                    browse::rules_browse(server, args, token).await
                 }
                 .boxed()
             }))
             .with_route(ToolRoute::new_dyn(Self::rules_search_attr(), |mut ctx| {
                 let server = ctx.service;
+                let token = ctx.request_context.ct.clone();
                 let args_res = Parameters::<RulesSearchArgs>::from_context_part(&mut ctx);
                 async move {
                     let Parameters(args) = args_res?;
-                    search::rules_search(server, args).await
+                    search::rules_search(server, args, token).await
                 }
                 .boxed()
             }))
@@ -59,10 +60,11 @@ impl RulesTool {
             }))
             .with_route(ToolRoute::new_dyn(Self::rules_list_attr(), |mut ctx| {
                 let server = ctx.service;
+                let token = ctx.request_context.ct.clone();
                 let args_res = Parameters::<RulesListArgs>::from_context_part(&mut ctx);
                 async move {
                     let Parameters(args) = args_res?;
-                    list::rules_list(server, args).await
+                    list::rules_list(server, args, token).await
                 }
                 .boxed()
             }))
@@ -132,14 +134,14 @@ impl RulesTool {
         server: &TypstlabServer,
         args: RulesBrowseArgs,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        browse::rules_browse(server, args).await
+        browse::rules_browse(server, args, tokio_util::sync::CancellationToken::new()).await
     }
 
     pub async fn rules_search(
         server: &TypstlabServer,
         args: RulesSearchArgs,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        search::rules_search(server, args).await
+        search::rules_search(server, args, tokio_util::sync::CancellationToken::new()).await
     }
 
     // rules_get kept for internal use and testing
@@ -162,7 +164,7 @@ impl RulesTool {
         server: &TypstlabServer,
         args: RulesListArgs,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        list::rules_list(server, args).await
+        list::rules_list(server, args, tokio_util::sync::CancellationToken::new()).await
     }
 }
 

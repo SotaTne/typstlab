@@ -2596,6 +2596,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]
@@ -2788,6 +2789,8 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-util",
+ "tracing",
  "typstlab-core",
  "typstlab-testkit",
  "typstlab-typst",

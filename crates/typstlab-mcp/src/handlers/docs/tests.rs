@@ -5,6 +5,7 @@ mod tests {
     use crate::server::TypstlabServer;
     use std::path::Path;
     use tokio::fs;
+    use tokio_util::sync::CancellationToken;
     use typstlab_core::config::consts::search::MAX_SCAN_FILES;
     use typstlab_testkit::temp_dir_in_workspace;
 
@@ -14,9 +15,13 @@ mod tests {
         let ctx = McpContext::new(temp.path().to_path_buf());
         let server = TypstlabServer::new(ctx, false);
 
-        let res = DocsTool::docs_browse(&server, DocsBrowseArgs { path: None })
-            .await
-            .unwrap();
+        let res = DocsTool::docs_browse(
+            &server,
+            DocsBrowseArgs { path: None },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
         let content = &res.content[0];
         let text = content.as_text().expect("Expected text content");
         let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
@@ -35,9 +40,13 @@ mod tests {
         let ctx = McpContext::new(temp.path().to_path_buf());
         let server = TypstlabServer::new(ctx, false);
 
-        let res = DocsTool::docs_browse(&server, DocsBrowseArgs { path: None })
-            .await
-            .unwrap();
+        let res = DocsTool::docs_browse(
+            &server,
+            DocsBrowseArgs { path: None },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
         let text = res.content[0].as_text().expect("Expected text content");
         assert!(text.text.contains("\"name\":\"test.md\""));
         assert!(text.text.contains("\"type\":\"file\""));
@@ -66,11 +75,12 @@ mod tests {
             DocsSearchArgs {
                 query: "rust".to_string(),
             },
+            CancellationToken::new(),
         )
         .await
         .unwrap();
         let text = res.content[0].as_text().expect("Expected text content");
-        assert!(text.text.contains("\"path\":\"b.md\""));
+        assert!(text.text.contains("\".typstlab/kb/typst/docs/b.md\""));
         assert!(text.text.contains("\"line\":1"));
         assert!(text.text.contains("\"content\":\"rust programming\""));
         assert!(!text.text.contains("a.md"));
@@ -100,6 +110,7 @@ mod tests {
             DocsSearchArgs {
                 query: "needle".to_string(),
             },
+            CancellationToken::new(),
         )
         .await
         .unwrap();
@@ -129,6 +140,7 @@ mod tests {
             DocsSearchArgs {
                 query: "needle".to_string(),
             },
+            CancellationToken::new(),
         )
         .await
         .unwrap();
@@ -144,9 +156,13 @@ mod tests {
         let ctx = McpContext::new(temp.path().to_path_buf());
         let server = TypstlabServer::new(ctx, false);
 
-        let res = DocsTool::docs_browse(&server, DocsBrowseArgs { path: None })
-            .await
-            .unwrap();
+        let res = DocsTool::docs_browse(
+            &server,
+            DocsBrowseArgs { path: None },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
         let text = res.content[0].as_text().expect("Expected text content");
         let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
         assert!(json["missing"].as_bool().unwrap());
@@ -179,6 +195,7 @@ mod tests {
             DocsSearchArgs {
                 query: "secret".to_string(),
             },
+            CancellationToken::new(),
         )
         .await
         .unwrap();
@@ -192,7 +209,7 @@ mod tests {
     async fn test_resolve_docs_path_rejects_rooted_path() {
         let temp = temp_dir_in_workspace();
         let docs_root = temp.path().join(".typstlab/kb/typst/docs");
-        let result = resolve_docs_path(&docs_root, Path::new("/tmp")).await;
+        let result = resolve_docs_path(temp.path(), &docs_root, Path::new("/tmp")).await;
         assert!(result.is_err());
         if let Err(err) = result {
             assert!(err.message.contains("absolute or rooted"));
@@ -210,6 +227,7 @@ mod tests {
             DocsSearchArgs {
                 query: "".to_string(),
             },
+            CancellationToken::new(),
         )
         .await;
 
@@ -232,6 +250,7 @@ mod tests {
             DocsSearchArgs {
                 query: "   \t\n  ".to_string(),
             },
+            CancellationToken::new(),
         )
         .await;
 
@@ -250,7 +269,12 @@ mod tests {
         let server = TypstlabServer::new(ctx, false);
 
         let long_query = "a".repeat(1001);
-        let res = DocsTool::docs_search(&server, DocsSearchArgs { query: long_query }).await;
+        let res = DocsTool::docs_search(
+            &server,
+            DocsSearchArgs { query: long_query },
+            CancellationToken::new(),
+        )
+        .await;
 
         assert!(res.is_err(), "Should reject too long query");
         let err = res.unwrap_err();
@@ -274,6 +298,7 @@ mod tests {
             DocsBrowseArgs {
                 path: Some("../../../etc".to_string()),
             },
+            CancellationToken::new(),
         )
         .await;
 
@@ -306,9 +331,13 @@ mod tests {
         let ctx = McpContext::new(temp.path().to_path_buf());
         let server = TypstlabServer::new(ctx, false);
 
-        let res = DocsTool::docs_browse(&server, DocsBrowseArgs { path: None })
-            .await
-            .unwrap();
+        let res = DocsTool::docs_browse(
+            &server,
+            DocsBrowseArgs { path: None },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
         let text = res.content[0].as_text().expect("Expected text content");
         let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
         let items = json["items"].as_array().unwrap();
@@ -319,7 +348,7 @@ mod tests {
     async fn test_resolve_docs_path_rejects_parent_traversal() {
         let temp = temp_dir_in_workspace();
         let docs_root = temp.path().join(".typstlab/kb/typst/docs");
-        let result = resolve_docs_path(&docs_root, Path::new("../etc")).await;
+        let result = resolve_docs_path(temp.path(), &docs_root, Path::new("../etc")).await;
         assert!(result.is_err());
         if let Err(err) = result {
             assert!(err.message.contains("cannot contain .."));
@@ -330,7 +359,8 @@ mod tests {
     async fn test_resolve_docs_path_rejects_multiple_traversal() {
         let temp = temp_dir_in_workspace();
         let docs_root = temp.path().join(".typstlab/kb/typst/docs");
-        let result = resolve_docs_path(&docs_root, Path::new("foo/bar/../../../etc")).await;
+        let result =
+            resolve_docs_path(temp.path(), &docs_root, Path::new("foo/bar/../../../etc")).await;
         assert!(result.is_err());
         if let Err(err) = result {
             assert!(err.message.contains("cannot contain .."));
@@ -350,9 +380,13 @@ mod tests {
         let ctx = McpContext::new(temp.path().to_path_buf());
         let server = TypstlabServer::new(ctx, false);
 
-        let res = DocsTool::docs_browse(&server, DocsBrowseArgs { path: None })
-            .await
-            .unwrap();
+        let res = DocsTool::docs_browse(
+            &server,
+            DocsBrowseArgs { path: None },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
         let text = res.content[0].as_text().expect("Expected text content");
         let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
         let items = json["items"].as_array().unwrap();
@@ -383,6 +417,7 @@ mod tests {
             DocsSearchArgs {
                 query: "uppercase".to_string(),
             },
+            CancellationToken::new(),
         )
         .await
         .unwrap();
@@ -402,7 +437,7 @@ mod tests {
             .await
             .unwrap();
 
-        let result = resolve_docs_path(&docs_root, Path::new("subdir/file.md")).await;
+        let result = resolve_docs_path(temp.path(), &docs_root, Path::new("subdir/file.md")).await;
         assert!(result.is_ok(), "Should accept valid subpath");
     }
 
@@ -424,6 +459,7 @@ mod tests {
             DocsBrowseArgs {
                 path: Some("subdir".to_string()),
             },
+            CancellationToken::new(),
         )
         .await
         .unwrap();
@@ -455,6 +491,7 @@ mod tests {
             DocsSearchArgs {
                 query: "rust".to_string(),
             },
+            CancellationToken::new(),
         )
         .await
         .unwrap();
@@ -470,7 +507,7 @@ mod tests {
     async fn test_resolve_docs_path_rejects_absolute_path() {
         let temp = temp_dir_in_workspace();
         let docs_root = temp.path().join(".typstlab/kb/typst/docs");
-        let result = resolve_docs_path(&docs_root, Path::new("/etc/passwd")).await;
+        let result = resolve_docs_path(temp.path(), &docs_root, Path::new("/etc/passwd")).await;
         assert!(result.is_err());
         if let Err(err) = result {
             assert!(err.message.contains("absolute or rooted"));
@@ -492,6 +529,7 @@ mod tests {
             DocsBrowseArgs {
                 path: Some("empty".to_string()),
             },
+            CancellationToken::new(),
         )
         .await
         .unwrap();

@@ -55,12 +55,12 @@ pub(crate) async fn resolve_rules_path(
 
     // ルール固有のパス構造バリデーション
     if has_absolute_or_rooted_component(requested) {
-        return Err(errors::invalid_params("Path cannot be absolute or rooted"));
+        return Err(errors::path_escape("Path cannot be absolute or rooted"));
     }
 
     let components: Vec<Component> = requested.components().collect();
     if components.iter().any(|c| matches!(c, Component::ParentDir)) {
-        return Err(errors::invalid_params("Path cannot contain .."));
+        return Err(errors::path_escape("Path cannot contain .."));
     }
 
     let first = components.first();
@@ -82,7 +82,15 @@ pub(crate) async fn resolve_rules_path(
     }
 
     // 共通パス解決処理（セキュリティチェック含む）
-    resolve_safe_path(project_root, requested).await
+    let resolved = resolve_safe_path(project_root, requested).await?;
+
+    // Additional security: check for symlinks only if path exists
+    // If path doesn't exist, browse_dir_sync will return missing=true
+    if resolved.exists() {
+        crate::handlers::common::ops::check_entry_safety(&resolved, project_root)?;
+    }
+
+    Ok(resolved)
 }
 
 /// 検索ディレクトリを収集する
@@ -111,13 +119,10 @@ pub(crate) async fn enforce_rules_file_size(path: &Path) -> Result<(), McpError>
 
     let metadata = fs::metadata(path).await.map_err(errors::from_display)?;
     if metadata.len() > MAX_FILE_BYTES {
-        return Err(errors::error_with_code(
-            errors::FILE_TOO_LARGE,
-            format!(
-                "File exceeds maximum allowed size of {} bytes",
-                MAX_FILE_BYTES
-            ),
-        ));
+        return Err(errors::file_too_large(format!(
+            "File exceeds maximum allowed size of {} bytes",
+            MAX_FILE_BYTES
+        )));
     }
     Ok(())
 }

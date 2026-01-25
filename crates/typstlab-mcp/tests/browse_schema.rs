@@ -64,7 +64,7 @@ async fn test_rules_browse_missing_returns_schema() {
     let res = RulesTool::rules_browse(
         &server,
         typstlab_mcp::handlers::rules::RulesBrowseArgs {
-            path: "nonexistent/path".to_string(),
+            path: "rules/nonexistent".to_string(),
         },
     )
     .await

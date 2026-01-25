@@ -25,12 +25,14 @@ impl SearchConfig {
 pub struct BrowseResult {
     pub missing: bool,
     pub items: Vec<BrowseItem>,
+    pub truncated: bool,
 }
 
 /// An item in a directory listing
 #[derive(Debug, serde::Serialize)]
 pub struct BrowseItem {
     pub name: String,
+    pub path: String, // Relative path from project root
     #[serde(rename = "type")]
     pub item_type: String,
 }
@@ -38,14 +40,9 @@ pub struct BrowseItem {
 /// Result of a search operation
 #[derive(Debug, serde::Serialize)]
 pub struct SearchResult {
-    pub matches: Vec<SearchMatch>,
+    pub matches: Vec<serde_json::Value>,
     pub truncated: bool,
-}
-
-/// A single search match
-#[derive(Debug, serde::Serialize)]
-pub struct SearchMatch {
-    pub path: String,
-    pub line: usize,
-    pub content: String,
+    #[serde(skip)]
+    // Internal field for debugging/logging; not serialized to JSON
+    pub scanned_files: usize,
 }

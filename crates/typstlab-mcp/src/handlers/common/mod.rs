@@ -2,5 +2,5 @@ pub mod ops;
 pub mod path;
 pub mod types;
 
-pub use ops::{browse_directory, search_directory};
-pub use types::{BrowseItem, BrowseResult, SearchConfig, SearchMatch, SearchResult};
+pub use ops::{browse_dir_sync, search_dir_sync};
+pub use types::{BrowseItem, BrowseResult, SearchConfig, SearchResult};

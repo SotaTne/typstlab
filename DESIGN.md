@@ -2096,16 +2096,20 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
 
 | 定数 | 値 | 超過時挙動 |
 | --- | --- | --- |
-| `MAX_SCAN_FILES` | 50 | `truncated=true`、結果配列を空にする |
+| `MAX_SCAN_FILES` | 50 | `truncated=true`、結果配列を空にする（ファイル数上限到達時のみ） |
 | `MAX_FILE_BYTES` | 1,048,576 (1 MiB) | 該当ファイルをスキップ／`FILE_TOO_LARGE` |
-| `MAX_MATCHES` | 50 | 上限で打ち切り、`truncated=true` |
+| `MAX_MATCHES` | 50 | 上限で打ち切り、`truncated=true`（結果は上限まで返す） |
 | `MAX_MATCHES_PER_FILE` | 3 | 1ファイル内の追加マッチを打ち切り |
+
+- `MAX_SCAN_FILES` 超過時は **結果配列を空** にする（検索結果の部分返却は行わない）。  
+- `MAX_MATCHES` 超過時は **上限まで返却** し、`truncated=true` を付与する。  
+- `truncated` の理由を明確化したい場合、`structuredContent` で `truncated_reason` を返してよい（例: `"max_files"` / `"max_matches"`）。  
 
 #### 5.10.10 テストマトリクス（TDD 参照用）
 
 - 正常系: 存在する rules/docs で browse/search が成功し、`missing=false`。  
 - missing 系: ルート未作成時に `missing=true` を返し、スキーマを固定。  
-- 制限超過: `MAX_SCAN_FILES`/`MAX_MATCHES` 超過で `truncated=true`、結果は空配列または上限トリミング。  
+- 制限超過: `MAX_SCAN_FILES` 超過で `truncated=true` かつ結果は空配列、`MAX_MATCHES` 超過で `truncated=true` かつ結果は上限トリミング。  
 - パス拒否: absolute/rooted/`..` で `INVALID_INPUT` or `PATH_ESCAPE`。  
 - オフライン差分: offline では `list_tools` に `cmd_generate`/`cmd_build` を含まないこと。  
 - symlink: ルート外を指す symlink は無視または拒否されること。

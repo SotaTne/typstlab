@@ -26,6 +26,28 @@ use typstlab_typst::exec::{ExecOptions, ExecResult, exec_typst};
 pub struct CmdTool;
 
 impl CmdTool {
+    // For integration tests
+    pub async fn test_cmd_build(
+        server: &TypstlabServer,
+        args: BuildArgs,
+    ) -> Result<CallToolResult, McpError> {
+        Self::build(server, args).await
+    }
+
+    pub async fn test_cmd_generate(
+        server: &TypstlabServer,
+        args: CmdGenerateArgs,
+    ) -> Result<CallToolResult, McpError> {
+        Self::cmd_generate(server, args).await
+    }
+
+    pub async fn test_status(
+        server: &TypstlabServer,
+        args: StatusArgs,
+    ) -> Result<CallToolResult, McpError> {
+        Self::status(server, args).await
+    }
+
     pub fn into_router(self) -> ToolRouter<TypstlabServer> {
         ToolRouter::new()
             .with_route(ToolRoute::new_dyn(Self::cmd_generate_attr(), |mut ctx| {
@@ -152,6 +174,7 @@ impl CmdTool {
         args: CmdGenerateArgs,
     ) -> Result<CallToolResult, McpError> {
         let project_root = server.context.project_root.clone();
+        validate_paper_id(&args.paper_id)?;
         let paper_id = args.paper_id.clone();
         run_blocking(move || {
             let project = Project::load(project_root).map_err(errors::from_core_error)?;
@@ -170,6 +193,9 @@ impl CmdTool {
         args: StatusArgs,
     ) -> Result<CallToolResult, McpError> {
         let project_root = server.context.project_root.clone();
+        if let Some(id) = &args.paper_id {
+            validate_paper_id(id)?;
+        }
         let paper_id = args.paper_id.clone();
         let report = run_blocking(move || {
             let project = Project::load(project_root).map_err(errors::from_core_error)?;
@@ -186,15 +212,13 @@ impl CmdTool {
         args: BuildArgs,
     ) -> Result<CallToolResult, McpError> {
         let project_root = server.context.project_root.clone();
+        validate_paper_id(&args.paper_id)?;
         let paper_id = args.paper_id.clone();
         let full = args.full;
         let outcome = run_blocking(move || build_blocking(project_root, paper_id, full)).await?;
 
         if !outcome.success {
-            return Err(errors::internal_error(format!(
-                "Typst compilation failed with exit code {}.\n\nError output:\n{}",
-                outcome.exit_code, outcome.stderr
-            )));
+            return Err(build_failed_error(outcome.exit_code, &outcome.stderr));
         }
 
         Ok(CallToolResult::success(vec![Content::text(format!(
@@ -211,6 +235,13 @@ impl CmdTool {
             serde_json::to_string_pretty(&res).map_err(errors::from_display)?,
         )]))
     }
+}
+
+fn build_failed_error(exit_code: i32, stderr: &str) -> McpError {
+    errors::build_failed(format!(
+        "Typst compilation failed with exit code {}.\n\nError output:\n{}",
+        exit_code, stderr
+    ))
 }
 
 struct BuildOutcome {
@@ -289,6 +320,10 @@ fn validate_output_name(output_name: &str) -> Result<(), McpError> {
     is_safe_single_component(Path::new(output_name)).map_err(|err| {
         errors::invalid_params(format!("Invalid output name '{}': {err}", output_name))
     })
+}
+
+fn validate_paper_id(paper_id: &str) -> Result<(), McpError> {
+    typstlab_core::path::validate_paper_id(paper_id).map_err(errors::from_core_error)
 }
 
 fn find_paper<'a>(project: &'a Project, paper_id: &str) -> Result<&'a Paper, McpError> {
@@ -395,7 +430,7 @@ pub struct BuildArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::{CmdTool, validate_output_name};
+    use super::{CmdTool, build_failed_error, validate_output_name};
     use rmcp::model::Tool;
 
     #[test]
@@ -454,5 +489,15 @@ mod tests {
             populated["path"].as_str().unwrap(),
             docs_dir.display().to_string()
         );
+    }
+
+    #[test]
+    fn test_build_failed_error_sets_standard_code() {
+        let err = build_failed_error(42, "boom");
+        assert_eq!(err.code, rmcp::model::ErrorCode(-32004)); // BUILD_FAILED
+        let data = err.data.unwrap();
+        assert_eq!(data["code"], crate::errors::BUILD_FAILED);
+        assert!(err.message.contains("42"));
+        assert!(err.message.contains("boom"));
     }
 }

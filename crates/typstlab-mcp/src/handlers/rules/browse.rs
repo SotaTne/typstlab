@@ -6,12 +6,12 @@ use crate::server::TypstlabServer;
 use rmcp::{ErrorData as McpError, model::*};
 use serde_json::json;
 use std::path::{Component, Path};
-use tokio::fs;
 
 /// rules_browseハンドラ
 pub(crate) async fn rules_browse(
     server: &TypstlabServer,
     args: RulesBrowseArgs,
+    token: tokio_util::sync::CancellationToken,
 ) -> Result<CallToolResult, McpError> {
     // Validate path before using it
     let path = Path::new(&args.path);
@@ -28,85 +28,45 @@ pub(crate) async fn rules_browse(
         )));
     }
 
-    let rules_root = server.context.project_root.join("rules");
-
-    // DESIGN.md 5.10.5: browse系は {items: [], missing: bool, truncated?: bool}
-    // rulesルート自体が存在しない場合
-    if !rules_root.exists() {
-        return Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string(&json!({
-                "items": [],
-                "truncated": false,
-                "missing": true,
-            }))
-            .map_err(errors::from_display)?,
-        )]));
-    }
-
+    // パス解決
     let target = resolve_rules_path(&server.context.project_root, path).await?;
+    let project_root = server.context.project_root.clone();
 
-    // 存在しないパスもmissing=trueで返す（エラーにしない）
-    if !target.exists() || !target.is_dir() {
-        return Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string(&json!({
-                "items": [],
-                "truncated": false,
-                "missing": true,
-            }))
-            .map_err(errors::from_display)?,
-        )]));
+    if target.is_file() {
+        return Err(errors::invalid_input("Path must point to a directory"));
     }
-    let mut items = rules_browse_items(&target, &server.context.project_root).await?;
-    items.sort_by_key(|i| {
-        i.get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string()
-    });
+
+    // ops::browse_dir_syncを利用して安全にブラウズ
+    // resolve_rules_pathでチェック済みだが、念のため再チェックになる（コストは低い）
+    // targetは絶対パス（resolve_rules_pathが返す）
+
+    // browse_dir_syncは (root, project_root, relative_path, ...)
+    // ここでは target を root として relative_path=None で呼ぶか、
+    // rules_root を root として relative_path を渡すか。
+    // resolve_rules_pathは rules/... または papers/... を解決するので、
+    // target を root として渡すのが適切。
+
+    let browse_res = tokio::task::spawn_blocking(move || {
+        crate::handlers::common::ops::browse_dir_sync(
+            &target,
+            &project_root,
+            None,
+            &["md".to_string()],
+            1000,
+            token,
+        )
+    })
+    .await
+    .map_err(|e| errors::internal_error(format!("Browse task panicked: {}", e)))??;
+
     Ok(CallToolResult::success(vec![Content::text(
-        serde_json::to_string(&json!({ "items": items })).map_err(errors::from_display)?,
+        serde_json::to_string(&json!({
+             "items": browse_res.items,
+             "missing": browse_res.missing,
+             "truncated": browse_res.truncated,
+        }))
+        .map_err(errors::from_display)?,
     )]))
 }
 
-/// ディレクトリ内のルールファイル/ディレクトリをリストアップ
-pub(crate) async fn rules_browse_items(
-    target: &Path,
-    project_root: &Path,
-) -> Result<Vec<serde_json::Value>, McpError> {
-    let mut items = Vec::new();
-    let mut dir = fs::read_dir(target).await.map_err(errors::from_display)?;
-    while let Some(entry) = dir.next_entry().await.map_err(errors::from_display)? {
-        let file_type = entry.file_type().await.map_err(errors::from_display)?;
-        if file_type.is_symlink() {
-            continue;
-        }
-
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
-            continue;
-        }
-
-        let entry_type = if path.is_dir() {
-            "directory"
-        } else {
-            if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
-                continue;
-            }
-            "file"
-        };
-
-        let relative_path = path
-            .strip_prefix(project_root)
-            .map_err(errors::from_display)?
-            .to_string_lossy()
-            .to_string();
-
-        items.push(json!({
-            "name": name,
-            "type": entry_type,
-            "path": relative_path,
-        }));
-    }
-    Ok(items)
-}
+// rules_browse_items deleted

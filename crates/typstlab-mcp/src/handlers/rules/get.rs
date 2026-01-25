@@ -17,14 +17,14 @@ pub(crate) async fn rules_get(
     let target = resolve_rules_path(&server.context.project_root, path).await?;
 
     if !target.exists() || !target.is_file() {
-        return Err(errors::invalid_params(format!(
+        return Err(errors::resource_not_found(format!(
             "File not found or not a valid rule file: {}",
             args.path
         )));
     }
 
     if target.extension().and_then(|ext| ext.to_str()) != Some("md") {
-        return Err(errors::invalid_params("File must be a markdown (.md) file"));
+        return Err(errors::invalid_input("File must be a markdown (.md) file"));
     }
 
     enforce_rules_file_size(&target).await?;
@@ -44,14 +44,14 @@ pub(crate) async fn rules_page(
     let target = resolve_rules_path(&server.context.project_root, path).await?;
 
     if !target.exists() || !target.is_file() {
-        return Err(errors::invalid_params(format!(
+        return Err(errors::resource_not_found(format!(
             "File not found or not a valid rule file: {}",
             args.path
         )));
     }
 
     if target.extension().and_then(|ext| ext.to_str()) != Some("md") {
-        return Err(errors::invalid_params("File must be a markdown (.md) file"));
+        return Err(errors::invalid_input("File must be a markdown (.md) file"));
     }
 
     enforce_rules_file_size(&target).await?;
