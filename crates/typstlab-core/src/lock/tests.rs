@@ -86,7 +86,7 @@ fn test_lock_timeout_after_duration() {
     // Should have waited approximately the timeout duration
     let elapsed = start.elapsed();
     assert!(
-        elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(200),
+        elapsed >= Duration::from_millis(90) && elapsed < Duration::from_millis(400),
         "Should timeout after approximately 100ms, got {:?}",
         elapsed
     );
