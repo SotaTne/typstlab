@@ -27,9 +27,9 @@ async fn test_docs_browse_missing_returns_schema() {
     let text = res.content[0].as_text().unwrap();
     let json: Value = serde_json::from_str(&text.text).unwrap();
 
-    assert_eq!(json["missing"].as_bool().unwrap(), true);
+    assert!(json["missing"].as_bool().unwrap());
     assert_eq!(json["items"].as_array().unwrap().len(), 0);
-    assert_eq!(json["truncated"].as_bool().unwrap(), false);
+    assert!(!json["truncated"].as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -51,7 +51,7 @@ async fn test_docs_browse_root_missing() {
     let text = res.content[0].as_text().unwrap();
     let json: Value = serde_json::from_str(&text.text).unwrap();
 
-    assert_eq!(json["missing"].as_bool().unwrap(), true);
+    assert!(json["missing"].as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -73,7 +73,7 @@ async fn test_rules_browse_missing_returns_schema() {
     let text = res.content[0].as_text().unwrap();
     let json: Value = serde_json::from_str(&text.text).unwrap();
 
-    assert_eq!(json["missing"].as_bool().unwrap(), true);
+    assert!(json["missing"].as_bool().unwrap());
     assert_eq!(json["items"].as_array().unwrap().len(), 0);
     // browse系はtruncatedはオプション（書いても書かなくてもOK）
 }
@@ -101,6 +101,6 @@ async fn test_browse_existing_no_missing_flag() {
     let json: Value = serde_json::from_str(&text.text).unwrap();
 
     // missingフラグは無いか、falseであること
-    assert!(json.get("missing").is_none() || json["missing"].as_bool().unwrap() == false);
+    assert!(json.get("missing").is_none() || !json["missing"].as_bool().unwrap());
     assert!(json["items"].is_array());
 }

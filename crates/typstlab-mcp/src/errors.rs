@@ -23,7 +23,11 @@ pub const PROJECT_PATH_ESCAPE: &str = "PROJECT_PATH_ESCAPE";
 pub const PAPER_NOT_FOUND: &str = "PAPER_NOT_FOUND";
 
 pub fn invalid_params(message: impl Into<String>) -> ErrorData {
-    ErrorData::invalid_params(message.into(), None)
+    ErrorData {
+        code: rmcp::model::ErrorCode(-32602),
+        message: message.into().into(),
+        data: Some(json!({ "code": INVALID_INPUT })),
+    }
 }
 
 pub fn internal_error(message: impl Into<String>) -> ErrorData {

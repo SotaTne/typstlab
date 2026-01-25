@@ -28,9 +28,38 @@ pub(crate) async fn rules_browse(
         )));
     }
 
+    let is_rules_path = path.starts_with("rules");
+    let is_papers_path = path.starts_with("papers");
+    if !is_rules_path && !is_papers_path {
+        let candidate = server.context.project_root.join(path);
+        if !candidate.exists() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string(&json!({
+                    "items": [],
+                    "missing": true,
+                    "truncated": false,
+                }))
+                .map_err(errors::from_display)?,
+            )]));
+        }
+    }
+
     // パス解決
+    // resolve_rules_path のエラーは validation error なので伝播させる
     let target = resolve_rules_path(&server.context.project_root, path).await?;
     let project_root = server.context.project_root.clone();
+
+    // ディレクトリ存在確認
+    if !target.exists() {
+        return Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string(&json!({
+                "items": [],
+                "missing": true,
+                "truncated": false,
+            }))
+            .map_err(errors::from_display)?,
+        )]));
+    }
 
     if target.is_file() {
         return Err(errors::invalid_input("Path must point to a directory"));

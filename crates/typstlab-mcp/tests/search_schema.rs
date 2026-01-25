@@ -37,10 +37,10 @@ async fn test_docs_search_missing_schema() {
     assert_eq!(json.get("matches").unwrap().as_array().unwrap().len(), 0);
 
     // truncatedはfalse
-    assert_eq!(json.get("truncated").unwrap().as_bool().unwrap(), false);
+    assert!(!json.get("truncated").unwrap().as_bool().unwrap());
 
     // missingはtrue
-    assert_eq!(json.get("missing").unwrap().as_bool().unwrap(), true);
+    assert!(json.get("missing").unwrap().as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -101,7 +101,7 @@ async fn test_rules_search_missing_schema() {
     assert_eq!(json.get("matches").unwrap().as_array().unwrap().len(), 0);
 
     // truncatedはfalse
-    assert_eq!(json.get("truncated").unwrap().as_bool().unwrap(), false);
+    assert!(!json.get("truncated").unwrap().as_bool().unwrap());
 
     // missingキーが存在（オプション: 実装で追加する場合）
     // assert_eq!(json.get("missing").unwrap().as_bool().unwrap(), true);
@@ -148,9 +148,8 @@ async fn test_max_scan_files_truncation() {
     let json: Value = serde_json::from_str(&text.text).unwrap();
 
     // truncated=true
-    assert_eq!(
+    assert!(
         json.get("truncated").unwrap().as_bool().unwrap(),
-        true,
         "truncated should be true when MAX_SCAN_FILES is exceeded"
     );
 
@@ -177,7 +176,7 @@ async fn test_max_matches_truncation() {
     for i in 0..(MAX_MATCHES + 10) {
         async_fs::write(
             docs_dir.join(format!("match_{}.md", i)),
-            format!("This file contains the search term searchme on line 1\nAnd more content"),
+            "This file contains the search term searchme on line 1\nAnd more content",
         )
         .await
         .unwrap();
@@ -199,9 +198,8 @@ async fn test_max_matches_truncation() {
     let json: Value = serde_json::from_str(&text.text).unwrap();
 
     // truncated=true
-    assert_eq!(
+    assert!(
         json.get("truncated").unwrap().as_bool().unwrap(),
-        true,
         "truncated should be true when MAX_MATCHES is reached"
     );
 
@@ -249,7 +247,7 @@ async fn test_browse_missing_schema() {
 
         // missing=true
         if json.get("missing").is_some() {
-            assert_eq!(json.get("missing").unwrap().as_bool().unwrap(), true);
+            assert!(json.get("missing").unwrap().as_bool().unwrap());
         }
     }
 }

@@ -68,7 +68,7 @@ pub(crate) async fn resolve_rules_path(
     let is_papers = first == Some(&Component::Normal("papers".as_ref()));
 
     if !is_rules && !is_papers {
-        return Err(errors::invalid_params(
+        return Err(errors::invalid_input(
             "Path must start with rules/ or papers/<paper_id>/rules",
         ));
     }
@@ -76,7 +76,7 @@ pub(crate) async fn resolve_rules_path(
     if is_papers
         && (components.len() < 3 || components.get(2) != Some(&Component::Normal("rules".as_ref())))
     {
-        return Err(errors::invalid_params(
+        return Err(errors::invalid_input(
             "Path must be within papers/<paper_id>/rules",
         ));
     }

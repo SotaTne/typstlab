@@ -80,7 +80,7 @@ async fn test_docs_file_rejects_symlinked_root_outside_project() {
     let server = TypstlabServer::new(ctx, false);
 
     let res = server
-        .test_read_resource_by_uri("typstlab://docs/leak.md")
+        .test_read_resource_by_uri("typstlab://docs/docs/leak.md")
         .await;
 
     assert!(

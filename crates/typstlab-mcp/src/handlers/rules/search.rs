@@ -2,16 +2,21 @@
 
 use super::types::{RulesSearchArgs, collect_search_dirs};
 use crate::errors;
-use crate::handlers::common::{
-    ops,
-    types::{SearchConfig, SearchResult},
-};
+use crate::handlers::common::{ops, types::SearchConfig};
 use crate::server::TypstlabServer;
 use rmcp::{ErrorData as McpError, model::*};
 use serde_json::json;
 use std::path::PathBuf;
 use tokio_util::sync::CancellationToken;
 use typstlab_core::config::consts::search::{MAX_MATCHES, MAX_MATCHES_PER_FILE, MAX_SCAN_FILES};
+
+struct ExtendedSearchResult {
+    matches: Vec<serde_json::Value>,
+    truncated: bool,
+    #[allow(dead_code)]
+    scanned_files: usize,
+    missing: bool,
+}
 
 /// rules_searchハンドラ
 pub(crate) async fn rules_search(
@@ -51,6 +56,7 @@ pub(crate) async fn rules_search(
         serde_json::to_string(&json!({
             "matches": outcome.matches,
             "truncated": outcome.truncated,
+            "missing": outcome.missing,
         }))
         .map_err(errors::from_display)?,
     )]))
@@ -63,14 +69,26 @@ async fn search_rules_dirs_blocking(
     query: String,
     search_dirs: Vec<(std::path::PathBuf, &'static str)>,
     token: CancellationToken,
-) -> Result<SearchResult, McpError> {
+) -> Result<ExtendedSearchResult, McpError> {
     let res = tokio::task::spawn_blocking(move || {
         let mut total_matches = Vec::new();
         let mut total_scanned = 0usize;
         let mut truncated = false;
+        let mut missing = false;
+        let mut all_missing = true;
 
-        // Use SearchResult from types.rs which matches what we need to return
-        // (matches: Vec<Value>, truncated: bool)
+        // Check if any required directory is missing.
+        // For search, we iterate over target dirs. If a dir doesn't exist, search_dir_sync might just return empty?
+        // Let's verify existence first.
+
+        for (dir, _) in &search_dirs {
+            if dir.exists() {
+                all_missing = false;
+            }
+        }
+        if all_missing {
+            missing = true;
+        }
 
         for (dir, origin) in search_dirs {
             // Check remaining quota
@@ -112,7 +130,11 @@ async fn search_rules_dirs_blocking(
                     let lines: Vec<&str> = content.lines().collect();
 
                     // Relative path from PROJECT ROOT
-                    let rel_path = path.strip_prefix(&project_root).ok()?.to_string_lossy();
+                    let rel_path = path
+                        .strip_prefix(&project_root)
+                        .ok()?
+                        .to_string_lossy()
+                        .replace('\\', "/");
 
                     for (line_index, line) in lines.iter().enumerate() {
                         if line.to_lowercase().contains(&query) {
@@ -166,10 +188,11 @@ async fn search_rules_dirs_blocking(
             }
         }
 
-        Ok(SearchResult {
+        Ok(ExtendedSearchResult {
             matches: total_matches,
             truncated,
             scanned_files: total_scanned,
+            missing,
         })
     })
     .await;

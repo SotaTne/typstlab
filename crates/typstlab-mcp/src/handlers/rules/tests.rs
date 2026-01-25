@@ -321,7 +321,7 @@ async fn test_rules_search_stops_after_file_scan_limit() {
     let text = res.content[0].as_text().unwrap();
     let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
     assert!(json["matches"].as_array().unwrap().is_empty());
-    assert_eq!(json["truncated"].as_bool().unwrap(), true);
+    assert!(json["truncated"].as_bool().unwrap());
 }
 
 #[tokio::test]
@@ -351,7 +351,7 @@ async fn test_rules_search_truncates_at_max_matches_without_clearing() {
     let text = res.content[0].as_text().unwrap();
     let json: serde_json::Value = serde_json::from_str(&text.text).unwrap();
 
-    assert_eq!(json["truncated"].as_bool().unwrap(), true);
+    assert!(json["truncated"].as_bool().unwrap());
     let matches_len = json["matches"].as_array().unwrap().len();
     assert_eq!(
         matches_len, MAX_MATCHES,

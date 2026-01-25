@@ -2064,6 +2064,9 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
 - `rules_page` は `{ "content": string, "offset": number, "limit": number, "total": number }`。  
 - `rules_get` は `{ "content": string }`。詳細閲覧は `read_resource` 推奨と注記。  
 - 上記スキーマは online/offline で変化させない。
+- `path` フィールドは **MCP ベストプラクティス準拠で「返却された値がそのまま再入力に使える」こと**を保証する。  
+  具体的には、`rules_*`/`docs_*` のレスポンスに含まれる `path` を再入力として渡した際に、同一対象へアクセスできること（E2E で検証する）。  
+  返却形式（区切り文字や基準ディレクトリの表現）は実装詳細とせず、**E2E テストで互換性を担保**する。
 
 #### 5.10.6 エラーコード標準化
 
@@ -2079,6 +2082,15 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
 | PROJECT_NOT_FOUND | typstlab.toml 不在 | PROJECT_NOT_FOUND |
 | TYPST_NOT_RESOLVED | Typst バージョン解決失敗 | TYPST_NOT_RESOLVED |
 
+**運用ルール（必須）**:
+
+- **入力起因の失敗は必ず `INVALID_INPUT`**（例: 空クエリ、不正な paper_id、拡張子不正、必須フィールド欠落）。  
+- **存在しない対象は `NOT_FOUND`**（例: ファイル/ディレクトリ不存在）。  
+- **パス安全性違反は `PATH_ESCAPE`**（absolute/rooted/`..`/ルート外解決）。  
+- **サイズ上限超過は `FILE_TOO_LARGE`**。  
+- 返す `ErrorData` には **必ず `data.code` に標準コードを含める**（JSON-RPC の `code` とは別）。  
+- `invalid_params` 相当のケースでも、クライアント互換性のため `data.code=INVALID_INPUT` を付与する。
+
 #### 5.10.7 セキュリティチェック共通ルール
 
 - パス検査は `has_absolute_or_rooted_component` による absolute/rooted 検知と `..` 禁止を必須とする。  
@@ -2091,6 +2103,25 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
 - コンテンツ取得の第一手段は `read_resource`（`typstlab://rules/*`, `typstlab://docs/*`）。  
 - `rules_page` / `rules_get` は軽量閲覧用の補助ツールとして公開するが、同一パス検査・サイズ制限を適用する。  
 - リソース上限: 1 MiB (`MAX_RESOURCE_BYTES`=1,048,576) を超える場合は `FILE_TOO_LARGE`。
+
+**Rules リソース URI の正規スコープ**:
+
+- `typstlab://rules/<path>` の `<path>` は **project root 相対パス**であり、`rules_*` 系ツールが返却する `path` を **そのまま埋め込める**ことを要件とする。  
+- 許容パスは **以下のどちらか**で始まる必要がある。  
+  1) `rules/`  
+  2) `papers/<paper_id>/rules/`  
+- `rules_*` 系ツールと **同一スコープ**であること（browse/search/list と read_resource の対象範囲は一致させる）。  
+- **解釈規則**: `<path>` は `/` 区切りで表現する。  
+  OS 依存の区切り文字を含む入力は **受理してもよい**が、内部で正規化して扱う。
+- **例（許可）**:  
+  - `typstlab://rules/rules/guidelines.md` → `rules/guidelines.md`  
+  - `typstlab://rules/rules/subdir/guide.md` → `rules/subdir/guide.md`  
+  - `typstlab://rules/papers/paper1/rules/citations.md` → `papers/paper1/rules/citations.md`  
+- **注意**: `<path>` は **そのまま解決**される（paper 用の特別な推測は行わない）。  
+- **例（禁止）**:  
+  - `typstlab://rules/../secrets.md`（`..`）  
+  - `typstlab://rules//absolute`（absolute/rooted）  
+  - `typstlab://rules/papers/paper1/notes.md`（`papers/<id>/rules/` を経由していない）
 
 #### 5.10.9 制限値と挙動
 
@@ -2113,6 +2144,24 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
 - パス拒否: absolute/rooted/`..` で `INVALID_INPUT` or `PATH_ESCAPE`。  
 - オフライン差分: offline では `list_tools` に `cmd_generate`/`cmd_build` を含まないこと。  
 - symlink: ルート外を指す symlink は無視または拒否されること。
+- **E2E パス互換**: `rules_*`/`docs_*` が返した `path` を再入力に使い、同一対象の閲覧が成功すること（OS 依存差を含める）。  
+- **MCP 互換**: 返却 `path` を `read_resource` または対応ツールに渡す E2E を追加し、**最低 2 OS（macOS + Windows）**で確認する。  
+- **E2E 対象例**:  
+  - `rules_browse` の `path` → `read_resource`  
+  - `rules_search` の `path` → `rules_page`/`read_resource`  
+  - `docs_search` の `path` → `read_resource`  
+  - `docs_browse` の `path` → `docs_search`
+  - `rules_list` の `path` → `read_resource`  
+  - `rules_page` の `path` → `read_resource`  
+- **URI 例**: 返却 `path` はそのまま `typstlab://rules/<path>` / `typstlab://docs/<path>` に埋め込む。  
+  - `rules_browse` が `path="rules/guidelines.md"` を返した場合 → `typstlab://rules/rules/guidelines.md`  
+  - `rules_list` が `path="papers/paper1/rules/citations.md"` を返した場合 → `typstlab://rules/papers/paper1/rules/citations.md`  
+  - `docs_search` が `path="docs/reference/syntax.md"` を返した場合 → `typstlab://docs/docs/reference/syntax.md`  
+- **期待結果の明文化**:  
+  - 返却 `path` の再入力は **常に同一ファイル**に解決されること。  
+  - 同一ファイルに対して `rules_page` と `read_resource` の **内容整合**が取れること。  
+  - 区切り文字差分（`/` vs `\\`）があっても再入力で **成功**すること。  
+  - `missing=true` のケースは **再入力対象に含めない**（missing は再入力前提でない）。
 
 ---
 

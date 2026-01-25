@@ -80,12 +80,11 @@ fn structured_payload(result: &rmcp::model::CallToolResult) -> Value {
         return payload;
     }
 
-    if let Some(first) = result.content.first() {
-        if let Some(text) = first.as_text().map(|t| &t.text) {
-            if let Ok(parsed) = serde_json::from_str(text) {
-                return parsed;
-            }
-        }
+    if let Some(first) = result.content.first()
+        && let Some(text) = first.as_text().map(|t| &t.text)
+        && let Ok(parsed) = serde_json::from_str(text)
+    {
+        return parsed;
     }
 
     Value::Null
@@ -195,7 +194,7 @@ async fn test_mcp_rules_browse_rejects_invalid_path() -> Result<()> {
     let data: serde_json::Value = serde_json::from_str(&content_text.text).unwrap();
 
     // missing=trueを期待
-    assert_eq!(data["missing"].as_bool().unwrap(), true);
+    assert!(data["missing"].as_bool().unwrap());
     assert_eq!(data["items"].as_array().unwrap().len(), 0);
 
     service.cancel().await.ok();
@@ -285,7 +284,7 @@ async fn test_mcp_read_resource_rules_and_docs() -> Result<()> {
 
     let rules_result = service
         .read_resource(ReadResourceRequestParams {
-            uri: "typstlab://rules/guidelines.md".into(),
+            uri: "typstlab://rules/rules/guidelines.md".into(),
             meta: None,
         })
         .await?;
@@ -297,7 +296,7 @@ async fn test_mcp_read_resource_rules_and_docs() -> Result<()> {
 
     let docs_result = service
         .read_resource(ReadResourceRequestParams {
-            uri: "typstlab://docs/intro.md".into(),
+            uri: "typstlab://docs/docs/intro.md".into(),
             meta: None,
         })
         .await?;
@@ -321,7 +320,7 @@ async fn test_mcp_read_resource_rejects_non_markdown() -> Result<()> {
     let service = connect_mcp(project.path(), &[]).await?;
     let result = service
         .read_resource(ReadResourceRequestParams {
-            uri: "typstlab://docs/intro.txt".into(),
+            uri: "typstlab://docs/docs/intro.txt".into(),
             meta: None,
         })
         .await;
@@ -342,7 +341,7 @@ async fn test_mcp_read_resource_rejects_large_file() -> Result<()> {
     let service = connect_mcp(project.path(), &[]).await?;
     let result = service
         .read_resource(ReadResourceRequestParams {
-            uri: "typstlab://docs/large.md".into(),
+            uri: "typstlab://docs/docs/large.md".into(),
             meta: None,
         })
         .await;
@@ -369,7 +368,7 @@ async fn test_mcp_read_resource_rejects_symlink_outside_root() -> Result<()> {
     let service = connect_mcp(project.path(), &[]).await?;
     let result = service
         .read_resource(ReadResourceRequestParams {
-            uri: "typstlab://docs/link.md".into(),
+            uri: "typstlab://docs/docs/link.md".into(),
             meta: None,
         })
         .await;

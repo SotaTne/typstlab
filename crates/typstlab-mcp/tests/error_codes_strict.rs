@@ -39,7 +39,7 @@ async fn test_path_traversal_returns_path_escape() {
 
     assert_eq!(
         code, "PATH_ESCAPE",
-        "Must use new standard code PATH_ESCAPE, not PROJECT_PATH_ESCAPE"
+        "Must use standard code PATH_ESCAPE for security violations"
     );
 }
 
@@ -152,20 +152,20 @@ async fn test_no_legacy_codes_allowed() {
     ];
 
     for (name, result) in test_cases {
-        if let Err(err) = result {
-            if let Some(code) = get_error_code(&err) {
-                // 旧コードが返らないことを確認
-                assert_ne!(
-                    code, "PROJECT_PATH_ESCAPE",
-                    "{}: Must not use legacy code PROJECT_PATH_ESCAPE",
-                    name
-                );
-                assert_ne!(
-                    code, "PROJECT_NOT_FOUND",
-                    "{}: Must not use legacy code PROJECT_NOT_FOUND",
-                    name
-                );
-            }
+        if let Err(err) = result
+            && let Some(code) = get_error_code(&err)
+        {
+            // 旧コードが返らないことを確認
+            assert_ne!(
+                code, "PROJECT_PATH_ESCAPE",
+                "{}: Must not use legacy code PROJECT_PATH_ESCAPE",
+                name
+            );
+            assert_ne!(
+                code, "PROJECT_NOT_FOUND",
+                "{}: Must not use legacy code PROJECT_NOT_FOUND",
+                name
+            );
         }
     }
 }

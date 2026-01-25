@@ -43,11 +43,11 @@ async fn test_path_escape_uses_standard_code() {
         "Error message should mention path validation"
     );
 
-    // エラーコードはPATH_ESCAPEのみ（v0.2以降）
+    // エラーコードはINVALID_INPUT (標準コード)
     let code = get_error_code(&err).expect("Error must have a code");
     assert_eq!(
         code, "PATH_ESCAPE",
-        "Must use new standard code PATH_ESCAPE (not PROJECT_PATH_ESCAPE)"
+        "Must use standard code PATH_ESCAPE (not INVALID_INPUT)"
     );
 }
 
@@ -137,22 +137,22 @@ async fn test_no_legacy_project_path_escape() {
     ];
 
     for (i, result) in test_cases.into_iter().enumerate() {
-        if let Err(err) = result {
-            if let Some(code) = get_error_code(&err) {
-                // TODO: 実装修正後、この条件を有効化
-                // assert_ne!(
-                //     code, "PROJECT_PATH_ESCAPE",
-                //     "Test case {}: Should not use legacy code PROJECT_PATH_ESCAPE",
-                //     i
-                // );
+        if let Err(err) = result
+            && let Some(code) = get_error_code(&err)
+        {
+            // TODO: 実装修正後、この条件を有効化
+            // assert_ne!(
+            //     code, "PROJECT_PATH_ESCAPE",
+            //     "Test case {}: Should not use legacy code PROJECT_PATH_ESCAPE",
+            //     i
+            // );
 
-                // 現時点では警告のみ
-                if code == "PROJECT_PATH_ESCAPE" {
-                    eprintln!(
-                        "Warning: Test case {} is using legacy code PROJECT_PATH_ESCAPE",
-                        i
-                    );
-                }
+            // 現時点では警告のみ
+            if code == "PROJECT_PATH_ESCAPE" {
+                eprintln!(
+                    "Warning: Test case {} is using legacy code PROJECT_PATH_ESCAPE",
+                    i
+                );
             }
         }
     }
@@ -182,10 +182,10 @@ async fn test_error_code_consistency() {
         )
         .await;
 
-        if let Err(err) = res {
-            if let Some(code) = get_error_code(&err) {
-                error_codes.push(code);
-            }
+        if let Err(err) = res
+            && let Some(code) = get_error_code(&err)
+        {
+            error_codes.push(code);
         }
     }
 

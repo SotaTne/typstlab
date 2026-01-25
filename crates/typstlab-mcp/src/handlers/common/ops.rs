@@ -116,7 +116,10 @@ pub fn browse_dir_sync(
 
         let relative_path = path
             .strip_prefix(project_root)
-            .map(|p| p.to_string_lossy().to_string())
+            .map(|p| {
+                // Convert to forward slashes for cross-platform consistency (AGENTS.md)
+                p.to_string_lossy().replace('\\', "/")
+            })
             .unwrap_or_else(|_| entry.file_name().to_string_lossy().to_string());
 
         items.push(BrowseItem {

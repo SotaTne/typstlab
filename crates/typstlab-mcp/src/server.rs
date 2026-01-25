@@ -10,9 +10,6 @@ use rmcp::{
 };
 use std::path::Path;
 
-#[cfg(test)]
-use typstlab_testkit::temp_dir_in_workspace;
-
 use typstlab_core::config::consts::search::MAX_FILE_BYTES;
 
 #[derive(Clone)]
@@ -163,9 +160,16 @@ impl TypstlabServer {
         &self,
         uri: &str,
     ) -> Result<ReadResourceResult, ErrorData> {
-        // For testing, create a dummy token
         self.read_resource_by_uri(uri, tokio_util::sync::CancellationToken::new())
             .await
+    }
+
+    pub async fn test_read_resource_with_token(
+        &self,
+        uri: &str,
+        token: tokio_util::sync::CancellationToken,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        self.read_resource_by_uri(uri, token).await
     }
 
     async fn read_resource_by_uri(
@@ -181,10 +185,18 @@ impl TypstlabServer {
         }
 
         if let Some(path) = uri.strip_prefix("typstlab://rules/") {
-            return self.handle_rules_file(uri, path).await;
+            let normalized = path.replace('\\', "/");
+            if normalized.is_empty() {
+                return Err(crate::errors::invalid_params("Resource path required"));
+            }
+            return self
+                .handle_rules_file(uri, Path::new(&normalized), token)
+                .await;
         }
+
         if let Some(path) = uri.strip_prefix("typstlab://docs/") {
-            return self.handle_docs_file(uri, path).await;
+            let normalized = path.replace('\\', "/");
+            return self.handle_docs_file(uri, &normalized, token).await;
         }
 
         Err(crate::errors::resource_not_found(format!(
@@ -270,43 +282,62 @@ impl TypstlabServer {
     async fn handle_rules_file(
         &self,
         uri: &str,
-        path: &str,
+        path: &Path,
+        token: tokio_util::sync::CancellationToken,
     ) -> Result<ReadResourceResult, ErrorData> {
-        if path.is_empty() {
-            return Err(crate::errors::invalid_params("Resource path required"));
-        }
-        let rules_path = Path::new("rules").join(path);
-        let target =
-            crate::handlers::rules::resolve_rules_path(&self.context.project_root, &rules_path)
-                .await?;
+        // path is already constructed correctly by caller as relative strict path
+        let target = match crate::handlers::rules::resolve_rules_path(
+            &self.context.project_root,
+            path,
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                // Map path validation errors to correct codes
+                // resolve_rules_path returns invalid_params for scope violations, which maps to INVALID_INPUT
+                // path_escape maps to PATH_ESCAPE
+                return Err(e);
+            }
+        };
 
-        self.read_file_resource(uri, &target).await
+        self.read_file_resource(uri, &target, token).await
     }
 
     async fn handle_docs_file(
         &self,
         uri: &str,
         path: &str,
+        token: tokio_util::sync::CancellationToken,
     ) -> Result<ReadResourceResult, ErrorData> {
-        if path.is_empty() {
+        let mut resolved_path = path;
+        if let Some(stripped) = path.strip_prefix("docs/") {
+            resolved_path = stripped;
+        }
+        if resolved_path.is_empty() {
             return Err(crate::errors::invalid_params("Resource path required"));
         }
         let docs_root = self.context.project_root.join(".typstlab/kb/typst/docs");
         let target = crate::handlers::docs::resolve_docs_path(
             &self.context.project_root,
             &docs_root,
-            Path::new(path),
+            Path::new(resolved_path),
         )
         .await?;
 
-        self.read_file_resource(uri, &target).await
+        self.read_file_resource(uri, &target, token).await
     }
 
     async fn read_file_resource(
         &self,
         uri: &str,
         target: &Path,
+        token: tokio_util::sync::CancellationToken,
     ) -> Result<ReadResourceResult, ErrorData> {
+        if token.is_cancelled() {
+            return Err(crate::errors::request_cancelled());
+        }
+
         if !target.exists() || !target.is_file() {
             return Err(crate::errors::resource_not_found(format!(
                 "Resource not found: {}",
@@ -319,6 +350,11 @@ impl TypstlabServer {
                 uri
             )));
         }
+
+        if token.is_cancelled() {
+            return Err(crate::errors::request_cancelled());
+        }
+
         let metadata = tokio::fs::metadata(target)
             .await
             .map_err(crate::errors::from_display)?;
@@ -330,13 +366,23 @@ impl TypstlabServer {
             )));
         }
 
-        let content = tokio::fs::read_to_string(target)
-            .await
-            .map_err(crate::errors::from_display)?;
+        if token.is_cancelled() {
+            return Err(crate::errors::request_cancelled());
+        }
 
-        Ok(ReadResourceResult {
-            contents: vec![ResourceContents::text(content, uri)],
-        })
+        let read_future = tokio::fs::read_to_string(target);
+
+        tokio::select! {
+            res = read_future => {
+                let content = res.map_err(crate::errors::from_display)?;
+                Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(content, uri)],
+                })
+            }
+            _ = token.cancelled() => {
+                Err(crate::errors::request_cancelled())
+            }
+        }
     }
 }
 

@@ -122,10 +122,12 @@ impl DocsTool {
             }
         }
 
+        let docs_root_for_browse = docs_root.clone();
+        let project_root_for_browse = project_root.clone();
         let mut result = tokio::task::spawn_blocking(move || {
             ops::browse_dir_sync(
-                &docs_root,
-                &project_root,
+                &docs_root_for_browse,
+                &project_root_for_browse,
                 path_arg.as_deref(),
                 &["md".to_string()],
                 1000,
@@ -137,6 +139,18 @@ impl DocsTool {
 
         // docs固有ロジック: 隠しファイル除外
         result.items.retain(|item| !item.name.starts_with('.'));
+        let prefix = docs_root
+            .strip_prefix(&project_root)
+            .ok()
+            .map(|p| p.to_string_lossy().replace('\\', "/"));
+        if let Some(prefix) = prefix {
+            let prefix = format!("{}/", prefix);
+            for item in &mut result.items {
+                if let Some(stripped) = item.path.strip_prefix(&prefix) {
+                    item.path = format!("docs/{}", stripped);
+                }
+            }
+        }
 
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string(&result).map_err(errors::from_display)?,
@@ -190,11 +204,12 @@ impl DocsTool {
                 token,
                 |path, content| {
                     let mut file_matches = Vec::new();
-                    // Use project root relative path for consistency with rules_search
+                    // Use docs_root relative path for search results (cross-platform)
                     let rel_path = path
-                        .strip_prefix(&project_root_path)
+                        .strip_prefix(&docs_root_path)
                         .ok()?
-                        .to_string_lossy();
+                        .to_string_lossy()
+                        .replace('\\', "/"); // Cross-platform consistency
 
                     for (line_index, line) in content.lines().enumerate() {
                         if line.to_lowercase().contains(&query_lowercase) {
