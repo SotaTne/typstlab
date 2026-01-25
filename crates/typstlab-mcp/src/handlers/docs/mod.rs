@@ -43,6 +43,15 @@ impl DocsTool {
                 }
                 .boxed()
             }))
+            .with_route(ToolRoute::new_dyn(Self::docs_get_attr(), |mut ctx| {
+                let server = ctx.service;
+                let args_res = Parameters::<DocsGetArgs>::from_context_part(&mut ctx);
+                async move {
+                    let Parameters(args) = args_res?;
+                    Self::docs_get(server, args).await
+                }
+                .boxed()
+            }))
     }
 
     fn docs_browse_attr() -> Tool {
@@ -64,6 +73,20 @@ impl DocsTool {
             Cow::Borrowed("docs_search"),
             "Search documentation files",
             rmcp::handler::server::common::schema_for_type::<DocsSearchArgs>(),
+        )
+        .with_safety(Safety {
+            network: false,
+            reads: true,
+            writes: false,
+            writes_sot: false,
+        })
+    }
+
+    fn docs_get_attr() -> Tool {
+        Tool::new(
+            Cow::Borrowed("docs_get"),
+            "Get the content of a documentation file",
+            rmcp::handler::server::common::schema_for_type::<DocsGetArgs>(),
         )
         .with_safety(Safety {
             network: false,
@@ -239,6 +262,26 @@ impl DocsTool {
             serde_json::to_string(&result).map_err(errors::from_display)?,
         )]))
     }
+
+    async fn docs_get(
+        server: &TypstlabServer,
+        args: DocsGetArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let docs_root = server.context.project_root.join(".typstlab/kb/typst/docs");
+        let requested_path = Path::new(&args.path);
+
+        let target =
+            resolve_docs_path(&server.context.project_root, &docs_root, requested_path).await?;
+        let project_root = server.context.project_root.clone();
+
+        let content = tokio::task::spawn_blocking(move || {
+            ops::read_markdown_file_sync(&target, &project_root)
+        })
+        .await
+        .map_err(|e| errors::internal_error(format!("Read task panicked: {}", e)))??;
+
+        Ok(CallToolResult::success(vec![Content::text(content)]))
+    }
 }
 
 pub(crate) async fn resolve_docs_path(
@@ -268,6 +311,11 @@ pub struct DocsBrowseArgs {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct DocsSearchArgs {
     pub query: String,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct DocsGetArgs {
+    pub path: String,
 }
 
 #[cfg(test)]

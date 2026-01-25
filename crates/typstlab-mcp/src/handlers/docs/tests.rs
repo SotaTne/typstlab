@@ -546,3 +546,71 @@ async fn test_docs_browse_empty_subdir() {
     assert!(items.is_empty(), "Empty directory should have no items");
     // Phase 1.5: 存在するパスではmissingフィールドは無い
 }
+
+#[tokio::test]
+async fn test_docs_get_success() {
+    let temp = temp_dir_in_workspace();
+    let docs_dir = temp.path().join(".typstlab/kb/typst/docs");
+    fs::create_dir_all(&docs_dir).await.unwrap();
+    let content = "# Test Doc\nBody content";
+    fs::write(docs_dir.join("test.md"), content).await.unwrap();
+
+    let ctx = McpContext::new(temp.path().to_path_buf());
+    let server = TypstlabServer::new(ctx, false);
+
+    use super::DocsGetArgs;
+    let res = DocsTool::docs_get(
+        &server,
+        DocsGetArgs {
+            path: "test.md".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+    let text = res.content[0].as_text().expect("Expected text content");
+    assert_eq!(text.text, content);
+}
+
+#[tokio::test]
+async fn test_docs_get_not_found() {
+    let temp = temp_dir_in_workspace();
+    let ctx = McpContext::new(temp.path().to_path_buf());
+    let server = TypstlabServer::new(ctx, false);
+
+    use super::DocsGetArgs;
+    let res = DocsTool::docs_get(
+        &server,
+        DocsGetArgs {
+            path: "missing.md".to_string(),
+        },
+    )
+    .await;
+
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert_eq!(err.code, rmcp::model::ErrorCode(-32002)); // NOT_FOUND
+}
+
+#[tokio::test]
+async fn test_docs_get_invalid_extension() {
+    let temp = temp_dir_in_workspace();
+    let docs_dir = temp.path().join(".typstlab/kb/typst/docs");
+    fs::create_dir_all(&docs_dir).await.unwrap();
+    fs::write(docs_dir.join("test.txt"), "text").await.unwrap();
+
+    let ctx = McpContext::new(temp.path().to_path_buf());
+    let server = TypstlabServer::new(ctx, false);
+
+    use super::DocsGetArgs;
+    let res = DocsTool::docs_get(
+        &server,
+        DocsGetArgs {
+            path: "test.txt".to_string(),
+        },
+    )
+    .await;
+
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert_eq!(err.code, rmcp::model::ErrorCode(-32602)); // INVALID_INPUT
+}

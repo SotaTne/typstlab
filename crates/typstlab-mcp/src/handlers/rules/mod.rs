@@ -47,8 +47,15 @@ impl RulesTool {
                 }
                 .boxed()
             }))
-            // Note: rules_get is not publicized as a tool (DESIGN.md 5.10.1)
-            // Content retrieval should use read_resource (typstlab://rules/*)
+            .with_route(ToolRoute::new_dyn(Self::rules_get_attr(), |mut ctx| {
+                let server = ctx.service;
+                let args_res = Parameters::<RulesGetArgs>::from_context_part(&mut ctx);
+                async move {
+                    let Parameters(args) = args_res?;
+                    get::rules_get(server, args).await
+                }
+                .boxed()
+            }))
             .with_route(ToolRoute::new_dyn(Self::rules_page_attr(), |mut ctx| {
                 let server = ctx.service;
                 let args_res = Parameters::<RulesPageArgs>::from_context_part(&mut ctx);
@@ -98,8 +105,19 @@ impl RulesTool {
         })
     }
 
-    // rules_get_attr is intentionally removed (DESIGN.md 5.10.1)
-    // Use read_resource (typstlab://rules/*) for content retrieval
+    fn rules_get_attr() -> Tool {
+        Tool::new(
+            Cow::Borrowed("rules_get"),
+            "Get the content of a rule file",
+            rmcp::handler::server::common::schema_for_type::<RulesGetArgs>(),
+        )
+        .with_safety(Safety {
+            network: false,
+            reads: true,
+            writes: false,
+            writes_sot: false,
+        })
+    }
 
     fn rules_page_attr() -> Tool {
         Tool::new(

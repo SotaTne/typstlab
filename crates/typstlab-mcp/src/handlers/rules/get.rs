@@ -15,23 +15,14 @@ pub(crate) async fn rules_get(
 ) -> Result<CallToolResult, McpError> {
     let path = Path::new(&args.path);
     let target = resolve_rules_path(&server.context.project_root, path).await?;
+    let project_root = server.context.project_root.clone();
 
-    if !target.exists() || !target.is_file() {
-        return Err(errors::resource_not_found(format!(
-            "File not found or not a valid rule file: {}",
-            args.path
-        )));
-    }
+    let content = tokio::task::spawn_blocking(move || {
+        crate::handlers::common::ops::read_markdown_file_sync(&target, &project_root)
+    })
+    .await
+    .map_err(|e| errors::internal_error(format!("Read task panicked: {}", e)))??;
 
-    if target.extension().and_then(|ext| ext.to_str()) != Some("md") {
-        return Err(errors::invalid_input("File must be a markdown (.md) file"));
-    }
-
-    enforce_rules_file_size(&target).await?;
-
-    let content = fs::read_to_string(target)
-        .await
-        .map_err(errors::from_display)?;
     Ok(CallToolResult::success(vec![Content::text(content)]))
 }
 

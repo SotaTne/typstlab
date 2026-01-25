@@ -142,9 +142,30 @@ async fn test_rules_search_includes_excerpt() {
 }
 
 #[tokio::test]
+async fn test_rules_get_success() {
+    let temp = temp_dir_in_workspace();
+    let rules_dir = temp.path().join("rules");
+    fs::create_dir_all(&rules_dir).await.unwrap();
+    let content = "# Rule content";
+    fs::write(rules_dir.join("rule.md"), content).await.unwrap();
+
+    let ctx = McpContext::new(temp.path().to_path_buf());
+    let server = TypstlabServer::new(ctx, false);
+
+    let res = RulesTool::rules_get(
+        &server,
+        RulesGetArgs {
+            path: "rules/rule.md".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let text = res.content[0].as_text().expect("Expected text content");
+    assert_eq!(text.text, content);
+}
+
+#[tokio::test]
 async fn test_rules_get_rejects_non_markdown() {
-    // Note: rules_get is deprecated as a public tool (DESIGN.md 5.10.1)
-    // This test uses the internal function for backward compatibility testing
     let temp = temp_dir_in_workspace();
     let rules_dir = temp.path().join("rules");
     fs::create_dir_all(&rules_dir).await.unwrap();
@@ -210,6 +231,32 @@ async fn test_rules_get_non_markdown_returns_invalid_input_code() {
     let err = res.unwrap_err();
     assert_eq!(err.code, rmcp::model::ErrorCode(-32602)); // INVALID_INPUT
     assert_eq!(err.data.unwrap()["code"], crate::errors::INVALID_INPUT);
+}
+
+#[tokio::test]
+async fn test_rules_get_rejects_too_large_file() {
+    let temp = temp_dir_in_workspace();
+    let rules_dir = temp.path().join("rules");
+    fs::create_dir_all(&rules_dir).await.unwrap();
+
+    // MAX_FILE_BYTES + 1
+    let large = vec![b'a'; (MAX_FILE_BYTES + 1) as usize];
+    fs::write(rules_dir.join("big.md"), large).await.unwrap();
+
+    let ctx = McpContext::new(temp.path().to_path_buf());
+    let server = TypstlabServer::new(ctx, false);
+
+    let res = RulesTool::rules_get(
+        &server,
+        RulesGetArgs {
+            path: "rules/big.md".into(),
+        },
+    )
+    .await;
+
+    assert!(res.is_err());
+    let err = res.unwrap_err();
+    assert_eq!(err.code, rmcp::model::ErrorCode(-32003)); // FILE_TOO_LARGE
 }
 
 #[tokio::test]

@@ -8,8 +8,8 @@ use typstlab_mcp::server::TypstlabServer;
 use typstlab_testkit::temp_dir_in_workspace;
 
 #[tokio::test]
-async fn test_rules_get_not_in_list_all() {
-    // rules_getはDESIGN.md仕様に含まれないため、list_allに出現してはならない
+async fn test_rules_get_in_list_all() {
+    // ユーザーの最新の要求により rules_get は公開ツールとなった
     let temp = temp_dir_in_workspace();
     let ctx = McpContext::new(temp.path().to_path_buf());
     let server = TypstlabServer::new(ctx, false);
@@ -18,31 +18,24 @@ async fn test_rules_get_not_in_list_all() {
     let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
     assert!(
-        !tool_names.contains(&"rules_get"),
-        "rules_get should not be in list_all (not in DESIGN.md v0.1 spec)"
+        tool_names.contains(&"rules_get"),
+        "rules_get should be in list_all"
     );
 }
 
 #[tokio::test]
-async fn test_rules_get_call_fails() {
-    // rules_getを呼び出そうとすると「ツール不明」エラーになるべき
-    // エラーメッセージの内容は問わず、エラーが返ることを確認
+async fn test_docs_get_in_list_all() {
     let temp = temp_dir_in_workspace();
     let ctx = McpContext::new(temp.path().to_path_buf());
     let server = TypstlabServer::new(ctx, false);
 
-    // MCPプロトコルでcall_toolを試行
-    // ツールが存在しない場合、RMCPがエラーを返す
-    // 実装依存なのでエラーの詳細は問わない
-
     let tools = server.tool_router.list_all();
     let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
-    // リストに無いことを再確認
-    assert!(!tool_names.contains(&"rules_get"));
-
-    // TODO: call_toolの実際の呼び出しテストはMCPプロトコルレベルで実施
-    // ここではlist_allに無いことを確認するに留める
+    assert!(
+        tool_names.contains(&"docs_get"),
+        "docs_get should be in list_all"
+    );
 }
 
 #[tokio::test]
@@ -60,9 +53,10 @@ async fn test_public_tools_match_design_online() {
         "rules_browse",
         "rules_search",
         "rules_page",
-        "rules_list",
+        "rules_get",
         "docs_browse",
         "docs_search",
+        "docs_get",
         "cmd_generate",
         "cmd_build",
         "cmd_status",
@@ -76,9 +70,6 @@ async fn test_public_tools_match_design_online() {
             expected
         );
     }
-
-    // rules_getは含まれない
-    assert!(!tool_names.contains(&"rules_get"));
 }
 
 #[tokio::test]
@@ -97,9 +88,10 @@ async fn test_public_tools_match_design_offline() {
         "rules_browse",
         "rules_search",
         "rules_page",
-        "rules_list",
+        "rules_get",
         "docs_browse",
         "docs_search",
+        "docs_get",
         "cmd_status",
         "cmd_typst_docs_status",
     ];
@@ -111,17 +103,4 @@ async fn test_public_tools_match_design_offline() {
             expected
         );
     }
-
-    // cmd_generate/cmd_buildは含まれない
-    assert!(
-        !tool_names.contains(&"cmd_generate"),
-        "cmd_generate should not be available offline"
-    );
-    assert!(
-        !tool_names.contains(&"cmd_build"),
-        "cmd_build should not be available offline"
-    );
-
-    // rules_getも含まれない
-    assert!(!tool_names.contains(&"rules_get"));
 }
