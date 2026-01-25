@@ -1,9 +1,10 @@
 //! Status report schema definitions
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Status of a check
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CheckStatus {
     Pass,
@@ -12,7 +13,7 @@ pub enum CheckStatus {
 }
 
 /// Suggested action to resolve an issue
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SuggestedAction {
     RunCommand {
@@ -34,7 +35,7 @@ pub enum SuggestedAction {
 }
 
 /// Individual check result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Check {
     pub name: String,
     pub status: CheckStatus,
@@ -42,7 +43,7 @@ pub struct Check {
 }
 
 /// Status report structure
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct StatusReport {
     pub overall_status: CheckStatus,
     pub checks: Vec<Check>,

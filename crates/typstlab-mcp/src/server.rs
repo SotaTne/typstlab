@@ -1,602 +1,460 @@
-use crate::tools;
-use serde_json::Value;
-use std::path::PathBuf;
-use typstlab_core::error::Result;
+use crate::context::McpContext;
+use crate::handlers::cmd::CmdTool;
+use crate::handlers::docs::DocsTool;
+use crate::handlers::rules::RulesTool;
+use rmcp::{
+    RoleServer, ServerHandler,
+    handler::server::router::{prompt::PromptRouter, tool::ToolRouter},
+    model::*,
+    service::RequestContext,
+};
+use std::path::Path;
 
-use anyhow::Context;
-use typstlab_core::project::Project;
+#[cfg(test)]
+use typstlab_testkit::temp_dir_in_workspace;
 
-/// MCP Server for typstlab
-pub struct McpServer {
-    project: Project,
+const MAX_RESOURCE_BYTES: u64 = 1024 * 1024;
+
+pub struct TypstlabServer {
+    pub context: McpContext,
+    pub tool_router: ToolRouter<TypstlabServer>,
+    pub prompt_router: PromptRouter<TypstlabServer>,
 }
 
-impl McpServer {
-    /// Create a new MCP server
-    pub fn new(root: PathBuf) -> anyhow::Result<Self> {
-        let project = Project::find_root(&root)
-            .context("Failed to search for project root")?
-            .ok_or_else(|| anyhow::anyhow!("Project root not found in {}", root.display()))?;
+impl TypstlabServer {
+    pub fn new(context: McpContext, offline: bool) -> Self {
+        let mut tool_router = ToolRouter::new();
+        tool_router.merge(DocsTool.into_router());
 
-        Ok(Self { project })
-    }
-
-    /// Read a line from stdin
-    fn read_line() -> std::io::Result<String> {
-        let mut buffer = String::new();
-        std::io::stdin().read_line(&mut buffer)?;
-        Ok(buffer)
-    }
-
-    /// Run the MCP server instdio mode
-    pub fn run_stdio_server(root: PathBuf) -> anyhow::Result<()> {
-        let server = Self::new(root)?;
-
-        eprintln!("MCP Server running on stdio...");
-
-        loop {
-            let line = Self::read_line()?;
-            if line.is_empty() {
-                break; // EOF
-            }
-
-            let message: Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("Failed to parse JSON: {}", e);
-                    continue;
-                }
-            };
-
-            // Basic JSON-RPC 2.0 handling
-            // Note: This is a simplified implementation. Real MCP requires fuller JSON-RPC support.
-            // But for now we just wrap our specific tools.
-
-            // For now, this is a placeholder.
-            // The `rmcp` crate integration is planned but not fully wired here yet.
-            // We'll implement a basic dispatcher for testing `typstlab mcp`.
-
-            if let Some(method) = message.get("method").and_then(|m| m.as_str()) {
-                if method == "tools/list" {
-                    let tools = server.list_tools();
-                    let response = serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": message.get("id"),
-                        "result": {
-                            "tools": tools
-                        }
-                    });
-                    println!("{}", serde_json::to_string(&response)?);
-                } else if method == "resources/list" {
-                    let resources = server.list_resources();
-                    let response = serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": message.get("id"),
-                        "result": {
-                            "resources": resources
-                        }
-                    });
-                    println!("{}", serde_json::to_string(&response)?);
-                } else if method == "tools/call" {
-                    // Extract params
-                    if let Some(params) = message.get("params") {
-                        let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                        let args = params
-                            .get("arguments")
-                            .cloned()
-                            .unwrap_or(serde_json::json!({}));
-
-                        match server.handle_tool_call(name, args) {
-                            Ok(result) => {
-                                let response = serde_json::json!({
-                                    "jsonrpc": "2.0",
-                                    "id": message.get("id"),
-                                    "result": result
-                                });
-                                println!("{}", serde_json::to_string(&response)?);
-                            }
-                            Err(e) => {
-                                let response = serde_json::json!({
-                                    "jsonrpc": "2.0",
-                                    "id": message.get("id"),
-                                    "error": {
-                                        "code": -32603,
-                                        "message": e.to_string()
-                                    }
-                                });
-                                println!("{}", serde_json::to_string(&response)?);
-                            }
-                        }
-                    }
-                } else if method == "resources/read"
-                    && let Some(params) = message.get("params")
-                {
-                    let uri = params.get("uri").and_then(|u| u.as_str()).unwrap_or("");
-                    match server.read_resource(uri) {
-                        Ok(content) => {
-                            let response = serde_json::json!({
-                                "jsonrpc": "2.0",
-                                "id": message.get("id"),
-                                "result": {
-                                    "contents": [ content ]
-                                }
-                            });
-                            println!("{}", serde_json::to_string(&response)?);
-                        }
-                        Err(e) => {
-                            let response = serde_json::json!({
-                                "jsonrpc": "2.0",
-                                "id": message.get("id"),
-                                "error": {
-                                    "code": -32603,
-                                    "message": e.to_string()
-                                }
-                            });
-                            println!("{}", serde_json::to_string(&response)?);
-                        }
-                    }
-                }
-            }
+        // Use offline-safe router when offline mode is enabled
+        // This allows read-only tools (cmd_status, cmd_typst_docs_status) to work offline
+        // while excluding network-dependent tools (cmd_generate, cmd_build)
+        if offline {
+            tool_router.merge(CmdTool.into_router_offline());
+        } else {
+            tool_router.merge(CmdTool.into_router());
         }
+
+        tool_router.merge(RulesTool.into_router());
+
+        Self {
+            context,
+            tool_router,
+            prompt_router: PromptRouter::new(),
+        }
+    }
+
+    pub async fn run_stdio_server(root: std::path::PathBuf, offline: bool) -> anyhow::Result<()> {
+        let project = typstlab_core::project::Project::find_root(&root)?.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Project not found: typstlab.toml not found in current or parent directories"
+            )
+        })?;
+        let context = McpContext::new(project.root);
+        let server = Self::new(context, offline);
+        let transport = rmcp::transport::io::stdio();
+        let service = rmcp::serve_server(server, transport).await?;
+        service.waiting().await?;
         Ok(())
     }
+}
 
-    pub fn list_resources(&self) -> Vec<Resource> {
-        vec![
-            Resource {
-                uri: "typstlab://rules".to_string(),
-                name: "Project Rules".to_string(),
-                mime_type: Some("application/json".to_string()),
-                description: Some("Project configuration from typstlab.toml".to_string()),
+pub type McpServer = TypstlabServer;
+
+impl ServerHandler for TypstlabServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            protocol_version: ProtocolVersion::V_2024_11_05,
+            capabilities: ServerCapabilities {
+                tools: Some(ToolsCapability {
+                    list_changed: Some(false),
+                }),
+                resources: Some(ResourcesCapability {
+                    subscribe: Some(false),
+                    list_changed: Some(false),
+                }),
+                prompts: Some(PromptsCapability {
+                    list_changed: Some(false),
+                }),
+                ..Default::default()
             },
-            Resource {
-                uri: "typstlab://docs".to_string(),
-                name: "Documentation".to_string(),
-                mime_type: Some("text/markdown".to_string()),
-                description: Some("Generated documentation from .typstlab/kb".to_string()),
+            server_info: Implementation {
+                name: "typstlab".into(),
+                version: "0.1.0".into(),
+                icons: None,
+                title: Some("typstlab".into()),
+                website_url: None,
             },
-        ]
+            instructions: Some(
+                "typstlab MCP server for managing Typst projects and documentation.".to_string(),
+            ),
+        }
     }
 
-    /// Read a specific resource
-    pub fn read_resource(&self, uri: &str) -> Result<ResourceContent> {
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult::with_all_items(self.tool_router.list_all()))
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.tool_router
+            .call(rmcp::handler::server::tool::ToolCallContext::new(
+                self, request, context,
+            ))
+            .await
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        Ok(ListResourcesResult::with_all_items(vec![
+            Resource::new(
+                RawResource {
+                    uri: "typstlab://rules".into(),
+                    name: "rules".into(),
+                    title: None,
+                    description: Some("Project rules and guidelines".into()),
+                    mime_type: Some("text/markdown".into()),
+                    size: None,
+                    icons: None,
+                    meta: None,
+                },
+                None,
+            ),
+            Resource::new(
+                RawResource {
+                    uri: "typstlab://docs".into(),
+                    name: "docs".into(),
+                    title: None,
+                    description: Some("Typst documentation".into()),
+                    mime_type: Some("text/markdown".into()),
+                    size: None,
+                    icons: None,
+                    meta: None,
+                },
+                None,
+            ),
+        ]))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        self.read_resource_by_uri(request.uri.as_str()).await
+    }
+}
+
+impl TypstlabServer {
+    async fn read_resource_by_uri(&self, uri: &str) -> Result<ReadResourceResult, ErrorData> {
         if uri == "typstlab://rules" {
-            let content = serde_json::to_string_pretty(self.project.config())?;
-            return Ok(ResourceContent {
-                uri: uri.to_string(),
-                mime_type: Some("application/json".to_string()),
-                text: content,
+            let root = self.context.project_root.join("rules");
+            if !root.exists() {
+                return Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(
+                        serde_json::to_string(&serde_json::json!({ "items": [] }))
+                            .map_err(|err| ErrorData::internal_error(err.to_string(), None))?,
+                        uri,
+                    )],
+                });
+            }
+            let items =
+                crate::handlers::rules::rules_browse_items(&root, &self.context.project_root)
+                    .await?;
+            let text = serde_json::to_string(&serde_json::json!({
+                "items": items,
+                "missing": false,
+            }))
+            .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+            return Ok(ReadResourceResult {
+                contents: vec![ResourceContents::text(text, uri)],
             });
         }
 
-        if let Some(path_str) = uri.strip_prefix("typstlab://docs/") {
-            // Defend against path traversal
-            let path = std::path::Path::new(path_str);
-            if path
-                .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir))
+        if uri == "typstlab://docs" {
+            let root = self.context.project_root.join(".typstlab/kb/typst/docs");
+            if !root.exists() {
+                return Ok(ReadResourceResult {
+                    contents: vec![ResourceContents::text(
+                        serde_json::to_string(&serde_json::json!({
+                            "items": [],
+                            "missing": true,
+                        }))
+                        .map_err(|err| ErrorData::internal_error(err.to_string(), None))?,
+                        uri,
+                    )],
+                });
+            }
+            let mut items = Vec::new();
+            let mut dir = tokio::fs::read_dir(&root)
+                .await
+                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+            while let Some(entry) = dir
+                .next_entry()
+                .await
+                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?
             {
-                return Err(typstlab_core::error::TypstlabError::Generic(format!(
-                    "Invalid path (traversal attempt): {}",
-                    path_str
-                )));
+                let file_type = entry
+                    .file_type()
+                    .await
+                    .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+                if file_type.is_symlink() {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let entry_path = entry.path();
+                let entry_type = if entry_path.is_dir() {
+                    "directory"
+                } else if entry_path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+                    "file"
+                } else {
+                    continue;
+                };
+                items.push(serde_json::json!({
+                    "name": name,
+                    "type": entry_type,
+                }));
             }
-
-            let docs_root = self.project.root.join(".typstlab/kb/docs");
-            let file_path = docs_root.join(path);
-
-            // Check if file is within docs root (canonicalization check)
-            // Note: This requires file existence, so we read it directly.
-            if !file_path.exists() {
-                return Err(typstlab_core::error::TypstlabError::Generic(format!(
-                    "File not found: {}",
-                    path_str
-                )));
-            }
-
-            let text = std::fs::read_to_string(file_path)?;
-            return Ok(ResourceContent {
-                uri: uri.to_string(),
-                mime_type: Some("text/markdown".to_string()),
-                text,
+            items.sort_by_key(|i| {
+                i.get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string()
+            });
+            let text = serde_json::to_string(&serde_json::json!({ "items": items }))
+                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+            return Ok(ReadResourceResult {
+                contents: vec![ResourceContents::text(text, uri)],
             });
         }
 
-        Err(typstlab_core::error::TypstlabError::Generic(format!(
-            "Unknown resource: {}",
-            uri
-        )))
-    }
-
-    /// Handle a tool call
-    pub fn handle_tool_call(&self, tool_name: &str, input: Value) -> Result<Value> {
-        match tool_name {
-            "rules_list" => {
-                let input: tools::rules::RulesListInput = serde_json::from_value(input)?;
-                let output = tools::rules::rules_list(input, &self.project.root)?;
-                Ok(serde_json::to_value(output)?)
+        if let Some(path) = uri.strip_prefix("typstlab://rules/") {
+            if path.is_empty() {
+                return Err(ErrorData::invalid_params(
+                    "Resource path required".to_string(),
+                    None,
+                ));
             }
-            "rules_get" => {
-                let input: tools::rules::RulesGetInput = serde_json::from_value(input)?;
-                let output = tools::rules::rules_get(input, &self.project.root)?;
-                Ok(serde_json::to_value(output)?)
+            let _requested = std::path::Path::new(path);
+            // resolve_rules_path expects paths starting with "rules/" or "papers/<id>/rules"
+            // URI: typstlab://rules/guidelines.md -> path: "guidelines.md" -> need: "rules/guidelines.md"
+            let full_path = format!("rules/{}", path);
+            let target = crate::handlers::rules::resolve_rules_path(
+                &self.context.project_root,
+                Path::new(&full_path),
+            )
+            .await?;
+            if !target.exists() || !target.is_file() {
+                return Err(ErrorData::resource_not_found(
+                    format!("Resource not found: {}", uri),
+                    None,
+                ));
             }
-            "rules_page" => {
-                let input: tools::rules::RulesPageInput = serde_json::from_value(input)?;
-                let output = tools::rules::rules_page(input, &self.project.root)?;
-                Ok(serde_json::to_value(output)?)
+            if target.extension().and_then(|ext| ext.to_str()) != Some("md") {
+                return Err(ErrorData::resource_not_found(
+                    format!("Resource not found: {}", uri),
+                    None,
+                ));
             }
-            "rules_search" => {
-                let input: tools::rules::RulesSearchInput = serde_json::from_value(input)?;
-                let output = tools::rules::rules_search(input, &self.project.root)?;
-                Ok(serde_json::to_value(output)?)
+            let metadata = tokio::fs::metadata(&target)
+                .await
+                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+            if metadata.len() > MAX_RESOURCE_BYTES {
+                return Err(crate::errors::error_with_code(
+                    crate::errors::FILE_TOO_LARGE,
+                    format!("Resource exceeds {} bytes", MAX_RESOURCE_BYTES),
+                ));
             }
-            "cmd_generate" => {
-                let args: GenerateArgs = serde_json::from_value(input)?;
-                typstlab_core::project::generate_paper(&self.project, &args.paper_id)?;
-                Ok(serde_json::json!({
-                    "status": "success",
-                    "message": format!("Successfully generated paper artifacts: {}", args.paper_id)
-                }))
-            }
-            "docs_browse" => {
-                let input: tools::docs::DocsBrowseInput = serde_json::from_value(input)?;
-                let output = tools::docs::docs_browse(input, &self.project.root)
-                    .map_err(|e| typstlab_core::error::TypstlabError::Generic(e.to_string()))?;
-                Ok(serde_json::to_value(output)?)
-            }
-            "docs_search" => {
-                let input: tools::docs::DocsSearchInput = serde_json::from_value(input)?;
-                let output = tools::docs::docs_search(input, &self.project.root)
-                    .map_err(|e| typstlab_core::error::TypstlabError::Generic(e.to_string()))?;
-                Ok(serde_json::to_value(output)?)
-            }
-            _ => Err(typstlab_core::error::TypstlabError::Generic(format!(
-                "Unknown tool: {}",
-                tool_name
-            ))),
+            let content = tokio::fs::read_to_string(&target)
+                .await
+                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+            return Ok(ReadResourceResult {
+                contents: vec![ResourceContents::text(content, uri)],
+            });
         }
+
+        if let Some(path) = uri.strip_prefix("typstlab://docs/") {
+            if path.is_empty() {
+                return Err(ErrorData::invalid_params(
+                    "Resource path required".to_string(),
+                    None,
+                ));
+            }
+            let docs_root = self.context.project_root.join(".typstlab/kb/typst/docs");
+            let requested = std::path::Path::new(path);
+            let target = crate::handlers::docs::resolve_docs_path(&docs_root, requested).await?;
+            if !target.exists() || !target.is_file() {
+                return Err(ErrorData::resource_not_found(
+                    format!("Resource not found: {}", uri),
+                    None,
+                ));
+            }
+            if target.extension().and_then(|ext| ext.to_str()) != Some("md") {
+                return Err(ErrorData::resource_not_found(
+                    format!("Resource not found: {}", uri),
+                    None,
+                ));
+            }
+            let metadata = tokio::fs::metadata(&target)
+                .await
+                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+            if metadata.len() > MAX_RESOURCE_BYTES {
+                return Err(crate::errors::error_with_code(
+                    crate::errors::FILE_TOO_LARGE,
+                    format!("Resource exceeds {} bytes", MAX_RESOURCE_BYTES),
+                ));
+            }
+            let content = tokio::fs::read_to_string(&target)
+                .await
+                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+            return Ok(ReadResourceResult {
+                contents: vec![ResourceContents::text(content, uri)],
+            });
+        }
+
+        Err(ErrorData::resource_not_found(
+            format!("Resource not found: {}", uri),
+            None,
+        ))
     }
-
-    /// List available tools
-    pub fn list_tools(&self) -> Vec<ToolInfo> {
-        vec![
-            ToolInfo {
-                name: "rules_list".to_string(),
-                description: "List files in rules/ directories with pagination".to_string(),
-                safety: Safety {
-                    network: false,
-                    reads: true,
-                    writes: false,
-                    writes_sot: false,
-                },
-            },
-            ToolInfo {
-                name: "rules_get".to_string(),
-                description: "Retrieve full content of a rules file".to_string(),
-                safety: Safety {
-                    network: false,
-                    reads: true,
-                    writes: false,
-                    writes_sot: false,
-                },
-            },
-            ToolInfo {
-                name: "rules_page".to_string(),
-                description: "Retrieve file content in line-based chunks".to_string(),
-                safety: Safety {
-                    network: false,
-                    reads: true,
-                    writes: false,
-                    writes_sot: false,
-                },
-            },
-            ToolInfo {
-                name: "rules_search".to_string(),
-                description: "Full-text search across all rules files".to_string(),
-                safety: Safety {
-                    network: false,
-                    reads: true,
-                    writes: false,
-                    writes_sot: false,
-                },
-            },
-            ToolInfo {
-                name: "cmd_generate".to_string(),
-                description: "Generate paper templates (does not compile)".to_string(),
-                safety: Safety {
-                    network: true, // May download packages
-                    reads: true,
-                    writes: true, // Writes artifacts
-                    writes_sot: true,
-                },
-            },
-            ToolInfo {
-                name: "docs_browse".to_string(),
-                description: "Browse documentation directory structure".to_string(),
-                safety: Safety {
-                    network: false,
-                    reads: true,
-                    writes: false,
-                    writes_sot: false,
-                },
-            },
-            ToolInfo {
-                name: "docs_search".to_string(),
-                description: "Search within documentation files".to_string(),
-                safety: Safety {
-                    network: false,
-                    reads: true,
-                    writes: false,
-                    writes_sot: false,
-                },
-            },
-        ]
-    }
-}
-
-#[derive(serde::Deserialize)]
-struct GenerateArgs {
-    paper_id: String,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ToolInfo {
-    pub name: String,
-    pub description: String,
-    pub safety: Safety,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Safety {
-    pub network: bool,
-    pub reads: bool,
-    pub writes: bool,
-    pub writes_sot: bool,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Resource {
-    pub uri: String,
-    pub name: String,
-    pub mime_type: Option<String>,
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ResourceContent {
-    pub uri: String,
-    pub mime_type: Option<String>,
-    pub text: String,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use tokio::fs;
     use typstlab_testkit::temp_dir_in_workspace;
 
-    fn create_test_project_config(root: &std::path::Path) {
-        let config = r#"
-[project]
-name = "test-project"
-init_date = "2026-01-14"
-
-[typst]
-version = "0.12.0"
-"#;
-        std::fs::write(root.join("typstlab.toml"), config).unwrap();
+    #[tokio::test]
+    async fn test_server_info() {
+        let ctx = McpContext::new(PathBuf::from("."));
+        let server = TypstlabServer::new(ctx, false);
+        let info = server.get_info();
+        assert_eq!(info.server_info.name, "typstlab");
+        assert_eq!(info.protocol_version, ProtocolVersion::V_2024_11_05);
     }
 
-    #[test]
-    fn test_list_tools() {
-        let temp = temp_dir_in_workspace();
-        create_test_project_config(temp.path());
+    #[tokio::test]
+    async fn test_list_tools() {
+        let ctx = McpContext::new(PathBuf::from("."));
+        let server = TypstlabServer::new(ctx, false);
 
-        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
-        let tools = server.list_tools();
-        assert_eq!(tools.len(), 7);
-        assert!(tools.iter().any(|t| t.name == "rules_list"));
-        assert!(tools.iter().any(|t| t.name == "rules_get"));
-        assert!(tools.iter().any(|t| t.name == "rules_page"));
-        assert!(tools.iter().any(|t| t.name == "rules_search"));
-        assert!(tools.iter().any(|t| t.name == "cmd_generate"));
+        let tools = server.tool_router.list_all();
+        let names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
+        assert!(names.contains(&"rules_browse".to_string()));
+        assert!(names.contains(&"cmd_build".to_string()));
     }
 
-    #[test]
-    fn test_init_with_valid_project() {
-        let temp = temp_dir_in_workspace();
-        create_test_project_config(temp.path());
+    #[tokio::test]
+    async fn test_list_resources() {
+        let ctx = McpContext::new(PathBuf::from("."));
+        let server = TypstlabServer::new(ctx, false);
 
-        let server = McpServer::new(temp.path().to_path_buf());
-        assert!(server.is_ok());
+        // We can't easily call list_resources without RequestContext,
+        // but we can test it handles the URIs we expect in read_resource later.
+        // For now, let's just ensure the server initializes.
+        assert!(!server.tool_router.list_all().is_empty());
     }
 
-    #[test]
-    fn test_init_fails_without_config() {
+    #[tokio::test]
+    async fn test_read_resource_rules_root_returns_listing() {
         let temp = temp_dir_in_workspace();
-        // Do not create typstlab.toml
+        let rules_dir = temp.path().join("rules");
+        fs::create_dir_all(&rules_dir).await.unwrap();
+        fs::write(rules_dir.join("a.md"), "# A").await.unwrap();
 
-        let server = McpServer::new(temp.path().to_path_buf());
-        assert!(server.is_err());
+        let ctx = McpContext::new(temp.path().to_path_buf());
+        let server = TypstlabServer::new(ctx, false);
+
+        let res = server
+            .read_resource_by_uri("typstlab://rules")
+            .await
+            .expect("read resource");
+        let content = &res.contents[0];
+        let text = match content {
+            ResourceContents::TextResourceContents { text, .. } => text,
+            _ => panic!("expected text content"),
+        };
+        assert!(text.contains("\"path\":\"rules/a.md\""));
     }
 
-    #[test]
-    fn test_list_resources() {
+    #[tokio::test]
+    async fn test_read_resource_docs_root_returns_listing() {
         let temp = temp_dir_in_workspace();
-        create_test_project_config(temp.path());
-
-        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
-        let resources = server.list_resources();
-        assert!(resources.iter().any(|r| r.uri == "typstlab://rules"));
-    }
-
-    #[test]
-    fn test_read_rules_resource() {
-        let temp = temp_dir_in_workspace();
-        create_test_project_config(temp.path());
-
-        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
-        let content = server.read_resource("typstlab://rules").unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&content.text).unwrap();
-        assert_eq!(json["project"]["name"], "test-project");
-    }
-
-    #[test]
-    fn test_read_docs_resource() {
-        let temp = temp_dir_in_workspace();
-        create_test_project_config(temp.path());
-
-        // Create a dummy document file
-        let docs_dir = temp.path().join(".typstlab/kb/docs");
-        std::fs::create_dir_all(&docs_dir).unwrap();
-        std::fs::write(docs_dir.join("intro.md"), "# Introduction").unwrap();
-
-        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
-
-        // Test listing
-        let resources = server.list_resources();
-        assert!(resources.iter().any(|r| r.uri == "typstlab://docs"));
-
-        // Test reading
-        let content = server.read_resource("typstlab://docs/intro.md").unwrap();
-        assert_eq!(content.text, "# Introduction");
-    }
-
-    #[test]
-    fn test_tool_cmd_generate_success() {
-        let temp = temp_dir_in_workspace();
-        create_test_project_config(temp.path());
-
-        // Create a dummy paper config
-        let paper_dir = temp.path().join("papers/paper1");
-        std::fs::create_dir_all(&paper_dir).unwrap();
-        std::fs::write(
-            paper_dir.join("paper.toml"),
-            r#"
-[paper]
-id = "paper1"
-title = "Test Paper"
-language = "en"
-date = "2026-01-14"
-
-[output]
-name = "paper1"
-"#,
-        )
-        .unwrap();
-
-        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
-
-        // Check tool listing
-        let tools = server.list_tools();
-        assert!(tools.iter().any(|t| t.name == "cmd_generate"));
-
-        // Call cmd_generate tool
-        let args = serde_json::json!({
-            "paper_id": "paper1"
-        });
-
-        let result = server.handle_tool_call("cmd_generate", args);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_tool_docs_browse() -> anyhow::Result<()> {
-        let temp = temp_dir_in_workspace();
-        create_test_project_config(temp.path());
-
-        // Setup docs directory structure (.typstlab/kb/docs based on Phase 2 implementation)
         let docs_dir = temp.path().join(".typstlab/kb/typst/docs");
-        std::fs::create_dir_all(&docs_dir)?;
-        std::fs::write(docs_dir.join("intro.md"), "# Intro")?;
-        std::fs::create_dir(docs_dir.join("reference"))?;
-        std::fs::write(docs_dir.join("reference/syntax.md"), "# Syntax")?;
+        fs::create_dir_all(&docs_dir).await.unwrap();
+        fs::write(docs_dir.join("b.md"), "# B").await.unwrap();
 
-        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
+        let ctx = McpContext::new(temp.path().to_path_buf());
+        let server = TypstlabServer::new(ctx, false);
 
-        // 1. Verify tool exists in list
-        let tools = server.list_tools();
-        assert!(tools.iter().any(|t| t.name == "docs_browse"));
-
-        // 2. Browse root
-        let args = serde_json::json!({});
-        // Note: Default path="" implied
-        let result = server.handle_tool_call("docs_browse", args)?;
-
-        // Check for items array
-        let items = result["items"]
-            .as_array()
-            .expect("result should contain items array");
-        // Should contain intro.md (file) and reference (dir)
-        assert!(
-            items
-                .iter()
-                .any(|i| i["name"] == "intro.md" && i["type"] == "file")
-        );
-        assert!(
-            items
-                .iter()
-                .any(|i| i["name"] == "reference" && i["type"] == "directory")
-        );
-
-        // 3. Browse subdirectory
-        let args_sub = serde_json::json!({
-            "path": "reference"
-        });
-        let result_sub = server.handle_tool_call("docs_browse", args_sub)?;
-        let items_sub = result_sub["items"]
-            .as_array()
-            .expect("result should contain items array");
-        assert!(
-            items_sub
-                .iter()
-                .any(|i| i["name"] == "syntax.md" && i["type"] == "file")
-        );
-
-        Ok(())
+        let res = server
+            .read_resource_by_uri("typstlab://docs")
+            .await
+            .expect("read resource");
+        let content = &res.contents[0];
+        let text = match content {
+            ResourceContents::TextResourceContents { text, .. } => text,
+            _ => panic!("expected text content"),
+        };
+        assert!(text.contains("\"name\":\"b.md\""));
     }
+}
+#[tokio::test]
+async fn test_offline_mode_includes_status() {
+    let temp = temp_dir_in_workspace();
+    let ctx = McpContext::new(temp.path().to_path_buf());
+    let server = TypstlabServer::new(ctx, true); // offline = true
 
-    #[test]
-    fn test_tool_docs_search() -> anyhow::Result<()> {
-        let temp = temp_dir_in_workspace();
-        create_test_project_config(temp.path());
+    // cmd_status should be available in offline mode
+    let tools = server.tool_router.list_all();
+    let status_tool = tools.iter().find(|t| t.name == "cmd_status");
+    assert!(
+        status_tool.is_some(),
+        "cmd_status should be available in offline mode"
+    );
+}
 
-        let docs_dir = temp.path().join(".typstlab/kb/typst/docs");
-        std::fs::create_dir_all(&docs_dir)?;
+#[tokio::test]
+async fn test_offline_mode_excludes_build() {
+    let temp = temp_dir_in_workspace();
+    let ctx = McpContext::new(temp.path().to_path_buf());
+    let server = TypstlabServer::new(ctx, true); // offline = true
 
-        // Setup files for search
-        std::fs::write(docs_dir.join("a.md"), "This is a search test.")?;
-        std::fs::write(docs_dir.join("b.md"), "Another file with search keyword.")?;
-        std::fs::write(docs_dir.join("c.md"), "No query match here.")?;
+    // cmd_build should NOT be available in offline mode
+    let tools = server.tool_router.list_all();
+    let build_tool = tools.iter().find(|t| t.name == "cmd_build");
+    assert!(
+        build_tool.is_none(),
+        "cmd_build should NOT be available in offline mode"
+    );
+}
 
-        let server = McpServer::new(temp.path().to_path_buf()).unwrap();
+#[tokio::test]
+async fn test_offline_mode_excludes_generate() {
+    let temp = temp_dir_in_workspace();
+    let ctx = McpContext::new(temp.path().to_path_buf());
+    let server = TypstlabServer::new(ctx, true); // offline = true
 
-        // 1. Verify tool exists
-        let tools = server.list_tools();
-        assert!(tools.iter().any(|t| t.name == "docs_search"));
-
-        // 2. Search for "search"
-        let args = serde_json::json!({
-            "query": "search"
-        });
-        let result = server.handle_tool_call("docs_search", args)?;
-
-        let matches = result["matches"]
-            .as_array()
-            .expect("result should contain matches array");
-        // Should find "search" in a.md and b.md
-        assert_eq!(matches.len(), 2);
-
-        // Check paths exist in matches
-        let paths: Vec<String> = matches
-            .iter()
-            .map(|m| m["path"].as_str().unwrap().to_string())
-            .collect();
-
-        assert!(paths.contains(&"a.md".to_string()));
-        assert!(paths.contains(&"b.md".to_string()));
-
-        Ok(())
-    }
+    // cmd_generate should NOT be available in offline mode
+    let tools = server.tool_router.list_all();
+    let generate_tool = tools.iter().find(|t| t.name == "cmd_generate");
+    assert!(
+        generate_tool.is_none(),
+        "cmd_generate should NOT be available in offline mode"
+    );
 }

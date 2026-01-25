@@ -140,7 +140,14 @@ pub enum DocsCommands {
 #[derive(Subcommand)]
 pub enum McpCommands {
     /// Run the MCP server over stdio
-    Stdio,
+    Stdio {
+        /// Project root directory (optional, defaults to current directory)
+        #[arg(long)]
+        root: Option<std::path::PathBuf>,
+        /// Disable tools that require network access
+        #[arg(long)]
+        offline: bool,
+    },
 }
 
 #[derive(Subcommand)]

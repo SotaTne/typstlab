@@ -159,6 +159,51 @@ pub fn is_safe_single_component(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Validates that a paper_id is safe for use in path construction
+///
+/// Uses the existing `is_safe_single_component` logic to ensure the paper_id:
+/// 1. Is not empty
+/// 2. Is not absolute or rooted
+/// 3. Contains no parent directory traversal (..)
+/// 4. Contains exactly one Normal component (no separators)
+///
+/// # Errors
+///
+/// Returns `TypstlabError::InvalidPaperId` describing the validation failure.
+///
+/// # Examples
+///
+/// ```rust
+/// use typstlab_core::path::validate_paper_id;
+///
+/// // Valid paper ID
+/// assert!(validate_paper_id("my-paper").is_ok());
+///
+/// // Invalid: empty
+/// assert!(validate_paper_id("").is_err());
+///
+/// // Invalid: path traversal
+/// assert!(validate_paper_id("../etc").is_err());
+///
+/// // Invalid: multiple components
+/// assert!(validate_paper_id("foo/bar").is_err());
+/// ```
+pub fn validate_paper_id(paper_id: &str) -> crate::error::Result<()> {
+    use crate::error::TypstlabError;
+
+    if paper_id.is_empty() {
+        return Err(TypstlabError::InvalidPaperId {
+            paper_id: paper_id.to_string(),
+            reason: "Paper ID cannot be empty".to_string(),
+        });
+    }
+
+    is_safe_single_component(Path::new(paper_id)).map_err(|err| TypstlabError::InvalidPaperId {
+        paper_id: paper_id.to_string(),
+        reason: err.to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,6 +505,74 @@ mod tests {
         assert!(
             !has_absolute_or_rooted_component(path),
             "Abstraction should not detect relative path"
+        );
+    }
+
+    // ============================================================================
+    // Tests for validate_paper_id()
+    // ============================================================================
+
+    #[test]
+    fn test_validate_paper_id_accepts_valid_id() {
+        let result = validate_paper_id("my-paper");
+        assert!(result.is_ok(), "Valid paper ID should be accepted");
+    }
+
+    #[test]
+    fn test_validate_paper_id_rejects_empty() {
+        let result = validate_paper_id("");
+        assert!(result.is_err(), "Empty paper ID should be rejected");
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("PAPER_INVALID_ID"),
+            "Error should have PAPER_INVALID_ID code"
+        );
+        assert!(
+            err.to_string().contains("cannot be empty"),
+            "Error should mention empty"
+        );
+    }
+
+    #[test]
+    fn test_validate_paper_id_rejects_traversal() {
+        let result = validate_paper_id("../etc");
+        assert!(
+            result.is_err(),
+            "Paper ID with parent directory traversal should be rejected"
+        );
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("PAPER_INVALID_ID"),
+            "Error should have PAPER_INVALID_ID code"
+        );
+    }
+
+    #[test]
+    fn test_validate_paper_id_rejects_absolute() {
+        let result = validate_paper_id("/tmp");
+        assert!(result.is_err(), "Absolute path should be rejected");
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("PAPER_INVALID_ID"),
+            "Error should have PAPER_INVALID_ID code"
+        );
+    }
+
+    #[test]
+    fn test_validate_paper_id_rejects_multiple_components() {
+        let result = validate_paper_id("foo/bar");
+        assert!(
+            result.is_err(),
+            "Paper ID with multiple components should be rejected"
+        );
+
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("PAPER_INVALID_ID"),
+            "Error should have PAPER_INVALID_ID code"
         );
     }
 }

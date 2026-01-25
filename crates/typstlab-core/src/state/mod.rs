@@ -1,3 +1,4 @@
+use crate::lock;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -160,7 +161,7 @@ fn ensure_parent_dir(path: &Path) -> crate::error::Result<&Path> {
 /// Acquire exclusive lock on .typstlab/state.lock
 fn acquire_state_lock(parent: &Path) -> crate::error::Result<crate::lock::LockGuard> {
     let lock_path = parent.join("state.lock");
-    crate::lock::acquire_lock(
+    lock::acquire_lock(
         &lock_path,
         std::time::Duration::from_secs(30),
         "state update",
@@ -173,7 +174,7 @@ fn acquire_state_lock(parent: &Path) -> crate::error::Result<crate::lock::LockGu
 /// Acquire shared lock on .typstlab/state.lock for read operations
 fn acquire_state_lock_shared(parent: &Path) -> crate::error::Result<crate::lock::LockGuard> {
     let lock_path = parent.join("state.lock");
-    crate::lock::acquire_shared_lock(
+    lock::acquire_shared_lock(
         &lock_path,
         std::time::Duration::from_secs(5), // Readers: shorter timeout
         "state read",
@@ -261,5 +262,72 @@ mod tests {
         let machine = MachineInfo::detect();
         assert!(!machine.os.is_empty());
         assert!(!machine.arch.is_empty());
+    }
+
+    #[test]
+    fn test_concurrent_state_access() {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let state_path = temp_dir.path().join("state.json");
+
+        // Initial state
+        let initial_state = State::empty();
+        initial_state.save(&state_path).unwrap();
+
+        let state_path = Arc::new(state_path);
+        let barrier = Arc::new(Barrier::new(4));
+        let mut handles = vec![];
+
+        // Spawn 2 writers and 2 readers
+        for i in 0..4 {
+            let path = Arc::clone(&state_path);
+            let barrier = Arc::clone(&barrier);
+
+            handles.push(thread::spawn(move || {
+                barrier.wait(); // Synchronize start
+
+                if i % 2 == 0 {
+                    // Writer: update verify output path
+                    // Retry loop to handle potential lock timeouts under heavy contention
+                    for _ in 0..5 {
+                        if let Ok(mut state) = State::load(&*path) {
+                            let mut build = state.build.unwrap_or(BuildState { last: None });
+                            build.last = Some(LastBuild {
+                                paper: format!("paper-{}", i),
+                                success: true,
+                                started_at: Utc::now(),
+                                finished_at: Utc::now(),
+                                duration_ms: 0,
+                                output: PathBuf::from("dummy"),
+                                error: None,
+                            });
+                            state.build = Some(build);
+
+                            if state.save(&*path).is_ok() {
+                                break;
+                            }
+                        }
+                        thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                } else {
+                    // Reader: just load
+                    for _ in 0..5 {
+                        if State::load(&*path).is_ok() {
+                            break;
+                        }
+                        thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                }
+            }));
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert!(State::load(&*state_path).is_ok());
     }
 }

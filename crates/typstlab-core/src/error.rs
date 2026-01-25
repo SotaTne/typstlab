@@ -31,6 +31,9 @@ pub enum TypstlabError {
     #[error("PAPER_MAIN_NOT_FOUND: main.typ not found for paper '{0}'")]
     PaperMainNotFound(String),
 
+    #[error("PAPER_INVALID_ID: paper ID '{paper_id}' is invalid: {reason}")]
+    InvalidPaperId { paper_id: String, reason: String },
+
     // Config errors
     #[error("CONFIG_PARSE_ERROR: {0}")]
     ConfigParseError(String),

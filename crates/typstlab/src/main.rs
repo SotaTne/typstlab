@@ -36,7 +36,7 @@ fn main() {
             },
         },
         Commands::Mcp(mcp_cmd) => match mcp_cmd {
-            McpCommands::Stdio => commands::mcp::run_stdio(),
+            McpCommands::Stdio { root, offline } => commands::mcp::run_stdio(root, offline),
         },
     };
 

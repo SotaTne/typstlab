@@ -1776,18 +1776,15 @@ typstlab mcp serve
 typstlab mcp serve --offline
 ```
 
-**提供するツール（v0.1）**:
+**公開ツールセット（v0.1）**  
+モードに応じて *list_tools* に載せるツールを切り替える。公開していないツールはクライアントに見えない。
 
-- `status`: プロジェクト/paper の状態取得
-- `build`: paper のビルド
-- `watch`: paper の監視（将来）
-- `typst_docs_status`: docs の状態（将来）
+| Mode | 公開ツール |
+| --- | --- |
+| online | `rules_browse`, `rules_search`, `rules_page`, `rules_list`, `docs_browse`, `docs_search`, `cmd_generate`, `cmd_build`, `cmd_status`, `cmd_typst_docs_status` |
+| offline | 上記から `cmd_generate`, `cmd_build` を除外 |
 
-**--offline モード**:
-
-- safety.network=true なツールは提供しない
-- tools/list で filtered リストを返す
-
+**listChanged 通知**: online/offline の切替時にツール一覧が変わるため、`listChanged` を送出する。  
 **Exit code**: 中断まで実行
 
 #### 5.10.2 MCP Tools Architecture
@@ -1804,6 +1801,11 @@ typstlab MCP サーバーは、AI エージェントが目的を明確に区別�
 #### 5.10.3 Provided MCP Tools
 
 ##### Rules Tools (`rules_*`)
+
+- `rules_browse`：ディレクトリ探索
+- `rules_search`：全文検索
+- `rules_page`：部分読み出し（offset/limit）
+- `rules_list`：全ルール列挙（サイズ・件数制限あり）
 
 ###### rules_browse
 
@@ -2045,6 +2047,68 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
   }
 }
 ```
+
+---
+
+#### 5.10.4 公開ポリシーと安全メタデータ
+
+- list_tools には「現在利用可能なツールのみ」を掲載する。利用不可ツールを公開したままエラー返却で代替しない。  
+- online/offline の切替で公開セットが変わる場合は `listChanged` を発火させる。  
+- `open_world_hint` はネット依存ツールのみ `true`、`read_only_hint` は書き込みを行うツールで `false` とし、公開セットと整合させる。  
+- 予約ツール（例: `feat_build_to_image_paper`）は v0.1 では非公開・非列挙。将来リリース項に記載する。
+
+#### 5.10.5 スキーマ統一ポリシー
+
+- search 系 (`rules_search`, `docs_search`) レスポンスは常に `{ "matches": [...], "truncated": bool, "missing": bool }`。対象ディレクトリが無い場合も同構造で `matches: []`, `truncated: false`, `missing: true`。  
+- browse/list 系 (`rules_browse`, `rules_list`, `docs_browse`) は `{ "items" | "files": [...], "missing": bool, "truncated"?: bool }`。missing=true でも構造は固定。  
+- `rules_page` は `{ "content": string, "offset": number, "limit": number, "total": number }`。  
+- `rules_get` は `{ "content": string }`。詳細閲覧は `read_resource` 推奨と注記。  
+- 上記スキーマは online/offline で変化させない。
+
+#### 5.10.6 エラーコード標準化
+
+標準コードを以下に固定し、ツール横断で使用する。旧コードが必要な場合は互換マッピングを実装する。
+
+| Code | 意味 | 旧コード例 |
+| --- | --- | --- |
+| INVALID_INPUT | 入力値不正（パス形式、空クエリ等） | - |
+| NOT_FOUND | 対象リソース不存在 | - |
+| PATH_ESCAPE | ルート外へ解決されるパス | PROJECT_PATH_ESCAPE |
+| FILE_TOO_LARGE | サイズ上限超過 | FILE_TOO_LARGE |
+| BUILD_FAILED | Typst ビルド失敗 | BUILD_FAILED |
+| PROJECT_NOT_FOUND | typstlab.toml 不在 | PROJECT_NOT_FOUND |
+| TYPST_NOT_RESOLVED | Typst バージョン解決失敗 | TYPST_NOT_RESOLVED |
+
+#### 5.10.7 セキュリティチェック共通ルール
+
+- パス検査は `has_absolute_or_rooted_component` による absolute/rooted 検知と `..` 禁止を必須とする。  
+- canonicalize 後にプロジェクトルート配下であることを確認し、外部を指す場合は `PATH_ESCAPE`。  
+- シンボリックリンクがルート外を指す場合はスキップまたは拒否。  
+- エラーメッセージは「Path cannot be absolute or rooted」「Path cannot contain ..」「Path resolves outside root: <path>」の定型句を用いる。
+
+#### 5.10.8 リソースとツールの責務分担
+
+- コンテンツ取得の第一手段は `read_resource`（`typstlab://rules/*`, `typstlab://docs/*`）。  
+- `rules_page` / `rules_get` は軽量閲覧用の補助ツールとして公開するが、同一パス検査・サイズ制限を適用する。  
+- リソース上限: 1 MiB (`MAX_RESOURCE_BYTES`=1,048,576) を超える場合は `FILE_TOO_LARGE`。
+
+#### 5.10.9 制限値と挙動
+
+| 定数 | 値 | 超過時挙動 |
+| --- | --- | --- |
+| `MAX_SCAN_FILES` | 50 | `truncated=true`、結果配列を空にする |
+| `MAX_FILE_BYTES` | 1,048,576 (1 MiB) | 該当ファイルをスキップ／`FILE_TOO_LARGE` |
+| `MAX_MATCHES` | 50 | 上限で打ち切り、`truncated=true` |
+| `MAX_MATCHES_PER_FILE` | 3 | 1ファイル内の追加マッチを打ち切り |
+
+#### 5.10.10 テストマトリクス（TDD 参照用）
+
+- 正常系: 存在する rules/docs で browse/search が成功し、`missing=false`。  
+- missing 系: ルート未作成時に `missing=true` を返し、スキーマを固定。  
+- 制限超過: `MAX_SCAN_FILES`/`MAX_MATCHES` 超過で `truncated=true`、結果は空配列または上限トリミング。  
+- パス拒否: absolute/rooted/`..` で `INVALID_INPUT` or `PATH_ESCAPE`。  
+- オフライン差分: offline では `list_tools` に `cmd_generate`/`cmd_build` を含まないこと。  
+- symlink: ルート外を指す symlink は無視または拒否されること。
 
 ---
 

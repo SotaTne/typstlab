@@ -1,11 +1,16 @@
-use assert_cmd::Command;
-use serde_json::json;
+use anyhow::Result;
+use rmcp::model::{CallToolRequestParams, JsonObject, ReadResourceRequestParams};
+use rmcp::transport::TokioChildProcess;
+use rmcp::{RoleClient, ServiceExt};
+use serde_json::{Value, json};
 use std::fs;
+use std::path::Path;
 use tempfile::TempDir;
+use tokio::process::Command;
+use typstlab_testkit::temp_dir_in_workspace;
 
-/// Helper: Create a temporary typstlab project
 fn create_test_project() -> TempDir {
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let temp_dir = temp_dir_in_workspace();
     let config_path = temp_dir.path().join("typstlab.toml");
 
     let minimal_config = r#"
@@ -16,229 +21,436 @@ init_date = "2026-01-20"
 [typst]
 version = "0.12.0"
 "#;
+
     fs::write(&config_path, minimal_config).expect("Failed to write config");
     temp_dir
 }
 
-/// Helper: Create a dummy doc file for search tests
+fn setup_rules(project: &TempDir) {
+    let rules_dir = project.path().join("rules");
+    fs::create_dir_all(rules_dir.join("paper")).expect("Failed to create rules dir");
+    fs::write(
+        rules_dir.join("guidelines.md"),
+        "Use APA citations in the document.",
+    )
+    .expect("Failed to write rules file");
+
+    let paper_rules_dir = project.path().join("papers/paper1/rules");
+    fs::create_dir_all(&paper_rules_dir).expect("Failed to create paper rules dir");
+    fs::write(
+        paper_rules_dir.join("citations.md"),
+        "Paper-level rules mention APA citations.",
+    )
+    .expect("Failed to write paper rules file");
+}
+
 fn setup_docs(project: &TempDir) {
     let docs_dir = project.path().join(".typstlab/kb/typst/docs");
     fs::create_dir_all(&docs_dir).expect("Failed to create docs dir");
     fs::write(
         docs_dir.join("intro.md"),
-        "Welcome to Typst documentation.\nThis is a search target.",
+        "Welcome to Typst documentation. Search target here.",
     )
-    .expect("Failed to write dummy doc");
+    .expect("Failed to write docs file");
+    fs::create_dir_all(docs_dir.join("reference")).expect("Failed to create docs reference dir");
+    fs::write(docs_dir.join("reference/syntax.md"), "Syntax guide entry.")
+        .expect("Failed to write docs syntax file");
 }
 
-#[test]
-fn test_mcp_test_tools_list() {
-    let project = create_test_project();
+async fn connect_mcp(
+    project_root: &Path,
+    extra_args: &[&str],
+) -> Result<rmcp::service::RunningService<RoleClient, ()>> {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_typstlab"));
+    cmd.arg("mcp").arg("stdio");
+    cmd.args(extra_args);
+    cmd.current_dir(project_root);
 
-    let input = json!({
-        "jsonrpc": "2.0",
-        "method": "tools/list",
-        "id": 1
-    });
-
-    let assert = cmd
-        .arg("mcp")
-        .arg("stdio")
-        .current_dir(project.path())
-        .write_stdin(input.to_string() + "\n")
-        .assert();
-
-    let assert = assert.success();
-    let output = assert.get_output();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Filter for the JSON response line (ignore "MCP Server running..." logs)
-    let json_line = stdout
-        .lines()
-        .find(|l| l.starts_with('{'))
-        .expect("Should contain JSON response");
-
-    let response: serde_json::Value =
-        serde_json::from_str(json_line).expect("Should be valid JSON");
-
-    assert_eq!(response["id"], 1);
-    assert!(response["result"]["tools"].as_array().unwrap().len() >= 2);
-
-    let tools = response["result"]["tools"].as_array().unwrap();
-    assert!(tools.iter().any(|t| t["name"] == "docs_search"));
-    assert!(tools.iter().any(|t| t["name"] == "rules_list"));
+    let transport = TokioChildProcess::new(cmd)?;
+    let service = ().serve(transport).await?;
+    Ok(service)
 }
 
-#[test]
-fn test_mcp_resources_list() {
-    let project = create_test_project();
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_typstlab"));
-
-    let input = json!({
-        "jsonrpc": "2.0",
-        "method": "resources/list",
-        "id": 2
-    });
-
-    let assert = cmd
-        .arg("mcp")
-        .arg("stdio")
-        .current_dir(project.path())
-        .write_stdin(input.to_string() + "\n")
-        .assert();
-
-    let assert = assert.success();
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-
-    let json_line = stdout
-        .lines()
-        .find(|l| l.starts_with('{'))
-        .expect("Should contain JSON response");
-
-    let response: serde_json::Value =
-        serde_json::from_str(json_line).expect("Should be valid JSON");
-
-    assert_eq!(response["id"], 2);
-    let resources = response["result"]["resources"].as_array().unwrap();
-    assert!(resources.iter().any(|r| r["uri"] == "typstlab://rules"));
+fn json_args(value: Value) -> JsonObject {
+    rmcp::model::object(value)
 }
 
-#[test]
-fn test_mcp_tools_call_docs_search() {
-    let project = create_test_project();
-    setup_docs(&project);
+fn structured_payload(result: &rmcp::model::CallToolResult) -> Value {
+    if let Some(payload) = result.structured_content.clone() {
+        return payload;
+    }
 
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_typstlab"));
-
-    let input = json!({
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "params": {
-            "name": "docs_search",
-            "arguments": {
-                "query": "search target"
+    if let Some(first) = result.content.first() {
+        if let Some(text) = first.as_text().map(|t| &t.text) {
+            if let Ok(parsed) = serde_json::from_str(text) {
+                return parsed;
             }
-        },
-        "id": 3
-    });
+        }
+    }
 
-    let assert = cmd
-        .arg("mcp")
-        .arg("stdio")
-        .current_dir(project.path())
-        .write_stdin(input.to_string() + "\n")
-        .assert();
-
-    let assert = assert.success();
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-
-    let json_line = stdout
-        .lines()
-        .find(|l| l.starts_with('{'))
-        .expect("Should contain JSON response");
-
-    let response: serde_json::Value =
-        serde_json::from_str(json_line).expect("Should be valid JSON");
-
-    assert_eq!(response["id"], 3);
-    let matches = response["result"]["matches"].as_array().unwrap();
-    assert!(!matches.is_empty(), "Should return matches");
-    assert_eq!(matches[0]["path"], "intro.md");
-    assert!(
-        matches[0]["excerpt"]
-            .as_str()
-            .unwrap()
-            .contains("search target")
-    );
+    Value::Null
 }
 
-#[test]
-fn test_mcp_resources_read_rules() {
+#[tokio::test]
+async fn test_mcp_tools_list_includes_expected_tools() -> Result<()> {
     let project = create_test_project();
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_typstlab"));
+    let service = connect_mcp(project.path(), &[]).await?;
 
-    let input = json!({
-        "jsonrpc": "2.0",
-        "method": "resources/read",
-        "params": {
-            "uri": "typstlab://rules"
-        },
-        "id": 4
-    });
+    let tools = service.list_all_tools().await?;
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
 
-    let assert = cmd
-        .arg("mcp")
-        .arg("stdio")
-        .current_dir(project.path())
-        .write_stdin(input.to_string() + "\n")
-        .assert();
+    for expected in [
+        "cmd_generate",
+        "cmd_status",
+        "cmd_build",
+        "cmd_typst_docs_status",
+        "rules_browse",
+        "rules_search",
+        "docs_browse",
+        "docs_search",
+    ] {
+        assert!(names.contains(&expected), "Missing tool: {expected}");
+    }
 
-    let assert = assert.success();
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
-
-    let json_line = stdout
-        .lines()
-        .find(|l| l.starts_with('{'))
-        .expect("Should contain JSON response");
-
-    let response: serde_json::Value =
-        serde_json::from_str(json_line).expect("Should be valid JSON");
-
-    assert_eq!(response["id"], 4);
-    let contents = response["result"]["contents"].as_array().unwrap();
-    assert!(!contents.is_empty());
-    assert_eq!(contents[0]["uri"], "typstlab://rules");
-
-    let text = contents[0]["text"].as_str().unwrap();
-    assert!(text.contains("test-project"));
+    service.cancel().await.ok();
+    Ok(())
 }
 
-#[test]
-fn test_mcp_tools_call_docs_browse() {
+#[tokio::test]
+async fn test_mcp_tools_list_offline_filters_network_tools() -> Result<()> {
     let project = create_test_project();
-    setup_docs(&project);
+    let service = connect_mcp(project.path(), &["--offline"]).await?;
 
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_typstlab"));
+    let tools = service.list_all_tools().await?;
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
+    assert!(!names.contains(&"cmd_generate"));
+    assert!(!names.contains(&"cmd_build"));
 
-    let input = json!({
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "params": {
-            "name": "docs_browse",
-            "arguments": {
-                "path": "."
-            }
-        },
-        "id": 5
-    });
+    service.cancel().await.ok();
+    Ok(())
+}
 
-    let assert = cmd
-        .arg("mcp")
-        .arg("stdio")
-        .current_dir(project.path())
-        .write_stdin(input.to_string() + "\n")
-        .assert();
+#[tokio::test]
+async fn test_mcp_resources_list_includes_docs_and_rules() -> Result<()> {
+    let project = create_test_project();
+    let service = connect_mcp(project.path(), &[]).await?;
 
-    let assert = assert.success();
-    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    let resources = service.list_all_resources().await?;
+    assert!(resources.iter().any(|res| res.uri == "typstlab://rules"));
+    assert!(resources.iter().any(|res| res.uri == "typstlab://docs"));
 
-    let json_line = stdout
-        .lines()
-        .find(|l| l.starts_with('{'))
-        .expect("Should contain JSON response");
+    service.cancel().await.ok();
+    Ok(())
+}
 
-    let response: serde_json::Value =
-        serde_json::from_str(json_line).expect("Should be valid JSON");
+#[tokio::test]
+async fn test_mcp_rules_browse_lists_files_and_dirs() -> Result<()> {
+    let project = create_test_project();
+    setup_rules(&project);
+    let service = connect_mcp(project.path(), &[]).await?;
 
-    assert_eq!(response["id"], 5);
-    let items = response["result"]["items"].as_array().unwrap();
-    assert!(!items.is_empty(), "Should return items");
+    let result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "rules_browse".into(),
+            arguments: Some(json_args(json!({ "path": "rules" }))),
+            task: None,
+        })
+        .await?;
 
-    // Check if intro.md is in the list
+    let payload = structured_payload(&result);
+    let items = payload["items"].as_array().expect("items should be array");
+    assert!(items.iter().any(|item| item["type"] == "file"));
+    assert!(items.iter().any(|item| item["type"] == "directory"));
     assert!(
         items
             .iter()
-            .any(|i| i["name"] == "intro.md" && i["type"] == "file")
+            .any(|item| item["path"] == "rules/guidelines.md")
     );
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_rules_browse_rejects_invalid_path() -> Result<()> {
+    // Phase 1.5以降: 存在しないパスはエラーではなくmissing=trueを返す
+    let project = create_test_project();
+    let service = connect_mcp(project.path(), &[]).await?;
+
+    let result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "rules_browse".into(),
+            arguments: Some(json_args(json!({ "path": "nonexistent/dir" }))),
+            task: None,
+        })
+        .await;
+
+    // エラーではなく成功を返す
+    assert!(result.is_ok(), "Should return OK with missing=true");
+
+    let response = result.unwrap();
+    let content_text = response.content[0].as_text().unwrap();
+    let data: serde_json::Value = serde_json::from_str(&content_text.text).unwrap();
+
+    // missing=trueを期待
+    assert_eq!(data["missing"].as_bool().unwrap(), true);
+    assert_eq!(data["items"].as_array().unwrap().len(), 0);
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_rules_search_returns_origin() -> Result<()> {
+    let project = create_test_project();
+    setup_rules(&project);
+    let service = connect_mcp(project.path(), &[]).await?;
+
+    let result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "rules_search".into(),
+            arguments: Some(json_args(json!({
+                "query": "APA",
+                "paper_id": "paper1",
+                "include_root": true
+            }))),
+            task: None,
+        })
+        .await?;
+
+    let payload = structured_payload(&result);
+    let matches = payload["matches"]
+        .as_array()
+        .expect("matches should be array");
+    let origins: Vec<&str> = matches
+        .iter()
+        .filter_map(|item| item["origin"].as_str())
+        .collect();
+    assert!(origins.contains(&"root"));
+    assert!(origins.contains(&"paper"));
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_docs_browse_and_search() -> Result<()> {
+    let project = create_test_project();
+    setup_docs(&project);
+    let service = connect_mcp(project.path(), &[]).await?;
+
+    let browse_result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "docs_browse".into(),
+            arguments: Some(json_args(json!({ "path": "" }))),
+            task: None,
+        })
+        .await?;
+
+    let browse_payload = structured_payload(&browse_result);
+    let items = browse_payload["items"]
+        .as_array()
+        .expect("items should be array");
+    assert!(items.iter().any(|item| item["name"] == "intro.md"));
+
+    let search_result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "docs_search".into(),
+            arguments: Some(json_args(json!({ "query": "search target" }))),
+            task: None,
+        })
+        .await?;
+
+    let search_payload = structured_payload(&search_result);
+    let matches = search_payload["matches"]
+        .as_array()
+        .expect("matches should be array");
+    assert!(matches.iter().any(|item| item["path"] == "intro.md"));
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_read_resource_rules_and_docs() -> Result<()> {
+    let project = create_test_project();
+    setup_rules(&project);
+    setup_docs(&project);
+    let service = connect_mcp(project.path(), &[]).await?;
+
+    let rules_result = service
+        .read_resource(ReadResourceRequestParams {
+            uri: "typstlab://rules/guidelines.md".into(),
+            meta: None,
+        })
+        .await?;
+    let rules_text = match &rules_result.contents[0] {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Expected text resource contents"),
+    };
+    assert!(rules_text.contains("APA citations"));
+
+    let docs_result = service
+        .read_resource(ReadResourceRequestParams {
+            uri: "typstlab://docs/intro.md".into(),
+            meta: None,
+        })
+        .await?;
+    let docs_text = match &docs_result.contents[0] {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Expected text resource contents"),
+    };
+    assert!(docs_text.contains("Typst documentation"));
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_read_resource_rejects_non_markdown() -> Result<()> {
+    let project = create_test_project();
+    let docs_dir = project.path().join(".typstlab/kb/typst/docs");
+    fs::create_dir_all(&docs_dir).expect("Failed to create docs dir");
+    fs::write(docs_dir.join("intro.txt"), "plain text").expect("Failed to write docs file");
+
+    let service = connect_mcp(project.path(), &[]).await?;
+    let result = service
+        .read_resource(ReadResourceRequestParams {
+            uri: "typstlab://docs/intro.txt".into(),
+            meta: None,
+        })
+        .await;
+    assert!(result.is_err());
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_read_resource_rejects_large_file() -> Result<()> {
+    let project = create_test_project();
+    let docs_dir = project.path().join(".typstlab/kb/typst/docs");
+    fs::create_dir_all(&docs_dir).expect("Failed to create docs dir");
+    let large_content = vec![b'a'; 1024 * 1024 + 1];
+    fs::write(docs_dir.join("large.md"), large_content).expect("Failed to write docs file");
+
+    let service = connect_mcp(project.path(), &[]).await?;
+    let result = service
+        .read_resource(ReadResourceRequestParams {
+            uri: "typstlab://docs/large.md".into(),
+            meta: None,
+        })
+        .await;
+    assert!(result.is_err());
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_mcp_read_resource_rejects_symlink_outside_root() -> Result<()> {
+    use std::os::unix::fs::symlink;
+
+    let project = create_test_project();
+    let docs_dir = project.path().join(".typstlab/kb/typst/docs");
+    fs::create_dir_all(&docs_dir).expect("Failed to create docs dir");
+
+    let outside = temp_dir_in_workspace();
+    let outside_file = outside.path().join("secret.md");
+    fs::write(&outside_file, "secret payload").expect("Failed to write file");
+    symlink(&outside_file, docs_dir.join("link.md")).expect("Failed to symlink");
+
+    let service = connect_mcp(project.path(), &[]).await?;
+    let result = service
+        .read_resource(ReadResourceRequestParams {
+            uri: "typstlab://docs/link.md".into(),
+            meta: None,
+        })
+        .await;
+    assert!(result.is_err());
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_cmd_status_returns_schema() -> Result<()> {
+    let project = create_test_project();
+    let service = connect_mcp(project.path(), &[]).await?;
+
+    let result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "cmd_status".into(),
+            arguments: Some(json_args(json!({}))),
+            task: None,
+        })
+        .await?;
+
+    let payload = structured_payload(&result);
+    assert!(payload.get("overall_status").is_some());
+    assert!(payload.get("checks").is_some());
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_cmd_generate_and_build_reject_missing_paper() -> Result<()> {
+    let project = create_test_project();
+    let service = connect_mcp(project.path(), &[]).await?;
+
+    let generate_result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "cmd_generate".into(),
+            arguments: Some(json_args(json!({ "paper_id": "missing" }))),
+            task: None,
+        })
+        .await;
+    assert!(generate_result.is_err());
+
+    let build_result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "cmd_build".into(),
+            arguments: Some(json_args(json!({ "paper_id": "missing" }))),
+            task: None,
+        })
+        .await;
+    assert!(build_result.is_err());
+
+    service.cancel().await.ok();
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_mcp_typst_docs_status_matches_cli_schema() -> Result<()> {
+    let project = create_test_project();
+    let service = connect_mcp(project.path(), &[]).await?;
+
+    let result = service
+        .call_tool(CallToolRequestParams {
+            meta: None,
+            name: "cmd_typst_docs_status".into(),
+            arguments: Some(json_args(json!({}))),
+            task: None,
+        })
+        .await?;
+
+    let payload = structured_payload(&result);
+    assert!(payload.get("present").is_some());
+    assert!(payload.get("version").is_some());
+    assert!(payload.get("synced_at").is_some());
+    assert!(payload.get("source").is_some());
+    assert!(payload.get("path").is_some());
+
+    service.cancel().await.ok();
+    Ok(())
 }
