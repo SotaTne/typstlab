@@ -16,6 +16,8 @@ pub struct RulesBrowseArgs {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct RulesGetArgs {
     pub path: String,
+    #[serde(default = "default_one")]
+    pub page: usize,
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -32,12 +34,14 @@ pub struct RulesListArgs {
     pub include_root: bool,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema, Clone)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema, Clone)]
 pub struct RulesSearchArgs {
     pub query: String,
     pub paper_id: Option<String>,
     #[serde(default = "default_true")]
     pub include_root: bool,
+    #[serde(default = "default_one")]
+    pub page: usize,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -53,6 +57,10 @@ pub struct RulesMatches {
 
 pub(crate) fn default_true() -> bool {
     true
+}
+
+pub(crate) fn default_one() -> usize {
+    1
 }
 
 // ==================== 共通ヘルパー ====================

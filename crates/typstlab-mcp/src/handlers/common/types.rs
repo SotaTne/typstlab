@@ -7,16 +7,25 @@ pub struct SearchConfig {
     pub max_matches: usize,
     /// File extensions to include (e.g., ["md", "typ"])
     pub file_extensions: Vec<String>,
+    /// Number of matches to skip (pagination)
+    pub offset: usize,
 }
 
 impl SearchConfig {
-    /// Create a new SearchConfig with default values
+    /// Create a new SearchConfig with default values (offset=0)
     pub fn new(max_files: usize, max_matches: usize, file_extensions: Vec<String>) -> Self {
         Self {
             max_files,
             max_matches,
             file_extensions,
+            offset: 0,
         }
+    }
+
+    /// Set the offset for pagination
+    pub fn with_offset(mut self, offset: usize) -> Self {
+        self.offset = offset;
+        self
     }
 }
 
@@ -46,4 +55,7 @@ pub struct SearchResult<T, Q> {
     #[serde(skip)]
     // Internal field for debugging/logging; not serialized to JSON
     pub scanned_files: usize,
+    #[serde(skip)]
+    // Internal field: total matches found before offset/truncation
+    pub total_found: usize,
 }

@@ -12,11 +12,15 @@ pub struct DocsBrowseArgs {
 #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct DocsSearchArgs {
     pub query: String,
+    #[serde(default = "default_one")]
+    pub page: usize,
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct DocsGetArgs {
     pub path: String,
+    #[serde(default = "default_one")]
+    pub page: usize,
 }
 
 pub(crate) async fn resolve_docs_path(
@@ -45,4 +49,8 @@ pub struct DocsMatches {
     pub preview: String,
     pub line_range: LineRange,
     pub mtime: u64,
+}
+
+pub(crate) fn default_one() -> usize {
+    1
 }

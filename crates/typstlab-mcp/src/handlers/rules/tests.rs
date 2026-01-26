@@ -77,6 +77,7 @@ async fn test_rules_get_and_list() {
         &server,
         RulesGetArgs {
             path: "rules/a.md".to_string(),
+            page: 1,
         },
     )
     .await
@@ -131,6 +132,7 @@ async fn test_rules_search_includes_excerpt() {
             query: "match".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -180,6 +182,7 @@ async fn test_rules_get_success() {
         &server,
         RulesGetArgs {
             path: "rules/rule.md".into(),
+            page: 1,
         },
     )
     .await
@@ -204,6 +207,7 @@ async fn test_rules_get_rejects_non_markdown() {
         &server,
         RulesGetArgs {
             path: "rules/secret.txt".into(),
+            page: 1,
         },
     )
     .await;
@@ -220,6 +224,7 @@ async fn test_rules_get_missing_returns_not_found_code() {
         &server,
         RulesGetArgs {
             path: "rules/missing.md".into(),
+            page: 1,
         },
     )
     .await;
@@ -247,6 +252,7 @@ async fn test_rules_get_non_markdown_returns_invalid_input_code() {
         &server,
         RulesGetArgs {
             path: "rules/secret.txt".into(),
+            page: 1,
         },
     )
     .await;
@@ -274,6 +280,7 @@ async fn test_rules_get_rejects_too_large_file() {
         &server,
         RulesGetArgs {
             path: "rules/big.md".into(),
+            page: 1,
         },
     )
     .await;
@@ -385,6 +392,7 @@ async fn test_rules_search_stops_after_file_scan_limit() {
             query: "target".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -415,6 +423,7 @@ async fn test_rules_search_truncates_at_max_matches_without_clearing() {
             query: "needle".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -457,6 +466,7 @@ async fn test_rules_search_skips_symlink_outside_root() {
             query: "leak".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -484,6 +494,7 @@ async fn test_rules_get_rejects_large_file() {
         &server,
         RulesGetArgs {
             path: "rules/big.md".into(),
+            page: 1,
         },
     )
     .await;
@@ -599,6 +610,7 @@ async fn test_rules_search_rejects_invalid_paper_id_traversal() {
             query: "test".to_string(),
             paper_id: Some("../etc".to_string()),
             include_root: false,
+            page: 1,
         },
     )
     .await;
@@ -623,6 +635,7 @@ async fn test_rules_search_rejects_invalid_paper_id_absolute() {
             query: "test".to_string(),
             paper_id: Some("/tmp".to_string()),
             include_root: false,
+            page: 1,
         },
     )
     .await;
@@ -647,6 +660,7 @@ async fn test_rules_search_rejects_invalid_paper_id_multiple_components() {
             query: "test".to_string(),
             paper_id: Some("foo/bar".to_string()),
             include_root: false,
+            page: 1,
         },
     )
     .await;
@@ -745,6 +759,7 @@ async fn test_rules_search_rejects_empty_query() {
             query: "".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await;
@@ -769,6 +784,7 @@ async fn test_rules_search_rejects_whitespace_only_query() {
             query: "   \t\n  ".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await;
@@ -794,6 +810,7 @@ async fn test_rules_search_rejects_too_long_query() {
             query: long_query,
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await;

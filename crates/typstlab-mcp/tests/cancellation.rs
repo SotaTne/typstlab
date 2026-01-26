@@ -64,6 +64,7 @@ async fn test_search_cancellation_and_recovery() {
             &server_clone,
             DocsSearchArgs {
                 query: "test".to_string(),
+                page: 1,
             },
         ),
     )
@@ -80,6 +81,7 @@ async fn test_search_cancellation_and_recovery() {
             &server,
             DocsSearchArgs {
                 query: "Recovery".to_string(),
+                page: 1,
             },
         ),
     )

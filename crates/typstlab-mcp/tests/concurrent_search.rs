@@ -49,6 +49,7 @@ async fn test_search_does_not_block_runtime() {
             &server_clone,
             DocsSearchArgs {
                 query: "test".to_string(),
+                page: 1,
             },
         )
         .await
@@ -86,6 +87,7 @@ async fn test_runtime_remains_responsive() {
             &server_clone,
             DocsSearchArgs {
                 query: "test".to_string(),
+                page: 1,
             },
         )
         .await

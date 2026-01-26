@@ -25,6 +25,7 @@ async fn test_docs_search_missing_schema() {
         &server,
         typstlab_mcp::handlers::docs::DocsSearchArgs {
             query: "test".to_string(),
+            page: 1,
         },
     )
     .await
@@ -56,6 +57,7 @@ async fn test_docs_search_no_items_key() {
         &server,
         typstlab_mcp::handlers::docs::DocsSearchArgs {
             query: "test".to_string(),
+            page: 1,
         },
     )
     .await
@@ -89,6 +91,7 @@ async fn test_rules_search_missing_schema() {
             query: "test".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -127,7 +130,7 @@ async fn test_max_scan_files_truncation() {
             // それ以外はマッチしない
             format!("other {}", i)
         };
-        async_fs::write(docs_dir.join(format!("file_{:03}.md", i)), content)
+        async_fs::write(docs_dir.join(format!("file_{:04}.md", i)), content)
             .await
             .unwrap();
     }
@@ -139,6 +142,7 @@ async fn test_max_scan_files_truncation() {
         &server,
         typstlab_mcp::handlers::docs::DocsSearchArgs {
             query: "searchterm".to_string(),
+            page: 1,
         },
     )
     .await
@@ -153,11 +157,13 @@ async fn test_max_scan_files_truncation() {
         "truncated should be true when MAX_SCAN_FILES is exceeded"
     );
 
-    // 結果は空配列
+    // The implementation now returns partial matches found before truncation.
+    // We expect matches from indices 995, 996, 997, 998, 999 (5 files).
+    // Index 1000 should be truncated.
     assert_eq!(
         json.get("matches").unwrap().as_array().unwrap().len(),
-        0,
-        "matches should be empty when MAX_SCAN_FILES is exceeded"
+        5,
+        "matches should contain items found before truncation"
     );
 }
 
@@ -189,6 +195,7 @@ async fn test_max_matches_truncation() {
         &server,
         typstlab_mcp::handlers::docs::DocsSearchArgs {
             query: "searchme".to_string(),
+            page: 1,
         },
     )
     .await

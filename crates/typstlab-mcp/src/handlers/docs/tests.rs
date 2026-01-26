@@ -72,6 +72,7 @@ async fn test_docs_search() {
         &server,
         DocsSearchArgs {
             query: "rust".to_string(),
+            page: 1,
         },
         CancellationToken::new(),
     )
@@ -139,6 +140,7 @@ async fn test_docs_search_respects_file_scan_limit() {
         &server,
         DocsSearchArgs {
             query: "needle".to_string(),
+            page: 1,
         },
         CancellationToken::new(),
     )
@@ -169,6 +171,7 @@ async fn test_docs_search_truncation_clears_matches() {
         &server,
         DocsSearchArgs {
             query: "needle".to_string(),
+            page: 1,
         },
         CancellationToken::new(),
     )
@@ -224,6 +227,7 @@ async fn test_docs_search_skips_symlink_outside_root() {
         &server,
         DocsSearchArgs {
             query: "secret".to_string(),
+            page: 1,
         },
         CancellationToken::new(),
     )
@@ -256,6 +260,7 @@ async fn test_docs_search_rejects_empty_query() {
         &server,
         DocsSearchArgs {
             query: "".to_string(),
+            page: 1,
         },
         CancellationToken::new(),
     )
@@ -279,6 +284,7 @@ async fn test_docs_search_rejects_whitespace_only_query() {
         &server,
         DocsSearchArgs {
             query: "   \t\n  ".to_string(),
+            page: 1,
         },
         CancellationToken::new(),
     )
@@ -301,7 +307,10 @@ async fn test_docs_search_rejects_too_long_query() {
     let long_query = "a".repeat(1001);
     let res = DocsTool::docs_search(
         &server,
-        DocsSearchArgs { query: long_query },
+        DocsSearchArgs {
+            query: long_query,
+            page: 1,
+        },
         CancellationToken::new(),
     )
     .await;
@@ -446,6 +455,7 @@ async fn test_docs_search_case_insensitive() {
         &server,
         DocsSearchArgs {
             query: "uppercase".to_string(),
+            page: 1,
         },
         CancellationToken::new(),
     )
@@ -520,6 +530,7 @@ async fn test_docs_search_returns_multiple_matches() {
         &server,
         DocsSearchArgs {
             query: "rust".to_string(),
+            page: 1,
         },
         CancellationToken::new(),
     )
@@ -587,6 +598,7 @@ async fn test_docs_get_success() {
         &server,
         DocsGetArgs {
             path: "test.md".to_string(),
+            page: 1,
         },
     )
     .await
@@ -606,6 +618,7 @@ async fn test_docs_get_not_found() {
         &server,
         DocsGetArgs {
             path: "missing.md".to_string(),
+            page: 1,
         },
     )
     .await;
@@ -630,6 +643,7 @@ async fn test_docs_get_invalid_extension() {
         &server,
         DocsGetArgs {
             path: "test.txt".to_string(),
+            page: 1,
         },
     )
     .await;

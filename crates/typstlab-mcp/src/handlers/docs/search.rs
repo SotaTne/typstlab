@@ -46,12 +46,15 @@ pub(crate) async fn docs_search(
     let docs_root_path = docs_root.clone();
     let project_root_path = server.context.project_root.clone();
 
-    let config = SearchConfig::new(MAX_SCAN_FILES, MAX_MATCHES, vec!["md".to_string()]);
+    let page = if args.page < 1 { 1 } else { args.page };
+    let offset = (page - 1) * MAX_MATCHES;
+    let config =
+        SearchConfig::new(MAX_SCAN_FILES, MAX_MATCHES, vec!["md".to_string()]).with_offset(offset);
 
     let _guard = token.clone().drop_guard();
 
     // Run search in blocking thread
-    let mut result = tokio::task::spawn_blocking(move || {
+    let result = tokio::task::spawn_blocking(move || {
         ops::search_dir_sync(
             &docs_root_path,
             &project_root_path,
@@ -104,10 +107,8 @@ pub(crate) async fn docs_search(
     .await
     .map_err(|e| errors::internal_error(format!("Search task panicked: {}", e)))??;
 
-    // DESIGN.md 5.10.9: Clear matches if truncated by file scan limit
-    if result.truncated && result.scanned_files >= MAX_SCAN_FILES {
-        result.matches.clear();
-    }
+    // DESIGN.md 5.10.9: Truncation behavior is now handled by search_dir_sync returning partial results.
+    // We do NOT clear matches even if scan limit is reached.
 
     Ok(CallToolResult::success(vec![Content::text(
         serde_json::to_string(&result).map_err(errors::from_display)?,

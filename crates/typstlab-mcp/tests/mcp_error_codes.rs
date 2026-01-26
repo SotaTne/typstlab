@@ -28,6 +28,7 @@ async fn test_empty_query_returns_invalid_input() {
             query: "".to_string(), // Empty query
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await;

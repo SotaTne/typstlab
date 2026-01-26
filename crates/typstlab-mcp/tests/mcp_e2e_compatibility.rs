@@ -102,6 +102,7 @@ async fn test_e2e_rules_search_path_to_read_resource_returns_same_content() {
             query: "target".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -226,6 +227,7 @@ async fn test_e2e_docs_search_path_to_read_resource_returns_same_content() {
         &server,
         DocsSearchArgs {
             query: "Search".to_string(),
+            page: 1,
         },
     )
     .await

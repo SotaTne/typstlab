@@ -74,6 +74,7 @@ async fn test_search_cancellation() {
             &server_clone,
             DocsSearchArgs {
                 query: "missing".to_string(),
+                page: 1,
             },
         ),
     )
@@ -92,6 +93,7 @@ async fn test_search_cancellation() {
             &server,
             DocsSearchArgs {
                 query: "check".to_string(),
+                page: 1,
             },
         ),
     )

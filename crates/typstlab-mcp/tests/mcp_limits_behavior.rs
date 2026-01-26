@@ -12,7 +12,8 @@ use typstlab_testkit::temp_dir_in_workspace;
 // use rmcp::ServerHandler;
 
 // Constants from spec
-const MAX_SCAN_FILES: usize = 50;
+// Constants from spec
+use typstlab_core::config::consts::search::MAX_SCAN_FILES;
 const MAX_MATCHES: usize = 50;
 const MAX_FILE_BYTES: usize = 1024 * 1024; // 1 MiB
 
@@ -43,7 +44,7 @@ async fn test_max_scan_files_truncation_returns_empty_matches() {
         } else {
             "other"
         };
-        tokio::fs::write(docs_dir.join(format!("file_{:03}.md", i)), content)
+        tokio::fs::write(docs_dir.join(format!("file_{:04}.md", i)), content)
             .await
             .unwrap();
     }
@@ -55,6 +56,7 @@ async fn test_max_scan_files_truncation_returns_empty_matches() {
         &server,
         DocsSearchArgs {
             query: "match_query".to_string(),
+            page: 1,
         },
     )
     .await
@@ -94,6 +96,7 @@ async fn test_max_matches_truncation_caps_results() {
         &server,
         DocsSearchArgs {
             query: "match_query".to_string(),
+            page: 1,
         },
     )
     .await

@@ -1868,7 +1868,8 @@ Can search within a specific paper's rules, the project root rules, or both.
 {
   "query": "citation format",
   "paper_id": "paper1",    // optional. If specified, searches papers/<id>/rules/
-  "include_root": true     // default true. If true, also searches rules/
+  "include_root": true,    // default true. If true, also searches rules/
+  "page": 1                // optional, default 1. 1-based page number.
 }
 ```
 
@@ -1880,18 +1881,23 @@ Can search within a specific paper's rules, the project root rules, or both.
     {
       "path": "rules/paper/citations.md",
       "line": 42,
-      "excerpt": "...use APA citation format for...",
-      "origin": "root" // "root" | "paper"
+      "preview": "...use APA citation format for...",
+      "origin": "root", // "root" | "paper"
+      "uri": "typstlab://rules/paper/citations.md",
+      "mtime": 1704450000
     }
-  ]
+  ],
+  "truncated": false, // true if there are more results (next page exists)
+  "missing": false
 }
 ```
 
 **Constraints**:
 
 - Case-insensitive substring match
-- Return 2 lines context before/after
-- Max 3 matches per file
+- Return 2 lines context before/after (preview)
+- Max 50 matches per page (MAX_MATCHES)
+- Pagination via `page` argument
 
 **Safety classification (v0.1)**:
 
@@ -1977,7 +1983,8 @@ paper.toml からテンプレートファイル（`_generated/`）を生成す�
 
 ```json
 {
-  "query": "function definition"
+  "query": "function definition",
+  "page": 1 // optional, default 1
 }
 ```
 
@@ -1989,9 +1996,13 @@ paper.toml からテンプレートファイル（`_generated/`）を生成す�
     {
       "path": "docs/reference/syntax.md",
       "line": 15,
-      "content": "..."
+      "preview": "...",
+      "uri": "typstlab://docs/reference/syntax.md",
+      "mtime": 1704450000
     }
-  ]
+  ],
+  "truncated": false, // true if there are more results
+  "missing": false
 }
 ```
 
@@ -2062,7 +2073,11 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
 - search 系 (`rules_search`, `docs_search`) レスポンスは常に `{ "matches": [...], "truncated": bool, "missing": bool }`。対象ディレクトリが無い場合も同構造で `matches: []`, `truncated: false`, `missing: true`。  
 - browse/list 系 (`rules_browse`, `rules_list`, `docs_browse`) は `{ "items" | "files": [...], "missing": bool, "truncated"?: bool }`。missing=true でも構造は固定。  
 - `rules_page` は `{ "content": string, "offset": number, "limit": number, "total": number }`。  
-- `rules_get` は `{ "content": string }`。詳細閲覧は `read_resource` 推奨と注記。  
+- `rules_get` / `docs_get`:
+  - Input: `{ "path": string, "page": number (optional, default 1) }`
+  - Output: `{ "content": string, "truncated": boolean, "missing": boolean }`
+  - `truncated=true` indicates next page exists.
+  
 - 上記スキーマは online/offline で変化させない。
 - `path` フィールドは **MCP ベストプラクティス準拠で「返却された値がそのまま再入力に使える」こと**を保証する。  
   具体的には、`rules_*`/`docs_*` のレスポンスに含まれる `path` を再入力として渡した際に、同一対象へアクセスできること（E2E で検証する）。  
@@ -2073,7 +2088,12 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
 - **検索 (`rules_search` / `docs_search`)**  
   - ファイルを WalkDir で再帰走査し、`.md` ファイルを `std::fs::read_to_string` で全行読み込んで `line.to_lowercase().contains(query_lowercase)` の部分一致（単一サブストリング）を行う。複数語は `query` をそのまま使うため `foo bar` のような複合語を AND/OR で分割しない。  
   - 行ごとに `path` / `line` / `content` を JSON 化し、最大 `MAX_MATCHES` 件まで収集。`MAX_MATCHES_PER_FILE` 件を超えたらそのファイル内の追加抽出を止める。  
-  - `matches`/`truncated`/`missing` のスキーマを必ず守り、`missing=true` は対象ディレクトリが存在しないとき、`truncated=true` はファイル数・マッチ件数の上限に達したときに立てる。  
+  - `matches`/`truncated`/`missing` のスキーマを必ず守り、`missing=true` は対象ディレクトリが存在しないとき。
+  - **ページネーション**:
+    - `page` 引数（デフォルト 1）を受け取る。
+    - `MAX_MATCHES` (50) を1ページの固定サイズとし、`(page - 1) * MAX_MATCHES` 件をスキップして次の 50 件を取得する。
+    - 上限（`MAX_MATCHES`）に達した場合、取得できた件数（最大50）を返し `truncated=true` とする。
+    - `truncated=true` の場合、ユーザーは `page + 1` を指定して次のチャンクを取得できる。
   - パスはプロジェクトルート相対で `/` に統一し、`docs_search` は `docs/<relative>` を返す。  
   - クエリの AND 条件や正規表現、全文検索インデックス化は現時点では実装していない。将来的に追加する場合は DESIGN.md 上で明示的に仕様を拡張する。
 
@@ -2081,7 +2101,10 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
   - `resolve_safe_path` → `resolve_rules_path` / `resolve_docs_path` で `has_absolute_or_rooted_component` / `..` / canonicalize チェックを順番に実施し、失敗は `PATH_ESCAPE`/`INVALID_INPUT` で返す。  
   - 取得対象がディレクトリでないことを確認し、`.md` であること、`MAX_FILE_BYTES` を超えないことを検証。超過時は `FILE_TOO_LARGE`。  
   - `read_resource` 系は `CancellationToken` を使い、IO 前後と `tokio::select!` で `token.cancelled()` を競合させてキャンセルを伝播させる。  
-  - `rules_page` は `offset/limit` で行を切り出し、`rules_get` は全部を返すがどちらも `read_resource` の内部ロジックと同じ `resolve_rules_path` に依存する。`rules_get` も `MAX_FILE_BYTES`/`.md` チェックを共有。
+  - **ページネーション (`rules_get`, `docs_get`)**:
+    - `page` 引数（デフォルト 1）を受け取る。
+    - `MAX_LINES` (100) を1ページの固定サイズとし、`(page - 1) * MAX_LINES` 行をスキップして次の 100 行を取得する。
+    - ファイル末尾に達していない（次ページがある）場合、取得できた行を返し `truncated=true` とする。
   - 取得の際 `path` を再入力した場合は `read_resource`（`typstlab://rules/<path>` または `typstlab://docs/<path>`）で同じファイルに必ず到達できる。
 
 #### 5.10.6 エラーコード標準化
@@ -2140,17 +2163,30 @@ Paper を指定フォーマット（PNG/SVG）でコンパイルし、確認用�
   - `typstlab://rules/papers/paper1/notes.md`（`papers/<id>/rules/` を経由していない）
 
 #### 5.10.9 制限値と挙動
+##### 5.10.9 Limits and Behavior
 
-| 定数 | 値 | 超過時挙動 |
-| --- | --- | --- |
-| `MAX_SCAN_FILES` | 50 | `truncated=true`、結果配列を空にする（ファイル数上限到達時のみ） |
-| `MAX_FILE_BYTES` | 1,048,576 (1 MiB) | 該当ファイルをスキップ／`FILE_TOO_LARGE` |
-| `MAX_MATCHES` | 50 | 上限で打ち切り、`truncated=true`（結果は上限まで返す） |
-| `MAX_MATCHES_PER_FILE` | 3 | 1ファイル内の追加マッチを打ち切り |
+**Search Limits**:
 
-- `MAX_SCAN_FILES` 超過時は **結果配列を空** にする（検索結果の部分返却は行わない）。  
-- `MAX_MATCHES` 超過時は **上限まで返却** し、`truncated=true` を付与する。  
-- `truncated` の理由を明確化したい場合、`structuredContent` で `truncated_reason` を返してよい（例: `"max_files"` / `"max_matches"`）。  
+- MAX_MATCHES: 50 (per page)
+- MAX_SCAN_FILES: 50
+- MAX_FILE_BYTES: 1MB
+
+**Get Limits**:
+
+- MAX_LINES: 100 (per page)
+
+**Truncation Behavior**:
+
+- **Search**:
+  - Provide fixed-size pages (e.g. 50 items).
+  - If results exceed the limit, return the items for the current page and set `truncated: true`.
+  - User can request `page + 1` to retrieve the next chunk.
+- **Get**:
+  - Provide fixed-size pages (e.g. 100 lines).
+  - Return content for current page range `(page-1)*limit` to `page*limit`.
+  - If file ends before limit, `truncated: false`.
+  - If more content exists, `truncated: true`.
+- Do NOT clear results when truncated.
 
 #### 5.10.10 テストマトリクス（TDD 参照用）
 

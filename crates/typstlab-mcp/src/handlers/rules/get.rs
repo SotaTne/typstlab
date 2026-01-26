@@ -23,7 +23,20 @@ pub(crate) async fn rules_get(
     .await
     .map_err(|e| errors::internal_error(format!("Read task panicked: {}", e)))??;
 
-    Ok(CallToolResult::success(vec![Content::text(content)]))
+    use typstlab_core::config::consts::get::MAX_GET_LINES;
+    let page = if args.page < 1 { 1 } else { args.page };
+    let offset = (page - 1) * MAX_GET_LINES;
+
+    let paginated_content: String = content
+        .lines()
+        .skip(offset)
+        .take(MAX_GET_LINES)
+        .collect::<Vec<&str>>()
+        .join("\n");
+
+    Ok(CallToolResult::success(vec![Content::text(
+        paginated_content,
+    )]))
 }
 
 /// rules_pageハンドラ

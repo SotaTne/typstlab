@@ -84,6 +84,7 @@ async fn test_rules_search_normal_success() {
             query: "APA".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -107,6 +108,7 @@ async fn test_rules_search_nonexistent_returns_missing_true() {
             query: "APA".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -185,6 +187,7 @@ async fn test_docs_search_normal_success() {
         &server,
         DocsSearchArgs {
             query: "logic".to_string(),
+            page: 1,
         },
     )
     .await

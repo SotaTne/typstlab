@@ -66,6 +66,7 @@ async fn test_invalid_input_for_empty_query() {
             query: "   ".to_string(), // 空白のみ
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await;

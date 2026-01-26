@@ -6,10 +6,10 @@
 mod builders;
 mod helpers;
 
-use html5ever::parse_document;
 use html5ever::tendril::TendrilSink;
+use html5ever::{QualName, local_name, namespace_url, ns, parse_fragment};
 use markdown::mdast::Node;
-use markup5ever::{Attribute, QualName};
+use markup5ever::Attribute;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use std::cell::RefCell;
 use thiserror::Error;
@@ -28,11 +28,16 @@ use thiserror::Error;
 ///
 /// Returns error if HTML parsing fails
 pub fn convert(html: &str, depth: usize) -> Result<Node, ConversionError> {
-    // Parse HTML into DOM
-    let dom = parse_document(RcDom::default(), Default::default())
-        .from_utf8()
-        .read_from(&mut html.as_bytes())
-        .map_err(|e| ConversionError::ParseError(e.to_string()))?;
+    // Parse HTML into DOM fragment (assuming snippets, avoid full document overhead)
+    let dom = parse_fragment(
+        RcDom::default(),
+        Default::default(),
+        QualName::new(None, ns!(html), local_name!("body")),
+        Vec::new(),
+    )
+    .from_utf8()
+    .read_from(&mut html.as_bytes())
+    .map_err(|e| ConversionError::ParseError(e.to_string()))?;
 
     // Walk DOM and convert to mdast
     let mut converter = TypstHtmlConverter::new(depth);

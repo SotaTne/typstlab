@@ -81,6 +81,7 @@ async fn test_empty_query_returns_invalid_input() {
             query: "   ".to_string(), // 空白のみ
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await;
@@ -106,6 +107,7 @@ async fn test_whitespace_query_returns_invalid_input() {
         &server,
         typstlab_mcp::handlers::docs::DocsSearchArgs {
             query: "\t\n  ".to_string(),
+            page: 1,
         },
     )
     .await;

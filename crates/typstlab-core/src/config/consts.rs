@@ -13,5 +13,11 @@ pub mod search {
     pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 
     /// 検索時にスキャンする最大ファイル数
-    pub const MAX_SCAN_FILES: usize = 50;
+    pub const MAX_SCAN_FILES: usize = 1000;
+}
+
+/// 取得に関連する制限設定
+pub mod get {
+    /// 1ページあたりの最大行数
+    pub const MAX_GET_LINES: usize = 100;
 }

@@ -28,6 +28,7 @@ async fn test_search_schema_structure_fixed() {
             query: "test".to_string(),
             paper_id: None,
             include_root: true,
+            page: 1,
         },
     )
     .await
@@ -83,6 +84,7 @@ async fn test_schema_structure_offline_immutable() {
         &server_offline,
         DocsSearchArgs {
             query: "q".to_string(),
+            page: 1,
         },
     )
     .await
@@ -95,6 +97,7 @@ async fn test_schema_structure_offline_immutable() {
         &server_online,
         DocsSearchArgs {
             query: "q".to_string(),
+            page: 1,
         },
     )
     .await

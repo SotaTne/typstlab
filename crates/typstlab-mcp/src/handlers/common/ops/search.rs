@@ -23,6 +23,7 @@ where
     let mut matches = Vec::new();
     let mut truncated = false;
     let mut scanned = 0usize;
+    let mut total_found = 0usize;
 
     if !root.exists() {
         return Ok(SearchResult {
@@ -30,6 +31,7 @@ where
             matches: vec![],
             truncated: false,
             scanned_files: 0,
+            total_found: 0,
         });
     }
 
@@ -76,6 +78,13 @@ where
 
         if scanned >= config.max_files {
             truncated = true;
+            // DESIGN.md 5.10.9: Return empty matches if scan limit exceeded?
+            // User requirement: "pageではtrunkで含んでいないその次からを返すようにします"
+            // "trunk=trueの時に... pageを+1すれば検索できるようにします"
+            // If we stop at SCAN limit, we might have partial matches.
+            // We should return them. Previous logic cleared them.
+            // The requirement says: do NOT clear results when truncated.
+            // So we just break and return what we have.
             break;
         }
 
@@ -96,10 +105,27 @@ where
         };
 
         if let Some(file_matches) = mapper(path, &content, &metadata) {
-            matches.extend(file_matches);
-            if matches.len() >= config.max_matches {
-                matches.truncate(config.max_matches);
-                truncated = true;
+            for m in file_matches {
+                total_found += 1;
+                if total_found <= config.offset {
+                    continue;
+                }
+                matches.push(m);
+                if matches.len() > config.max_matches {
+                    // We found one more than max_matches (offset + limit + 1)
+                    // This indicates there are more results (next page exists).
+                    matches.pop(); // Remove the extra one
+                    truncated = true;
+                    // We can break early here because we know there's more.
+                    // However, we must ensure we break the OUTER loop.
+                    // But wait, if we break, 'scanned' stops incrementing.
+                    // Does it matter? Scanned is just a stat/limit check.
+                    // If we found enough matches, we don't need to scan more files.
+                    // So yes, we can break.
+                    break;
+                }
+            }
+            if truncated {
                 break;
             }
         }
@@ -110,5 +136,6 @@ where
         matches,
         truncated,
         scanned_files: scanned,
+        total_found,
     })
 }
