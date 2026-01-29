@@ -3062,6 +3062,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "typstlab-typst-ast"
+version = "0.1.0"
+dependencies = [
+ "tree-sitter",
+]
+
+[[package]]
 name = "typstlab-typst-parser"
 version = "0.1.0"
 dependencies = [

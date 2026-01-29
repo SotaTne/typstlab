@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Version {
     pub major: u16,
@@ -23,6 +25,16 @@ impl Version {
     pub const fn to_u64(&self) -> u64 {
         ((self.major as u64) << 32) | ((self.minor as u64) << 16) | (self.patch as u64)
     }
+
+    pub const fn le(self, other: Version) -> bool {
+        self.to_u64() <= other.to_u64()
+    }
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -33,6 +45,9 @@ pub struct SupportRange {
 
 impl SupportRange {
     pub const fn new(since: Version, until: Option<Version>) -> Self {
+        if let Some(u) = until {
+            assert!(since.le(u));
+        }
         Self { since, until }
     }
 
@@ -77,5 +92,12 @@ mod tests {
 
         let open_range = SupportRange::new(Version::new(1, 0, 0), None);
         assert!(open_range.supports(Version::new(3, 0, 0)));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_support_range_panics() {
+        // since > until should panic
+        SupportRange::new(Version::new(2, 0, 0), Some(Version::new(1, 0, 0)));
     }
 }

@@ -2,9 +2,11 @@
 members = [
   "crates/typstlab",
   "crates/typstlab-core",
-  "crates/typstlab-lsp/tree-sitter-typstlabtypst", "crates/typstlab-lsp/typstlab-lsp-core",
+  "crates/typstlab-lsp/tree-sitter-typstlabtypst",
+  "crates/typstlab-lsp/typstlab-lsp-core",
   "crates/typstlab-lsp/typstlab-lsp-macros",
   "crates/typstlab-lsp/typstlab-lsp-server",
+  "crates/typstlab-lsp/typstlab-typst-ast",
   "crates/typstlab-lsp/typstlab-typst-parser",
   "crates/typstlab-mcp",
   "crates/typstlab-shim",
@@ -24,3 +26,4 @@ rmcp = { version = "0.14.0", features = [
   "schemars",
 ] }
 rmcp-macros = "0.14.0"
+tree-sitter = "0.26.3"
