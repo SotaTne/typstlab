@@ -43,4 +43,4 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Verify tree-sitter
-        run: cargo xtree-sitter-verify-ci --base-branch origin/${{ github.base_ref || 'main' }}
+        run: cargo tree-sitter-verify-ci --base-branch origin/${{ github.base_ref || 'main' }}
