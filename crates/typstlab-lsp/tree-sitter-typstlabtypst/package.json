@@ -1,0 +1,9 @@
+{
+  "name": "tree-sitter-typstlabtypst",
+  "version": "0.1.0",
+  "description": "Typstlabtypst grammar for tree-sitter",
+  "type": "module",
+  "devDependencies": {
+    "tree-sitter-cli": "^0.26.3"
+  }
+}

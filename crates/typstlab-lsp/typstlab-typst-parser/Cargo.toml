@@ -1,0 +1,8 @@
+[package]
+name = "typstlab-typst-parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tree-sitter-typstlabtypst = { path = "../tree-sitter-typstlabtypst" }
+tree-sitter = "0.26.3"

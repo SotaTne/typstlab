@@ -69,3 +69,7 @@ coverage/
 .typstlab/*.lock
 .typstlab/kb/*.lock
 .typstlab/locks/*.lock
+
+# Tools
+.tools
+

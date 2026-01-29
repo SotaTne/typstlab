@@ -1,0 +1,46 @@
+name: CI Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - crates/typstlab-lsp/tree-sitter-typstlabtypst/src
+      - crates/typstlab-lsp/tree-sitter-typstlabtypst/grammar.js
+      - crates/typstlab-lsp/tree-sitter-typstlabtypst/Cargo.toml
+  pull_request:
+    branches: [main]
+    paths:
+      - crates/typstlab-lsp/tree-sitter-typstlabtypst/src
+      - crates/typstlab-lsp/tree-sitter-typstlabtypst/grammar.js
+      - crates/typstlab-lsp/tree-sitter-typstlabtypst/Cargo.toml
+
+jobs:
+  verify-tree-sitter:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Cache cargo and build artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            .tools/bin/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Verify tree-sitter
+        run: cargo xtree-sitter-verify-ci --base-branch origin/${{ github.base_ref || 'main' }}

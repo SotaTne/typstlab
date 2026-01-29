@@ -2,11 +2,16 @@
 members = [
   "crates/typstlab",
   "crates/typstlab-core",
-  "crates/typstlab-typst",
-  "crates/typstlab-watch",
+  "crates/typstlab-lsp/tree-sitter-typstlabtypst", "crates/typstlab-lsp/typstlab-lsp-core",
+  "crates/typstlab-lsp/typstlab-lsp-macros",
+  "crates/typstlab-lsp/typstlab-lsp-server",
+  "crates/typstlab-lsp/typstlab-typst-parser",
   "crates/typstlab-mcp",
   "crates/typstlab-shim",
   "crates/typstlab-testkit",
+  "crates/typstlab-typst",
+  "crates/typstlab-watch",
+  "xtask",
 ]
 
 resolver = "2"
