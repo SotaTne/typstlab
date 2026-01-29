@@ -6,7 +6,7 @@ pub mod version;
 
 pub use close::Close;
 pub use error::ErrorCode;
-pub use features::{FeatureId, FeatureRule, FeatureSpec, RuleKind, Rules};
+pub use features::{Feature, FeatureId, FeatureRule, FeatureSpec, RuleKind, Rules};
 pub use version::{SupportRange, Version};
 
 /// Attach version-gating metadata to AST nodes / semantic nodes / etc.

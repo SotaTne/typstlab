@@ -1,5 +1,7 @@
+mod close;
 mod close_cfg;
-mod close_deriver;
+mod feature;
+mod feature_cfg;
 mod utils;
 
 use proc_macro::TokenStream;
@@ -45,5 +47,41 @@ use proc_macro::TokenStream;
 /// ```
 #[proc_macro_derive(Close, attributes(close))]
 pub fn derive_close(input: TokenStream) -> TokenStream {
-    close_deriver::derive_close(input)
+    close::derive_close(input)
+}
+
+/// Derives the `Feature` trait for a struct or enum.
+///
+/// This macro generates the `IGNORE` and `FEATURES` constants required by the `Feature` trait.
+///
+/// # Attributes
+///
+/// - `#[feat(ignore)]`: Excludes the type from feature checking (`IGNORE = true`).
+/// - `#[feat(ID1, ID2, ...)]`: Specifies the `FeatureId`s associated with this type.
+///   IDs can be specified as simple names (`SugarFoo`) or paths (`FeatureId::SugarFoo`).
+///
+/// # Example
+///
+/// ```
+/// use typstlab_lsp_core::{Feature, FeatureId};
+/// use typstlab_lsp_macros::Feature as DeriveFeature;
+///
+/// #[derive(DeriveFeature)]
+/// #[feat(TestV0_12_0Plus, TestV0_12_5ToV0_13_0)]
+/// struct MultiFeatureNode;
+///
+/// assert!(!MultiFeatureNode::IGNORE);
+/// assert!(MultiFeatureNode::FEATURES.contains(&FeatureId::TestV0_12_0Plus));
+/// assert!(MultiFeatureNode::FEATURES.contains(&FeatureId::TestV0_12_5ToV0_13_0));
+///
+/// #[derive(DeriveFeature)]
+/// #[feat(ignore)]
+/// struct InternalNode;
+///
+/// assert!(InternalNode::IGNORE);
+/// assert!(InternalNode::FEATURES.is_empty());
+/// ```
+#[proc_macro_derive(Feature, attributes(feat))]
+pub fn derive_feature(input: TokenStream) -> TokenStream {
+    feature::derive_feature(input)
 }

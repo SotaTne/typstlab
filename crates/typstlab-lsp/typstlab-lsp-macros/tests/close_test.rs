@@ -47,7 +47,7 @@ enum TestEnum {
         x: Vec<i32>,
         y: String,
     },
-    #[warn(unused)]
+    #[allow(dead_code)]
     C,
 }
 

@@ -3,6 +3,49 @@ use std::fmt;
 use crate::{SupportRange, Version, deprecated, rules, unsupported};
 use core::slice::Iter;
 
+pub trait Feature {
+    const IGNORE: bool;
+    const FEATURES: &'static [FeatureId];
+
+    #[inline]
+    fn ignore() -> bool {
+        Self::IGNORE
+    }
+
+    #[inline]
+    fn features() -> &'static [FeatureId] {
+        if Self::IGNORE { &[] } else { Self::FEATURES }
+    }
+
+    #[inline]
+    fn collect_unsupported(v: Version) -> Vec<FeatureId> {
+        Self::features()
+            .iter()
+            .copied()
+            .filter(|f| !f.supports(v))
+            .collect()
+    }
+
+    #[inline]
+    fn collect_deprecated(v: Version) -> Vec<FeatureId> {
+        Self::features()
+            .iter()
+            .copied()
+            .filter(|f| f.deprecated(v))
+            .collect()
+    }
+
+    #[inline]
+    fn has_unsupported(v: Version) -> bool {
+        Self::features().iter().any(|f| !f.supports(v))
+    }
+
+    #[inline]
+    fn has_deprecated(v: Version) -> bool {
+        Self::features().iter().any(|f| f.deprecated(v))
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Rules(pub &'static [FeatureRule]);
 
@@ -45,6 +88,14 @@ pub enum FeatureId {
 
     // Semantics
     CounterBehaviorChange,
+
+    // Testing / Integration (Stable variants for macro tests)
+    #[cfg(any(test, debug_assertions))]
+    TestV0_12_0Plus,
+    #[cfg(any(test, debug_assertions))]
+    TestV0_12_5ToV0_13_0,
+    #[cfg(any(test, debug_assertions))]
+    TestV0_13_2Plus,
 }
 
 impl FeatureId {
@@ -54,6 +105,12 @@ impl FeatureId {
             FeatureId::SugarFoo => "sugar_foo",
             FeatureId::NewHeadingSyntax => "new_heading_syntax",
             FeatureId::CounterBehaviorChange => "counter_behavior_change",
+            #[cfg(any(test, debug_assertions))]
+            FeatureId::TestV0_12_0Plus => "test_v0_12_0_plus",
+            #[cfg(any(test, debug_assertions))]
+            FeatureId::TestV0_12_5ToV0_13_0 => "test_v0_12_5_to_v0_13_0",
+            #[cfg(any(test, debug_assertions))]
+            FeatureId::TestV0_13_2Plus => "test_v0_13_2_plus",
         }
     }
 
@@ -63,6 +120,12 @@ impl FeatureId {
             FeatureId::SugarFoo => "SugarFoo syntax",
             FeatureId::NewHeadingSyntax => "New heading syntax",
             FeatureId::CounterBehaviorChange => "Counter behavior change",
+            #[cfg(any(test, debug_assertions))]
+            FeatureId::TestV0_12_0Plus => "Test Feature (0.12.0+)",
+            #[cfg(any(test, debug_assertions))]
+            FeatureId::TestV0_12_5ToV0_13_0 => "Test Feature (0.12.5 - 0.13.0)",
+            #[cfg(any(test, debug_assertions))]
+            FeatureId::TestV0_13_2Plus => "Test Feature (0.13.2+)",
         }
     }
 }
@@ -99,6 +162,21 @@ pub const COUNTER_BEHAVIOR_CHANGE: FeatureSpec = FeatureSpec::new(
     FeatureId::CounterBehaviorChange,
     rules!(unsupported!(to_incl 0, 14, max), deprecated!(0, 17, 0),),
 );
+#[cfg(any(test, debug_assertions))]
+pub const TEST_V0_12_0_PLUS: FeatureSpec = FeatureSpec::new(
+    FeatureId::TestV0_12_0Plus,
+    rules!(unsupported!(to_incl 0, 11, max),),
+);
+#[cfg(any(test, debug_assertions))]
+pub const TEST_V0_12_5_TO_V0_13_0: FeatureSpec = FeatureSpec::new(
+    FeatureId::TestV0_12_5ToV0_13_0,
+    rules!(unsupported!(to_incl 0, 12, 4), deprecated!(0, 13, 0),),
+);
+#[cfg(any(test, debug_assertions))]
+pub const TEST_V0_13_2_PLUS: FeatureSpec = FeatureSpec::new(
+    FeatureId::TestV0_13_2Plus,
+    rules!(unsupported!(to_incl 0, 13, 1),),
+);
 
 /// Resolve FeatureId → FeatureSpec.
 /// (Centralization is the whole point.)
@@ -107,6 +185,12 @@ pub const fn spec(id: FeatureId) -> &'static FeatureSpec {
         FeatureId::SugarFoo => &SUGAR_FOO,
         FeatureId::NewHeadingSyntax => &NEW_HEADING_SYNTAX,
         FeatureId::CounterBehaviorChange => &COUNTER_BEHAVIOR_CHANGE,
+        #[cfg(any(test, debug_assertions))]
+        FeatureId::TestV0_12_0Plus => &TEST_V0_12_0_PLUS,
+        #[cfg(any(test, debug_assertions))]
+        FeatureId::TestV0_12_5ToV0_13_0 => &TEST_V0_12_5_TO_V0_13_0,
+        #[cfg(any(test, debug_assertions))]
+        FeatureId::TestV0_13_2Plus => &TEST_V0_13_2_PLUS,
     }
 }
 
@@ -167,60 +251,68 @@ mod tests {
 
     #[test]
     fn test_feature_id_keys() {
-        assert_eq!(FeatureId::SugarFoo.key(), "sugar_foo");
-        assert_eq!(FeatureId::NewHeadingSyntax.key(), "new_heading_syntax");
+        assert_eq!(FeatureId::TestV0_12_0Plus.key(), "test_v0_12_0_plus");
         assert_eq!(
-            FeatureId::CounterBehaviorChange.key(),
-            "counter_behavior_change"
+            FeatureId::TestV0_12_5ToV0_13_0.key(),
+            "test_v0_12_5_to_v0_13_0"
         );
+        assert_eq!(FeatureId::TestV0_13_2Plus.key(), "test_v0_13_2_plus");
     }
 
     #[test]
     fn test_feature_id_labels() {
-        assert_eq!(FeatureId::SugarFoo.label(), "SugarFoo syntax");
-        assert_eq!(FeatureId::NewHeadingSyntax.label(), "New heading syntax");
+        assert_eq!(FeatureId::TestV0_12_0Plus.label(), "Test Feature (0.12.0+)");
         assert_eq!(
-            FeatureId::CounterBehaviorChange.label(),
-            "Counter behavior change"
+            FeatureId::TestV0_12_5ToV0_13_0.label(),
+            "Test Feature (0.12.5 - 0.13.0)"
         );
     }
 
     #[test]
     fn test_feature_support_gating() {
-        let v_old = version!(0, 14, 0);
-        let v_edge = version!(0, 14, max);
-        let v_current = version!(0, 15, 0);
-        let v_deprecated = version!(0, 17, 0);
+        let v_old = version!(0, 11, max);
+        let v_12_0 = version!(0, 12, 0);
+        let v_12_4 = version!(0, 12, 4);
+        let v_12_5 = version!(0, 12, 5);
+        let v_13_0 = version!(0, 13, 0);
+        let v_13_2 = version!(0, 13, 2);
 
-        // SugarFoo
-        assert!(!FeatureId::SugarFoo.supports(v_old));
-        assert!(!FeatureId::SugarFoo.supports(v_edge));
-        assert!(FeatureId::SugarFoo.supports(v_current));
-        assert!(FeatureId::SugarFoo.supports(v_deprecated));
-        assert!(FeatureId::SugarFoo.deprecated(v_deprecated));
+        // TestV0_12_0Plus: 0.12.0+
+        assert!(!FeatureId::TestV0_12_0Plus.supports(v_old));
+        assert!(FeatureId::TestV0_12_0Plus.supports(v_12_0));
+
+        // TestV0_12_5ToV0_13_0: 0.12.5+, Deprecated 0.13.0+
+        assert!(!FeatureId::TestV0_12_5ToV0_13_0.supports(v_12_4));
+        assert!(FeatureId::TestV0_12_5ToV0_13_0.supports(v_12_5));
+        assert!(FeatureId::TestV0_12_5ToV0_13_0.deprecated(v_13_0));
+
+        // TestV0_13_2Plus: 0.13.2+
+        assert!(!FeatureId::TestV0_13_2Plus.supports(v_13_0));
+        assert!(FeatureId::TestV0_13_2Plus.supports(v_13_2));
     }
 
     #[test]
     fn test_feature_messages() {
-        let v_old = version!(0, 14, 0);
-        let v_supported = version!(0, 15, 0);
-        let v_deprecated = version!(0, 17, 0);
+        let v_old = version!(0, 11, 0);
+        let v_supported = version!(0, 12, 0);
+        let v_deprecated = version!(0, 13, 0);
 
-        let id = FeatureId::SugarFoo;
+        let id = FeatureId::TestV0_12_5ToV0_13_0;
         assert!(id.message(v_old).contains("is not supported"));
-        assert!(id.message(v_supported).contains("is supported"));
+        assert!(id.message(v_supported).contains("is not supported")); // 0.12.5 からなので
+        assert!(id.message(version!(0, 12, 5)).contains("is supported"));
         assert!(id.message(v_deprecated).contains("is deprecated"));
     }
 
     #[test]
     fn test_rules_iterator() {
-        let spec = FeatureId::SugarFoo.spec();
+        let spec = FeatureId::TestV0_12_5ToV0_13_0.spec();
         let mut count = 0;
         for rule in spec.rules.iter() {
             count += 1;
             let _ = rule.kind;
         }
-        assert_eq!(count, 2);
+        assert_eq!(count, 2); // Unsupported and Deprecated
 
         // test IntoIterator for &Rules
         let mut count2 = 0;
