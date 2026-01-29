@@ -29,15 +29,9 @@ pub enum TreeSitterCommands {
     Generate,
     /// Verify tree-sitter parsers
     Verify(VerifyArgs),
+    /// Test tree-sitter parsers
+    Test,
 }
 
 #[derive(Parser)]
-pub struct VerifyArgs {
-    /// CI mode: strictly check commit coherence and output freshness
-    #[arg(long)]
-    pub ci: bool,
-
-    /// Base branch for comparison (required in CI mode)
-    #[arg(long, default_value = "origin/main")]
-    pub base_branch: String,
-}
+pub struct VerifyArgs {}

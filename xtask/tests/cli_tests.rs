@@ -46,8 +46,5 @@ mod tests {
             .unwrap();
 
         assert!(output.status.success());
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("--ci"));
-        assert!(stdout.contains("--base-branch"));
     }
 }

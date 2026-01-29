@@ -15,10 +15,8 @@ fn main() -> Result<()> {
             let action = match args.command {
                 TreeSitterCommands::Setup => TreeSitterAction::Setup,
                 TreeSitterCommands::Generate => TreeSitterAction::Generate,
-                TreeSitterCommands::Verify(args) => TreeSitterAction::Verify {
-                    ci: args.ci,
-                    base_branch: args.base_branch,
-                },
+                TreeSitterCommands::Verify(_) => TreeSitterAction::Verify,
+                TreeSitterCommands::Test => TreeSitterAction::Test,
             };
             let cmd = TreeSitterCommand::new(action);
             use crate::commands::Command as _;

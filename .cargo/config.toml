@@ -1,6 +1,6 @@
 [alias]
 xtask = "run --package xtask --"
-tree-sitter-setup = "xtask tree-sitter setup"
-tree-sitter-gen = "xtask tree-sitter generate"
-tree-sitter-verify = "xtask tree-sitter verify"
-tree-sitter-verify-ci = "xtask tree-sitter verify --ci"
+xtask-tree-sitter-setup = "xtask tree-sitter setup"
+xtask-tree-sitter-gen = "xtask tree-sitter generate"
+xtask-tree-sitter-verify = "xtask tree-sitter verify"
+xtask-tree-sitter-test = "xtask tree-sitter test"

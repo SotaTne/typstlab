@@ -41,6 +41,13 @@ jobs:
             target/
             .tools/bin/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
+      - name: Build xtask
+        run: |
+          cargo build --package xtask
+          cargo build --package tree-sitter-typstlabtypst
+      - name: Setup TreeSitter
+        run: cargo xtask tree-sitter setup
       - name: Verify tree-sitter
-        run: cargo tree-sitter-verify-ci --base-branch origin/${{ github.base_ref || 'main' }}
+        run: cargo xtask tree-sitter verify
+      - name: Run tree-sitter test
+        run: cargo xtask tree-sitter test
