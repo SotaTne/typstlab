@@ -9,7 +9,6 @@
 
 export default grammar({
   name: "typstlabtypst",
-
   rules: {
     source_file: $ => repeat("hello")
   }
