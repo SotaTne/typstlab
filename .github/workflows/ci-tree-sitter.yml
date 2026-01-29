@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - crates/typstlab-lsp/tree-sitter-typstlabtypst/src
+      - crates/typstlab-lsp/tree-sitter-typstlabtypst/test
       - crates/typstlab-lsp/tree-sitter-typstlabtypst/grammar.js
       - crates/typstlab-lsp/tree-sitter-typstlabtypst/Cargo.toml
 
