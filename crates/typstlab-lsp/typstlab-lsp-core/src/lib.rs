@@ -2,6 +2,7 @@ pub mod close;
 pub mod error;
 pub mod features;
 pub mod macros;
+pub mod pos;
 pub mod version;
 
 pub use close::Close;
