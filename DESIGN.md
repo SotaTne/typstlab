@@ -72,17 +72,18 @@ typstlab は人間だけでなく **コードエージェントが操作する�
 - PDF ビルド（`build` コマンド）
 - プロジェクト / paper / status の骨格
 - Typst バージョン固定（プロジェクト単位）
-- Typst 管理（link, install, docs, sync）
-- Layout 生成システム（`generate` コマンド、`_generated/`）
-- プロジェクト管理（`new` コマンド）
+- Typst 管理（install, docs, sync）
+- Layout 生成システム（`gen` コマンド、`_generated/`）
+- プロジェクト管理（`new`, `init`, `setup` コマンド）
 - 診断機能（`doctor`, `status` コマンド）
-- MCP サーバ（rules tools）
+- MCP サーバ / LSP (Stub)
 
 **v0.2以降に延期**：
 
 - watch 最適化（`watch` コマンド）
-- uv 統合（link, exec）
+- uv 統合（exec）
 - refs 管理（fetch/check/touch）と sources.lock
+- `gen lib`, `gen layout`
 
 **含まないもの**：
 
@@ -909,8 +910,8 @@ typstlab が提供する組み込みレイアウト（v0.1）：
 - **常に派生物**：`_generated/` は paper.toml + layouts から生成される
 - **gitignore 必須**：git commit してはいけない
 - **手編集禁止**：ユーザーが直接編集してはいけない
-- **唯一の生成者**：`typstlab generate` のみが生成・更新できる
-- **破棄可能**：削除しても `generate` で再生成できる
+- **唯一の生成者**：`typstlab sync` のみが生成・更新できる
+- **破棄可能**：削除しても `sync` で再生成できる
 
 **CI での扱い**:
 
@@ -918,8 +919,7 @@ typstlab が提供する組み込みレイアウト（v0.1）：
 # CI の例
 steps:
   - checkout
-  - run: typstlab sync              # ツールチェーン準備
-  - run: typstlab generate --all    # _generated/ を生成（必須）
+  - run: typstlab setup             # 環境構築（ツールInstall + 生成）
   - run: typstlab build --paper report
 ```
 
@@ -942,14 +942,286 @@ steps:
 | コマンド種別 | 成功 | 失敗 | 理由 |
 |-------------|------|------|------|
 | 状態取得系（status, doctor） | exit 0 | exit 0 (JSON 内でエラー) | エージェント操作性 |
-| 実行系（build, watch, new, generate） | exit 0 | exit 1 | CI/CD, 人間の利用 |
+| 実行系（build, gen, new, setup, sync） | exit 0 | exit 1 | CI/CD, 人間の利用 |
 
 **JSON 出力の I/O 規約**：
 
 - `--json` 時は stdout に JSON のみを出力し、stderr には人間向けメッセージを出さない（必要なら `--verbose` 等で制御）
 - これにより、エージェントは stdout を安全にパースでき、stderr を監視する必要がない
 
-### 5.2 Project Commands
+### 5.2 Lifecycle Commands
+
+#### 5.2.1 `typstlab new <project-name>`
+
+新しい typstlab プロジェクトディレクトリを作成する。
+デフォルトでは Paper は作成されない（空のプロジェクトのみ）。
+
+**Usage**:
+
+```bash
+typstlab new my-research
+typstlab new my-research --paper report
+```
+
+**Options**:
+
+- `--paper <name>`: プロジェクト作成後に指定した名前で Paper を生成する (Shortcut for `gen paper`)
+
+**動作**:
+
+1. `<project-name>/` ディレクトリを作成
+2. `typstlab.toml` を生成
+3. 必須ディレクトリ構造を作成
+4. (`--paper` 指定時) `typstlab gen paper <name>` 相当を実行
+
+**Safety classification**:
+
+- `network`: false
+- `writes_sot`: true
+
+#### 5.2.2 `typstlab init [path]`
+
+カレントディレクトリ（または指定パス）をプロジェクトとして初期化する。
+
+**Usage**:
+
+```bash
+typstlab init
+typstlab init .
+typstlab init --paper report
+```
+
+**Options**:
+
+- `--paper <name>`: 初期化後に指定した名前で Paper を生成する
+
+**動作**:
+
+1. `new` と同様だが、ディレクトリ作成を行わず、既存ディレクトリ内に展開する
+2. 既に `typstlab.toml` がある場合はエラー
+3. (`--paper` 指定時) `typstlab gen paper <name>` 相当を実行
+
+**Safety classification**:
+
+- `network`: false
+- `writes_sot`: true
+
+### 5.3 Scaffolding Commands (`gen`)
+
+#### 5.3.1 `typstlab gen paper <id>`
+
+プロジェクト内に新しい Paper を生成する。
+
+**Usage**:
+
+```bash
+typstlab gen paper report
+typstlab gen paper thesis --layout ieee --title "My Thesis"
+```
+
+**Options**:
+
+- `--layout <name>`: テーマを指定 (default: project default)
+- `--title <title>`: タイトルを指定
+
+**動作**:
+
+1. `papers/<id>/` を作成
+2. `paper.toml`, `main.typ` を生成
+3. `_generated/` 等の初期生成 (`sync` 相当の処理を含む)
+
+**Safety classification**:
+
+- `network`: false
+- `writes_sot`: true
+
+#### 5.3.2 `typstlab gen layout <name>`
+
+> **Note**: v0.2以降で実装予定。v0.1では未実装（"Not implemented" エラーまたは警告を表示）。
+
+カスタムレイアウトのテンプレートを生成する。
+
+#### 5.3.3 `typstlab gen lib <name>`
+
+> **Note**: v0.2以降で実装予定。v0.1では未実装（"Not implemented" エラーまたは警告を表示）。
+
+新しいライブラリパッケージの構成を生成する。
+
+### 5.4 Operational Commands
+
+#### 5.4.1 `typstlab setup`
+
+プロジェクトを利用可能な状態にする（Provisioning）。「Clone & Go」を実現するコマンド。
+
+**Usage**:
+
+```bash
+cd my-project
+typstlab setup
+```
+
+**動作**:
+
+以下の処理を順次実行するエイリアスとして振る舞う：
+
+1.  `typstlab doctor --fix` 相当 (Network)
+    *   Typst ツールチェーンの解決・インストール (`typst install`)
+    *   Docs の欠損確認・同期 (`typst docs sync`)
+    *   uv (Python) の解決 (`link uv`)
+2.  `typstlab sync --all`
+
+**Safety classification**:
+
+- `network`: true
+- `writes`: true
+- `writes_sot`: false (原則)
+
+#### 5.4.2 `typstlab sync [flags]`
+
+プロジェクト状態の整合性を確保する（Consistency）。アーティファクトの生成・更新を担うハブコマンド。
+
+**Usage**:
+
+```bash
+typstlab sync                  # Default: Local artifacts only
+typstlab sync --paper report   # Specific paper only
+typstlab sync --docs           # Include docs sync (Network)
+typstlab sync --tools          # Include tool installation (Network)
+typstlab sync --all            # Everything (Setup equivalent)
+```
+
+**動作**:
+
+1.  (Default) `_generated/` (Layout templates) の再生成
+2.  (Default) `bin/` shims の再生成
+3.  (--docs) `typstlab typst docs sync` を実行
+4.  (--tools) `typstlab typst install` (Smart resolution) を実行
+
+**Safety classification**:
+
+- `network`: false (default) / true (with flags)
+- `writes`: true
+- `writes_sot`: false
+
+### 5.5 Execution Commands
+
+#### 5.5.1 `typstlab build [target]`
+
+Paper をビルドする。
+
+**Usage**:
+
+```bash
+typstlab build                 # Build all papers (Parallel)
+typstlab build -p report       # Build specific paper
+typstlab build papers/report   # Build from path context
+```
+
+**Options**:
+
+- `-p, --paper <id>`: ID指定
+- `--full` / `--force`: ビルド前に `sync` (local) を実行してアーティファクトを全再生成
+
+**動作**:
+
+1.  ターゲットの特定（指定なしなら全Paper）
+2.  (Optional) `sync` 実行
+3.  並列ビルド実行 (`typst compile ...`)
+4.  結果レポート
+
+**Safety classification**:
+
+- `network`: false
+- `writes`: true (dist/)
+
+### 5.6 Status & Diagnosis
+
+#### 5.6.1 `typstlab status [target]`
+
+プロジェクトまたは Paper の状態を表示する。
+
+**Usage**:
+
+```bash
+typstlab status                # Project overall status
+typstlab status -p report      # Paper status
+typstlab status --json         # JSON output
+```
+
+**動作**:
+
+- プロジェクト構成、Paper一覧、健全性チェック結果を表示
+- `typstlab paper list` (旧) の機能もここに統合
+
+#### 5.6.2 `typstlab doctor`
+
+環境の詳細診断を行う。デバッグ用。
+
+**Usage**:
+
+```bash
+typstlab doctor
+typstlab doctor --json
+```
+
+### 5.7 Toolchain Utilities (`typst`)
+
+#### 5.7.1 `typstlab typst install [version]`
+
+Typst をスマートにインストール・解決する。
+
+**Usage**:
+
+```bash
+typstlab typst install         # typstlab.toml のバージョンを解決
+typstlab typst install 0.13.0  # 指定バージョン
+typstlab typst install --offline
+```
+
+**動作 (Smart Resolution)**:
+
+1.  **System Check**: PATH上の `typst` が要求バージョンと一致？ -> Link (Symlink作成)
+2.  **Cache Check**: Managedキャッシュ(`~/.cache/...`)にある？ -> Use Cache
+3.  **Download**: 上記になければGitHubからダウンロード (Network)
+
+**Safety classification**:
+
+- `network`: true (unless --offline)
+- `writes`: true (cache, bin/)
+
+#### 5.7.2 `typstlab typst docs sync`
+
+ドキュメントの同期。
+
+### 5.8 Experimental / Advanced
+
+#### 5.8.1 `typstlab mcp`
+
+MCP (Model Context Protocol) サーバーを起動する。
+
+**Usage**:
+
+```bash
+typstlab mcp stdio
+```
+
+#### 5.8.2 `typstlab lsp`
+
+> **Note**: v0.1では試験的実装、またはプレースホルダー。
+
+LSP (Language Server Protocol) サーバーを起動する。
+
+**Usage**:
+
+```bash
+typstlab lsp stdio
+```
+
+**動作**:
+
+- `tinymist` 等のLSPサーバー機能をラップして起動、または `Stdio` 経由でエディタと通信する。
+- v0.1 では "Not implemented" の警告、または最小限の起動シーケンスのみ実装。
+
 
 #### 5.2.1 `typstlab new <project-name>`
 
@@ -1391,7 +1663,35 @@ typstlab typst version --json
 
 **Exit code**: 常に 0
 
-#### 5.7.4 `typstlab typst exec -- <args>`
+#### 5.7.4 `typstlab typst versions [--json]`
+
+インストール済みの Typst バージョン一覧を表示する。
+
+**Usage**:
+
+```bash
+typstlab typst versions
+typstlab typst versions --json
+```
+
+**Output example**:
+
+```plaintext
+Installed Typst versions:
+  • 0.12.0 (managed)
+  • 0.13.0 (managed)
+  • 0.13.1 (managed)
+```
+
+**Safety classification (v0.1)**：
+
+- `network`: false
+- `reads`: true
+- `writes`: false
+
+**Exit code**: 常に 0
+
+#### 5.7.5 `typstlab typst exec -- <args>`
 
 解決済み typst を実行する。bin/typst shim から呼ばれる。
 

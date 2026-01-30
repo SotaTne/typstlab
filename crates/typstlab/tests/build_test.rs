@@ -100,20 +100,36 @@ fn test_build_requires_project_root() {
 }
 
 #[test]
-fn test_build_requires_paper_id() {
+fn test_build_all_papers_by_default() {
     with_isolated_typst_env(None, |_cache| {
         let temp = temp_dir_in_workspace();
         let root = temp.path();
 
         create_test_project(root, "0.12.0");
 
-        // Should fail without --paper flag
+        let papers_dir = root.join("papers");
+        create_test_paper(&papers_dir, "paper1", None, None);
+        create_test_paper(&papers_dir, "paper2", None, None);
+        create_main_file(&papers_dir.join("paper1"), "main.typ", "= Paper 1");
+        create_main_file(&papers_dir.join("paper2"), "main.typ", "= Paper 2");
+
+        // Install typst
+        let typstlab_bin =
+            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+        let _typst_path = setup_test_typst(&typstlab_bin, root);
+
+        // Should build ALL papers by default
         Command::cargo_bin("typstlab")
             .unwrap()
             .current_dir(root)
             .arg("build")
+            // .arg("--jobs").arg("2") // Implicit default
             .assert()
-            .failure();
+            .success();
+
+        // Verify both built
+        assert!(root.join("dist/paper1/paper1.pdf").exists());
+        assert!(root.join("dist/paper2/paper2.pdf").exists());
     });
 }
 

@@ -18,18 +18,39 @@ use typstlab_core::status::schema::SuggestedAction;
 /// # Returns
 ///
 /// Result indicating success or failure
-pub fn run(apply: bool, verbose: bool) -> Result<()> {
+pub fn run(docs: bool, tools: bool, all: bool, verbose: bool) -> Result<()> {
     let ctx = Context::new(verbose)?;
 
     if verbose {
         println!("→ Starting sync...");
     }
 
-    // Run sync workflow
-    if apply {
-        sync_apply_mode(&ctx)?;
-    } else {
-        sync_default_mode(&ctx)?;
+    // Determine what to sync
+    let sync_docs = docs || all;
+    let sync_tools = tools || all;
+
+    // Check Typst if tools enabled
+    if sync_tools {
+        // Attempt to link. If fails, install.
+        if run_typst_link(&ctx).is_err() {
+            if ctx.verbose {
+                println!("! Typst not resolved, attempting install...");
+            }
+            let version = &ctx.project.config().typst.version;
+            use crate::commands::typst::install::execute_install;
+            execute_install(version.clone(), false)?;
+
+            // Run link again ensuring it works now
+            run_typst_link(&ctx)?;
+        }
+    }
+
+    // Always run default sync (generate)
+    sync_default_mode(&ctx)?;
+
+    // If docs mode enabled, run apply mode (Status Engine handles docs)
+    if sync_docs {
+        sync_apply_mode(&ctx, sync_docs, false)?;
     }
 
     Ok(())
@@ -117,14 +138,10 @@ fn update_sync_state(ctx: &Context) -> Result<()> {
 /// Execute apply sync mode
 ///
 /// Workflow:
-/// 1. Run default sync (typst link → generate → state update)
-/// 2. Run status to get suggested actions
-/// 3. Auto-execute allowed actions (v0.1 fixed)
-fn sync_apply_mode(ctx: &Context) -> Result<()> {
-    // Step 1: Run default sync workflow
-    sync_default_mode(ctx)?;
-
-    // Step 2: Run status to get suggested actions
+/// 1. Run status to get suggested actions
+/// 2. Auto-execute allowed actions based on filters
+fn sync_apply_mode(ctx: &Context, sync_docs: bool, sync_tools: bool) -> Result<()> {
+    // Step 2 (Step 1 is standard sync): Run status to get suggested actions
     if ctx.verbose {
         println!("\n→ Checking for actions...");
     }
@@ -132,9 +149,9 @@ fn sync_apply_mode(ctx: &Context) -> Result<()> {
     let engine = StatusEngine::new();
     let report = engine.run(&ctx.project, None);
 
-    // Step 3: Auto-execute allowed actions (v0.1 fixed)
+    // Step 3: Auto-execute allowed actions with filtering
     if !report.actions.is_empty() {
-        apply_actions(ctx, &report.actions)?;
+        apply_actions(ctx, &report.actions, sync_docs, sync_tools)?;
     } else if ctx.verbose {
         println!("✓ No actions needed");
     }
@@ -144,8 +161,13 @@ fn sync_apply_mode(ctx: &Context) -> Result<()> {
 
 /// Apply allowed actions automatically
 ///
-/// v0.1: Only auto-execute typst install and docs sync
-fn apply_actions(ctx: &Context, actions: &[SuggestedAction]) -> Result<()> {
+/// v0.1: Only auto-execute typst install and docs sync based on flags
+fn apply_actions(
+    ctx: &Context,
+    actions: &[SuggestedAction],
+    sync_docs: bool,
+    sync_tools: bool,
+) -> Result<()> {
     if ctx.verbose {
         println!("\n→ Applying fixes...");
     }
@@ -156,7 +178,7 @@ fn apply_actions(ctx: &Context, actions: &[SuggestedAction]) -> Result<()> {
                 command,
                 description,
             } => {
-                apply_command_action(ctx, command, description)?;
+                apply_command_action(ctx, command, description, sync_docs, sync_tools)?;
             }
             _ => {
                 // Skip InstallTool, CreateFile, EditFile
@@ -171,12 +193,26 @@ fn apply_actions(ctx: &Context, actions: &[SuggestedAction]) -> Result<()> {
 }
 
 /// Apply a single command action
-fn apply_command_action(ctx: &Context, command: &str, description: &str) -> Result<()> {
+fn apply_command_action(
+    ctx: &Context,
+    command: &str,
+    description: &str,
+    sync_docs: bool,
+    sync_tools: bool,
+) -> Result<()> {
     // Only allow specific commands (v0.1 fixed list)
     if command.starts_with("typstlab typst install ") {
-        execute_typst_install(command)?;
+        if sync_tools {
+            execute_typst_install(command)?;
+        } else if ctx.verbose {
+            println!("  • Skipping tools: {}", description);
+        }
     } else if command == "typstlab typst docs sync" {
-        execute_docs_sync(ctx)?;
+        if sync_docs {
+            execute_docs_sync(ctx)?;
+        } else if ctx.verbose {
+            println!("  • Skipping docs: {}", description);
+        }
     } else if ctx.verbose {
         // Skip other commands
         println!("  • Skipping: {}", description);

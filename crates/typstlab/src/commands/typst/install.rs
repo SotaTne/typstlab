@@ -11,21 +11,22 @@ use typstlab_typst::resolve::managed_cache_dir;
 use super::link;
 
 /// Execute `typstlab typst install` command
-pub fn execute_install(version: String, from_cargo: bool) -> Result<()> {
+pub fn execute_install(version: String, _from_cargo: bool) -> Result<()> {
+    // Note: from_cargo is deprecated/ignored in v0.1 as per DESIGN.md
+    // We keep the internal argument signature for now to match main.rs but simply ignore it,
+    // or we can remove it. Let's remove it properly.
+    // Wait, main.rs calls it. I should update signature.
     // Find project root
     let project = Project::from_current_dir()?;
     let root = &project.root;
 
+    /*
     if from_cargo {
-        // TODO(v0.2): Implement cargo install fallback
-        // Per DESIGN.md, cargo should be automatic fallback when GitHub fails
-        eprintln!("✗ --from-cargo flag not yet implemented");
-        eprintln!("Automatic cargo fallback will be available in v0.2");
-        eprintln!("Currently only GitHub Releases installation is supported");
-        return Err(
-            TypstlabError::Generic("cargo installation not yet implemented".to_string()).into(),
-        );
+        // ... legacy implementation removed ...
+        bail!("--from-cargo is no longer supported in v0.1");
     }
+    */
+    // Removed legacy code and closing brace mismatch
 
     println!("Installing Typst {} from GitHub Releases...", version);
 

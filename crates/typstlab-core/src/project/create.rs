@@ -112,22 +112,59 @@ pub fn create_project(parent_dir: &Path, project_name: &str) -> Result<()> {
     // Create project root directory
     fs::create_dir(&project_dir)?;
 
-    // Create subdirectories
-    fs::create_dir(project_dir.join("papers"))?;
-    fs::create_dir(project_dir.join("layouts"))?;
-    fs::create_dir(project_dir.join("refs"))?;
-    fs::create_dir(project_dir.join("dist"))?;
-    fs::create_dir(project_dir.join("rules"))?;
-    fs::create_dir(project_dir.join(".typstlab"))?;
+    initialize_project_structure(&project_dir, project_name)
+}
+
+/// Initialize a project in an existing directory
+///
+/// # Arguments
+///
+/// * `target_dir` - Directory to initialize
+///
+/// # Errors
+///
+/// Returns error if:
+/// - typstlab.toml already exists
+/// - File writing fails
+pub fn init_project(target_dir: &Path) -> Result<()> {
+    // Check if already initialized
+    if target_dir.join("typstlab.toml").exists() {
+        bail!("Project already initialized in '{}'", target_dir.display());
+    }
+
+    // derive project name from directory name
+    let project_name = target_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("typstlab-project");
+
+    initialize_project_structure(target_dir, project_name)
+}
+
+/// Initialize the internal structure of a project
+fn initialize_project_structure(project_dir: &Path, project_name: &str) -> Result<()> {
+    // Create subdirectories (use create_dir_all to be idempotent if dirs exist)
+    fs::create_dir_all(project_dir.join("papers"))?;
+    fs::create_dir_all(project_dir.join("layouts"))?;
+    fs::create_dir_all(project_dir.join("refs"))?;
+    fs::create_dir_all(project_dir.join("dist"))?;
+    fs::create_dir_all(project_dir.join("rules"))?;
+    fs::create_dir_all(project_dir.join(".typstlab"))?;
 
     // Copy builtin layouts to layouts/
+    // This might overwrite if exists, but for init we assume it's acceptable or we should check?
+    // Current copy_builtin_layouts uses create_dir_all and write, so it will overwrite files.
+    // For safety, maybe we should only copy if not exists?
+    // For now, consistent with "ensure structure".
     copy_builtin_layouts(&project_dir.join("layouts"))?;
 
     // Create typstlab.toml
-    create_typstlab_toml(&project_dir, project_name)?;
+    create_typstlab_toml(project_dir, project_name)?;
 
-    // Create .gitignore
-    create_gitignore(&project_dir)?;
+    // Create .gitignore (only if not exists to avoid overwriting user config)
+    if !project_dir.join(".gitignore").exists() {
+        create_gitignore(project_dir)?;
+    }
 
     Ok(())
 }

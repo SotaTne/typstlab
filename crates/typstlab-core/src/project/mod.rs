@@ -10,7 +10,7 @@ use crate::error::{Result, TypstlabError};
 use crate::paper::Paper;
 use std::path::{Path, PathBuf};
 
-pub use create::{create_project, validate_name};
+pub use create::{create_project, init_project, validate_name};
 pub use generate::{generate_all_papers, generate_paper};
 pub use layout::{resolve_layout, Layout};
 

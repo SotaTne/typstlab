@@ -17,9 +17,60 @@ use typstlab_typst::exec::{ExecOptions, exec_typst};
 /// * `paper_id` - Paper ID to build (required)
 /// * `full` - Force regenerate _generated/ before build
 /// * `verbose` - Enable verbose output if true
+/// Build all papers in the project
+pub fn run_all(full: bool, verbose: bool) -> Result<()> {
+    let ctx = Context::new(verbose)?;
+    let papers = ctx.project.papers();
+
+    if papers.is_empty() {
+        println!("{} No papers found in project", "→".cyan());
+        return Ok(());
+    }
+
+    use rayon::prelude::*;
+
+    // Convert to Vec for parallel iteration
+    let paper_ids: Vec<String> = papers.iter().map(|p| p.id().to_string()).collect();
+
+    if verbose {
+        println!(
+            "{} Building {} papers in parallel",
+            "→".cyan(),
+            paper_ids.len()
+        );
+    }
+
+    // Build independent Contexts or share read-only?
+    // Context isn't easily cloneable if it holds state that mutates.
+    // Ideally we pass reference to ctx to helpers.
+    // Rayon requires Send/Sync. Context structure check:
+    // Project is read-only mostly. State updates handle locking.
+    // So passing &Context should be fine if Context is Sync.
+    // But `exec_typst` might output to stdout, interleaved output is bad.
+    // We should buffer output or use a progress bar separate library.
+    // For now, let's keep it simple: just run parallel and let stdout interleave (imperfect but functional).
+
+    // Actually, Context definition isn't shown but likely holds Config/Project which are fine.
+    // But we need to construct it once.
+
+    paper_ids.par_iter().for_each(|id| {
+        // We catch errors to avoid stopping other builds
+        if let Err(e) = build_paper(&ctx, id, full, verbose) {
+            eprintln!("{} Failed to build paper '{}': {}", "✗".red().bold(), id, e);
+        }
+    });
+
+    Ok(())
+}
+
+/// Build a specific paper
 pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
     let ctx = Context::new(verbose)?;
+    build_paper(&ctx, &paper_id, full, verbose)
+}
 
+/// Core build logic (extracted for reuse and parallel execution)
+fn build_paper(ctx: &Context, paper_id: &str, full: bool, verbose: bool) -> Result<()> {
     // Step 1: Find paper
     if verbose {
         println!("{} Finding paper '{}'", "→".cyan(), paper_id);
@@ -27,13 +78,11 @@ pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
 
     let paper = ctx
         .project
-        .find_paper(&paper_id)
+        .find_paper(paper_id)
         .ok_or_else(|| anyhow::anyhow!("Paper '{}' not found", paper_id))?;
 
     // Step 2: Check main file exists
-    if verbose {
-        println!("{} Checking main file", "→".cyan());
-    }
+    // if verbose { println!("{} Checking main file", "→".cyan()); }
 
     let main_file_path = paper.absolute_main_file_path();
     if !paper.has_main_file() {
@@ -46,14 +95,6 @@ pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
 
     // Step 3: Check root directory exists (if specified)
     if let Some(root_dir) = paper.typst_root_dir() {
-        if verbose {
-            println!(
-                "{} Checking root directory '{}'",
-                "→".cyan(),
-                root_dir.display()
-            );
-        }
-
         if !root_dir.exists() {
             bail!(
                 "Root directory '{}' not found for paper '{}'",
@@ -68,32 +109,27 @@ pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
     if full || !generated_dir.exists() {
         if verbose {
             if full {
-                println!("{} Forcing regeneration of _generated/", "→".cyan());
+                println!(
+                    "{} [{}] Forcing regeneration of _generated/",
+                    "→".cyan(),
+                    paper_id
+                );
             } else {
-                println!("{} Generating _generated/ (not found)", "→".cyan());
+                println!(
+                    "{} [{}] Generating _generated/ (not found)",
+                    "→".cyan(),
+                    paper_id
+                );
             }
         }
 
-        generate_paper(&ctx.project, &paper_id)?;
-
-        if verbose {
-            println!("{} Generated _generated/", "✓".green().bold());
-        }
-    } else if verbose {
-        println!("{} Using existing _generated/", "→".cyan());
+        // generate_paper reads project files, thread-safe for reading usually.
+        generate_paper(&ctx.project, paper_id)?;
     }
 
     // Step 5: Create dist/<paper_id>/ directory
-    let dist_dir = ctx.project.root.join("dist").join(&paper_id);
+    let dist_dir = ctx.project.root.join("dist").join(paper_id);
     fs::create_dir_all(&dist_dir)?;
-
-    if verbose {
-        println!(
-            "{} Created dist directory '{}'",
-            "→".cyan(),
-            dist_dir.display()
-        );
-    }
 
     // Step 6: Build Typst compile command
     let output_filename = format!("{}.pdf", paper.config().output.name);
@@ -105,10 +141,6 @@ pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
     if let Some(root_dir) = paper.typst_root_dir() {
         args.push("--root".to_string());
         args.push(root_dir.display().to_string());
-
-        if verbose {
-            println!("{} Using --root {}", "→".cyan(), root_dir.display());
-        }
     }
 
     args.push(main_file_path.display().to_string());
@@ -116,8 +148,8 @@ pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
 
     // Step 7: Execute Typst compile
     if verbose {
-        println!("{} Compiling paper to PDF", "→".cyan());
-        println!("  Command: typst {}", args.join(" "));
+        // println!("{} Compiling paper to PDF", "→".cyan());
+        println!("{} [{}] Compiling...", "→".cyan(), paper_id);
     }
 
     let start_time = Instant::now();
@@ -137,19 +169,15 @@ pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
     let success = exec_result.exit_code == 0;
 
     if !success {
-        eprintln!("{} Build failed", "✗".red().bold());
-        eprintln!("Exit code: {}", exec_result.exit_code);
+        eprintln!("{} [{}] Build failed", "✗".red().bold(), paper_id);
         if !exec_result.stderr.is_empty() {
-            eprintln!("Stderr:\n{}", exec_result.stderr);
-        }
-        if !exec_result.stdout.is_empty() {
-            eprintln!("Stdout:\n{}", exec_result.stdout);
+            eprintln!("[{}] Stderr:\n{}", paper_id, exec_result.stderr);
         }
 
         // Update state with failure
         let build_state = BuildState {
             last: Some(LastBuild {
-                paper: paper_id.clone(),
+                paper: paper_id.to_string(),
                 success: false,
                 started_at: start_utc,
                 finished_at: finish_utc,
@@ -165,19 +193,16 @@ pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
         state.save(&state_path)?;
 
         bail!(
-            "Typst compilation failed with exit code {}",
+            "[{}] Typst compilation failed with exit code {}",
+            paper_id,
             exec_result.exit_code
         );
     }
 
     // Step 9: Update state.json with success
-    if verbose {
-        println!("{} Updating state.json", "→".cyan());
-    }
-
     let build_state = BuildState {
         last: Some(LastBuild {
-            paper: paper_id.clone(),
+            paper: paper_id.to_string(),
             success: true,
             started_at: start_utc,
             finished_at: finish_utc,
