@@ -3062,9 +3062,11 @@ name = "typstlab-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "chrono",
  "futures-util",
  "rmcp",
+ "semver",
  "serde",
  "serde_json",
  "tempfile",

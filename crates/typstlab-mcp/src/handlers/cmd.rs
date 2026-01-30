@@ -48,6 +48,13 @@ impl CmdTool {
         Self::status(server, args).await
     }
 
+    pub async fn test_build_and_render(
+        server: &TypstlabServer,
+        args: BuildAndRenderArgs,
+    ) -> Result<CallToolResult, McpError> {
+        Self::build_and_render(server, args).await
+    }
+
     pub fn into_router(self) -> ToolRouter<TypstlabServer> {
         ToolRouter::new()
             .with_route(ToolRoute::new_dyn(Self::cmd_generate_attr(), |mut ctx| {
@@ -77,6 +84,18 @@ impl CmdTool {
                 }
                 .boxed()
             }))
+            .with_route(ToolRoute::new_dyn(
+                Self::build_and_render_attr(),
+                |mut ctx| {
+                    let server = ctx.service;
+                    let args_res = Parameters::<BuildAndRenderArgs>::from_context_part(&mut ctx);
+                    async move {
+                        let Parameters(args) = args_res?;
+                        Self::build_and_render(server, args).await
+                    }
+                    .boxed()
+                },
+            ))
             .with_route(ToolRoute::new_dyn(
                 Self::typst_docs_status_attr(),
                 |mut _ctx| {
@@ -146,6 +165,20 @@ impl CmdTool {
             Cow::Borrowed("cmd_build"),
             "Build paper using Typst",
             rmcp::handler::server::common::schema_for_type::<BuildArgs>(),
+        )
+        .with_safety(Safety {
+            network: true,
+            reads: true,
+            writes: true,
+            writes_sot: false,
+        })
+    }
+
+    fn build_and_render_attr() -> Tool {
+        Tool::new(
+            Cow::Borrowed("cmd_build_and_render"),
+            "Build and render paper to images",
+            rmcp::handler::server::common::schema_for_type::<BuildAndRenderArgs>(),
         )
         .with_safety(Safety {
             network: true,
@@ -226,6 +259,20 @@ impl CmdTool {
             args.paper_id,
             outcome.output_path.display()
         ))]))
+    }
+
+    pub async fn build_and_render(
+        server: &TypstlabServer,
+        args: BuildAndRenderArgs,
+    ) -> Result<CallToolResult, McpError> {
+        let project_root = server.context.project_root.clone();
+        validate_paper_id(&args.paper_id)?;
+        let paper_id = args.paper_id.clone();
+
+        let contents =
+            run_blocking(move || build_and_render_blocking(project_root, paper_id)).await?;
+
+        Ok(CallToolResult::success(contents))
     }
 
     pub async fn typst_docs_status(server: &TypstlabServer) -> Result<CallToolResult, McpError> {
@@ -314,6 +361,110 @@ fn build_blocking(
         stderr: exec_result.stderr,
         exit_code: exec_result.exit_code,
     })
+}
+
+fn build_and_render_blocking(
+    project_root: std::path::PathBuf,
+    paper_id: String,
+) -> Result<Vec<Content>, McpError> {
+    use base64::prelude::*;
+    use std::fs;
+
+    let project = Project::load(project_root).map_err(errors::from_core_error)?;
+    let typst_version = semver::Version::parse(&project.config().typst.version)
+        .map_err(|e| errors::invalid_params(format!("Invalid typst version: {}", e)))?;
+    let required_version = semver::Version::parse("0.14.0").unwrap();
+
+    if typst_version < required_version {
+        return Err(errors::invalid_params(format!(
+            "Typst version >= 0.14.0 is required for rendering (current: {}).",
+            typst_version
+        )));
+    }
+
+    let paper = find_paper(&project, &paper_id)?;
+    ensure_generated(&project, paper, &paper_id, false)?;
+
+    // Clean up previous images
+    let dist_dir = project.root.join("dist").join(&paper_id).join("image");
+    if dist_dir.exists() {
+        fs::remove_dir_all(&dist_dir).map_err(errors::from_display)?;
+    }
+    fs::create_dir_all(&dist_dir).map_err(errors::from_display)?;
+
+    let ext = "png";
+
+    // Use pattern: dist/paper_id/image/page-{n}.{ext}
+    // typst expands {n} to 1, 2, ...
+    // Note: typst 0.14.0+ supports numbering pattern.
+    let output_pattern = dist_dir.join(format!("page-{{n}}.{}", ext));
+
+    let main_file_path = paper.absolute_main_file_path();
+    let mut typst_args = vec!["compile".to_string()];
+
+    if let Some(root_dir) = paper.typst_root_dir() {
+        typst_args.push("--root".to_string());
+        typst_args.push(root_dir.display().to_string());
+    }
+
+    typst_args.push(main_file_path.display().to_string());
+    typst_args.push(output_pattern.display().to_string());
+
+    let exec_result = exec_typst(ExecOptions {
+        project_root: project.root.clone(),
+        args: typst_args,
+        required_version: project.config().typst.version.clone(),
+    })
+    .map_err(errors::from_core_error)?;
+
+    if exec_result.exit_code != 0 {
+        return Err(build_failed_error(
+            exec_result.exit_code,
+            &exec_result.stderr,
+        ));
+    }
+
+    // Collect results
+    let mut contents = Vec::new();
+    let mut entries: Vec<_> = fs::read_dir(&dist_dir)
+        .map_err(errors::from_display)?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    // Sort by filename to ensure page order (page-1.png, page-2.png, etc)
+    // Simple string sort might fail for page-10 vs page-2, but with leading zeros or natural sort...
+    // Typst output is page-1, page-2.
+    // We should use logical sort if possible, or just string sort which handles 1-9 ok, but 10 < 2 if valid string sort.
+    // However, typst uses typical numbering.
+    // For MVP, simple string sort is okay maybe, or try to extract number.
+    entries.sort_by_key(|e| e.file_name());
+    // Better sort: by extracted number
+    entries.sort_by_cached_key(|e| {
+        let name = e.file_name().to_string_lossy().to_string();
+        // format: page-{n}.ext
+        // extract n
+        name.split('-')
+            .nth(1)
+            .and_then(|s| s.split('.').next())
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(u32::MAX)
+    });
+
+    let mime_type = "image/png";
+
+    for entry in entries {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some(ext) {
+            continue;
+        }
+
+        let data = fs::read(&path).map_err(errors::from_display)?;
+        let base64_data = BASE64_STANDARD.encode(data);
+
+        contents.push(Content::image(base64_data, mime_type.to_string()));
+    }
+
+    Ok(contents)
 }
 
 fn validate_output_name(output_name: &str) -> Result<(), McpError> {
@@ -430,6 +581,11 @@ pub struct BuildArgs {
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct TypstDocsStatusArgs {}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+pub struct BuildAndRenderArgs {
+    pub paper_id: String,
+}
 
 #[cfg(test)]
 mod tests {
