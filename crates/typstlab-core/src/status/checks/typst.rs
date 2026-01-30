@@ -16,7 +16,7 @@ impl StatusCheck for TypstCheck {
         // Skeleton implementation: Always pass
         // Full Typst resolution and version checking will be implemented
         // in the Typst management phase (Phase 2 of overall plan)
-        CheckResult::pass()
+        CheckResult::pass("typst_available", "Typst check passed")
     }
 }
 

@@ -1,9 +1,7 @@
 //! Integration tests for `typstlab build` command
 
-#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
@@ -87,8 +85,7 @@ fn test_build_requires_project_root() {
 
         // Don't create typstlab.toml - should fail
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")
@@ -115,12 +112,11 @@ fn test_build_all_papers_by_default() {
 
         // Install typst
         let typstlab_bin =
-            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+            std::path::PathBuf::from(Command::new(cargo_bin!("typstlab")).get_program());
         let _typst_path = setup_test_typst(&typstlab_bin, root);
 
         // Should build ALL papers by default
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             // .arg("--jobs").arg("2") // Implicit default
@@ -142,8 +138,7 @@ fn test_build_paper_not_found() {
         create_test_project(root, "0.12.0");
 
         // Build nonexistent paper
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")
@@ -170,8 +165,7 @@ fn test_build_typst_not_resolved() {
 
         // With environment isolation, typst is NOT available
         // Build should fail with "not found" or "not resolved" error
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")
@@ -198,12 +192,11 @@ fn test_build_main_file_not_found() {
 
         // Install typst using setup_test_typst
         let typstlab_bin =
-            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+            std::path::PathBuf::from(Command::new(cargo_bin!("typstlab")).get_program());
         let _typst_path = setup_test_typst(&typstlab_bin, root);
 
         // Build should fail because main.typ doesn't exist
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")
@@ -232,12 +225,11 @@ fn test_build_with_default_main_file() {
 
         // Install typst using setup_test_typst
         let typstlab_bin =
-            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+            std::path::PathBuf::from(Command::new(cargo_bin!("typstlab")).get_program());
         let _typst_path = setup_test_typst(&typstlab_bin, root);
 
         // Build should succeed
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")
@@ -269,12 +261,11 @@ fn test_build_with_custom_main_file() {
 
         // Install typst using setup_test_typst
         let typstlab_bin =
-            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+            std::path::PathBuf::from(Command::new(cargo_bin!("typstlab")).get_program());
         let _typst_path = setup_test_typst(&typstlab_bin, root);
 
         // Build should succeed
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")
@@ -306,12 +297,11 @@ fn test_build_with_root_option() {
 
         // Install typst using setup_test_typst
         let typstlab_bin =
-            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+            std::path::PathBuf::from(Command::new(cargo_bin!("typstlab")).get_program());
         let _typst_path = setup_test_typst(&typstlab_bin, root);
 
         // Build should succeed
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")
@@ -344,12 +334,11 @@ fn test_build_root_dir_not_found() {
 
         // Install typst using setup_test_typst
         let typstlab_bin =
-            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+            std::path::PathBuf::from(Command::new(cargo_bin!("typstlab")).get_program());
         let _typst_path = setup_test_typst(&typstlab_bin, root);
 
         // Build should fail because root dir doesn't exist
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")
@@ -378,12 +367,11 @@ fn test_build_with_full_flag() {
 
         // Install typst using setup_test_typst
         let typstlab_bin =
-            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+            std::path::PathBuf::from(Command::new(cargo_bin!("typstlab")).get_program());
         let _typst_path = setup_test_typst(&typstlab_bin, root);
 
         // Build with --full flag should succeed
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("build")
             .arg("--paper")

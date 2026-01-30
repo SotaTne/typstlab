@@ -1,9 +1,7 @@
 //! Integration tests for `typstlab status` command
 
-#![allow(deprecated)]
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
@@ -16,8 +14,7 @@ fn test_status_pass_all_checks() {
         let root = temp.path();
 
         // Create project
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("test-project")
@@ -27,18 +24,16 @@ fn test_status_pass_all_checks() {
         let project_dir = root.join("test-project");
 
         // Create paper with valid structure
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
+            .arg("gen")
             .arg("paper")
-            .arg("new")
             .arg("paper1")
             .assert()
             .success();
 
         // Run status command
-        let output = Command::cargo_bin("typstlab")
-            .unwrap()
+        let output = Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("status")
             .assert()
@@ -60,8 +55,7 @@ fn test_status_with_paper_filter() {
         let root = temp.path();
 
         // Create project with two papers
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("test-project")
@@ -70,27 +64,24 @@ fn test_status_with_paper_filter() {
 
         let project_dir = root.join("test-project");
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        assert_cmd::cargo::cargo_bin_cmd!("typstlab")
             .current_dir(&project_dir)
+            .arg("gen")
             .arg("paper")
-            .arg("new")
             .arg("paper1")
             .assert()
             .success();
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        assert_cmd::cargo::cargo_bin_cmd!("typstlab")
             .current_dir(&project_dir)
+            .arg("gen")
             .arg("paper")
-            .arg("new")
             .arg("paper2")
             .assert()
             .success();
 
         // Run status with paper filter
-        let output = Command::cargo_bin("typstlab")
-            .unwrap()
+        let output = Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("status")
             .arg("--paper")
@@ -110,8 +101,7 @@ fn test_status_json_output() {
         let root = temp.path();
 
         // Create project
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("test-project")
@@ -121,8 +111,7 @@ fn test_status_json_output() {
         let project_dir = root.join("test-project");
 
         // Run status with --json flag
-        let output = Command::cargo_bin("typstlab")
-            .unwrap()
+        let output = Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("status")
             .arg("--json")
@@ -150,8 +139,7 @@ fn test_status_human_output() {
         let root = temp.path();
 
         // Create project
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("test-project")
@@ -161,8 +149,7 @@ fn test_status_human_output() {
         let project_dir = root.join("test-project");
 
         // Run status (default human output)
-        let output = Command::cargo_bin("typstlab")
-            .unwrap()
+        let output = Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("status")
             .assert()
@@ -186,8 +173,7 @@ fn test_status_exit_code_always_zero() {
         let root = temp.path();
 
         // Create project
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("test-project")
@@ -197,11 +183,10 @@ fn test_status_exit_code_always_zero() {
         let project_dir = root.join("test-project");
 
         // Create paper1
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
+            .arg("gen")
             .arg("paper")
-            .arg("new")
             .arg("paper1")
             .assert()
             .success();
@@ -211,8 +196,7 @@ fn test_status_exit_code_always_zero() {
         fs::remove_file(paper_dir.join("main.typ")).unwrap();
 
         // Run status - should exit 0 even with errors
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("status")
             .assert()
@@ -227,8 +211,7 @@ fn test_status_fails_outside_project() {
         let root = temp.path();
 
         // Don't create project - try to run status directly
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("status")
             .assert()

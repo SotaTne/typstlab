@@ -1,9 +1,7 @@
 //! Integration tests for `typstlab typst versions` command
 
-#![allow(deprecated)]
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use std::fs;
 use std::process::Command;
 use typstlab_testkit::temp_dir_in_workspace;
@@ -37,8 +35,7 @@ fn test_versions_command_exits_successfully() {
     create_test_project(root, "0.12.0");
 
     // Command should exit successfully even with no managed versions
-    Command::cargo_bin("typstlab")
-        .unwrap()
+    Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -53,8 +50,7 @@ fn test_versions_human_readable_output() {
 
     create_test_project(root, "0.12.0");
 
-    let output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -78,8 +74,7 @@ fn test_versions_json_output() {
 
     create_test_project(root, "0.12.0");
 
-    let output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -118,8 +113,7 @@ fn test_versions_json_schema() {
 
     create_test_project(root, "0.12.0");
 
-    let output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -178,8 +172,7 @@ fn test_versions_with_no_versions_installed() {
     // Don't install any managed versions
     // System version may or may not exist
 
-    let output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -208,8 +201,7 @@ fn test_versions_marks_current_version() {
     create_test_project(root, "0.12.0");
 
     // Try to link (may succeed or fail depending on system)
-    let _ = Command::cargo_bin("typstlab")
-        .unwrap()
+    let _ = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("link")
@@ -222,8 +214,7 @@ fn test_versions_marks_current_version() {
         return;
     }
 
-    let output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -259,8 +250,7 @@ fn test_versions_shows_system_local_marker() {
 
     create_test_project(root, "0.12.0");
 
-    let output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -271,8 +261,7 @@ fn test_versions_shows_system_local_marker() {
 
     // If system version exists, should show (local) marker
     // Check JSON to see if system version exists
-    let json_output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let json_output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -310,8 +299,7 @@ fn test_versions_sorted_descending() {
     // We can't easily install multiple versions in test environment
     // So this test mainly verifies the command doesn't crash
 
-    let output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -337,8 +325,7 @@ fn test_versions_current_marker_in_human_output() {
     create_test_project(root, "0.12.0");
 
     // Try to link
-    let _ = Command::cargo_bin("typstlab")
-        .unwrap()
+    let _ = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("link")
@@ -351,8 +338,7 @@ fn test_versions_current_marker_in_human_output() {
         return;
     }
 
-    let output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")
@@ -362,8 +348,7 @@ fn test_versions_current_marker_in_human_output() {
     let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
 
     // Check JSON first to see if there's a current version
-    let json_output = Command::cargo_bin("typstlab")
-        .unwrap()
+    let json_output = Command::new(cargo_bin!("typstlab"))
         .current_dir(root)
         .arg("typst")
         .arg("versions")

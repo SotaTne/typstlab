@@ -11,6 +11,7 @@ fn main() {
 
     let result = match cli.command {
         Commands::Doctor { json } => commands::doctor::run(json, cli.verbose),
+        Commands::Gen(gen_cmd) => commands::scaffold::run(gen_cmd, cli.verbose),
         Commands::Generate { paper } => commands::generate::run(paper, cli.verbose),
         Commands::New { name, paper } => commands::new::run_new_project(name, paper, cli.verbose),
         Commands::Init { path, paper } => commands::new::run_init(path, paper, cli.verbose),

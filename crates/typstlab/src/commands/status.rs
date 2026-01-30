@@ -82,42 +82,36 @@ fn render_checks(checks: &[typstlab_core::status::schema::Check], verbose: bool)
 
         println!("{} {} check {}", icon, check.name, status_str);
 
-        // Print messages
-        for msg in &check.messages {
-            println!("  - {}", msg);
+        // Print message
+        println!("  - {}", check.message);
+
+        // Print details if verbose or if there are any
+        if let Some(details) = &check.details {
+            // For now just print keys or try to format nicely?
+            // Simple key-value dump for now
+            for (k, v) in details {
+                if verbose {
+                    println!("    {}: {}", k, v);
+                }
+            }
         }
 
-        if verbose && check.messages.is_empty() {
+        if verbose && check.status == CheckStatus::Pass {
             println!("  (no issues)");
         }
     }
 }
 
 /// Render suggested actions if any
-fn render_actions(actions: &[typstlab_core::status::schema::SuggestedAction]) {
+fn render_actions(actions: &[typstlab_core::status::schema::Action]) {
     if actions.is_empty() {
         return;
     }
 
     println!("\n{} Suggested actions:", "→".cyan());
     for action in actions {
-        match action {
-            typstlab_core::status::schema::SuggestedAction::RunCommand {
-                command,
-                description,
-            } => {
-                println!("  → {} ({})", command, description);
-            }
-            typstlab_core::status::schema::SuggestedAction::CreateFile { path, description } => {
-                println!("  → Create {} ({})", path, description);
-            }
-            typstlab_core::status::schema::SuggestedAction::EditFile { path, description } => {
-                println!("  → Edit {} ({})", path, description);
-            }
-            typstlab_core::status::schema::SuggestedAction::InstallTool { tool, url } => {
-                println!("  → Install {} from {}", tool, url);
-            }
-        }
+        println!("  → {} ({})", action.command, action.description);
+        // Maybe print ID or enabled status if verbose?
     }
 }
 

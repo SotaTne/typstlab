@@ -1,9 +1,7 @@
 //! Integration tests for doctor command
 
-#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -54,7 +52,7 @@ fn test_doctor_exits_zero_on_success() {
         let project = create_test_project();
 
         // Act: Run doctor command
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd.arg("doctor").current_dir(project.path()).assert();
 
         // Assert: Should always exit 0 (even if there are warnings)
@@ -69,7 +67,7 @@ fn test_doctor_exits_zero_on_failure() {
         let project = create_project_with_invalid_config();
 
         // Act: Run doctor command
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd.arg("doctor").current_dir(project.path()).assert();
 
         // Assert: Should still exit 0 (failures recorded in output, not exit code)
@@ -84,7 +82,7 @@ fn test_doctor_json_output_structure() {
         let project = create_test_project();
 
         // Act: Run doctor with --json flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("doctor")
             .arg("--json")
@@ -129,7 +127,7 @@ fn test_doctor_json_check_structure() {
         let project = create_test_project();
 
         // Act: Run doctor with --json flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("doctor")
             .arg("--json")
@@ -156,11 +154,11 @@ fn test_doctor_json_check_structure() {
                     "Each check should have a status field"
                 );
 
-                // Verify status is one of: ok, warning, error
+                // Verify status is one of: pass, warning, error
                 let status = check["status"].as_str().unwrap();
                 assert!(
-                    ["ok", "warning", "error"].contains(&status),
-                    "Status should be ok, warning, or error, got: {}",
+                    ["pass", "warning", "error"].contains(&status),
+                    "Status should be pass, warning, or error, got: {}",
                     status
                 );
             }
@@ -175,7 +173,7 @@ fn test_doctor_checks_typst_availability() {
         let project = create_test_project();
 
         // Act: Run doctor with --json flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("doctor")
             .arg("--json")
@@ -218,7 +216,7 @@ fn test_doctor_checks_config_validity() {
         let project = create_test_project();
 
         // Act: Run doctor with --json flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("doctor")
             .arg("--json")
@@ -249,7 +247,7 @@ fn test_doctor_invalid_config_reports_error() {
         let project = create_project_with_invalid_config();
 
         // Act: Run doctor with --json flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("doctor")
             .arg("--json")
@@ -288,7 +286,7 @@ fn test_doctor_human_readable_output() {
         let project = create_test_project();
 
         // Act: Run doctor without --json flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd.arg("doctor").current_dir(project.path()).assert();
 
         // Assert: Should output human-readable text (not JSON)
@@ -312,7 +310,7 @@ fn test_doctor_verbose_flag() {
         let project = create_test_project();
 
         // Act: Run doctor with --verbose flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("--verbose")
             .arg("doctor")

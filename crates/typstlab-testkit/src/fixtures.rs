@@ -263,7 +263,6 @@ mod tests {
     use crate::temp::temp_dir_in_workspace;
 
     #[test]
-    #[allow(deprecated)] // cargo_bin is deprecated but cargo_bin! macro doesn't work in lib tests
     fn test_setup_test_typst_installs_binary() {
         with_isolated_typst_env(None, |_cache| {
             let temp = temp_dir_in_workspace();
@@ -273,13 +272,20 @@ mod tests {
             std::fs::create_dir_all(project_dir.join(".typstlab")).unwrap();
             std::fs::write(
                 project_dir.join("typstlab.toml"),
-                "[project]\nname = \"test\"\ninit_date = \"2026-01-15\"\n\n[typst]\nversion = \"0.12.0\"\n",
+                r#"
+[project]
+name = "test"
+init_date = "2026-01-15"
+[typst]
+version = "0.12.0"
+"#,
             )
             .unwrap();
 
             // Get typstlab binary path
             use assert_cmd::cargo::CommandCargoExt;
             use std::process::Command;
+            #[allow(deprecated)]
             let typstlab_bin =
                 std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
 

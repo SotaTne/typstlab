@@ -7,6 +7,7 @@
 //! - DOI/URL フェッチ機能の統合
 
 use crate::status::engine::{CheckContext, CheckResult, StatusCheck};
+// use crate::status::schema::CheckStatus;
 
 pub struct RefsCheck;
 
@@ -21,7 +22,10 @@ impl StatusCheck for RefsCheck {
 
         // Check if refs/ directory exists
         if !refs_dir.exists() {
-            return CheckResult::warning("refs/ directory not found (optional feature)");
+            return CheckResult::warning(
+                "refs_dir",
+                "refs/ directory not found (optional feature)",
+            );
         }
 
         // Check for .bib files
@@ -36,12 +40,12 @@ impl StatusCheck for RefsCheck {
                 });
 
                 if !has_bib_files {
-                    CheckResult::warning("No .bib files found in refs/ directory")
+                    CheckResult::warning("refs_content", "No .bib files found in refs/ directory")
                 } else {
-                    CheckResult::pass()
+                    CheckResult::pass("refs_content", "Bibliography files found")
                 }
             }
-            Err(_) => CheckResult::warning("Cannot read refs/ directory"),
+            Err(_) => CheckResult::warning("refs_access", "Cannot read refs/ directory"),
         }
     }
 }
@@ -120,10 +124,7 @@ version = "0.12.0"
         let result = check.run(&context);
 
         assert_eq!(result.status, CheckStatus::Warning);
-        assert!(result
-            .messages
-            .iter()
-            .any(|m| m.contains("refs/ directory not found")));
+        assert!(result.message.contains("refs/ directory not found"));
     }
 
     #[test]
@@ -158,6 +159,6 @@ version = "0.12.0"
         let result = check.run(&context);
 
         assert_eq!(result.status, CheckStatus::Warning);
-        assert!(result.messages.iter().any(|m| m.contains("No .bib files")));
+        assert!(result.message.contains("No .bib files"));
     }
 }

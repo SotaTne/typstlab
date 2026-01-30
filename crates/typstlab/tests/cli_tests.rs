@@ -1,9 +1,7 @@
 //! Integration tests for CLI infrastructure
 
-#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
@@ -30,7 +28,7 @@ version = "0.17.0"
 fn test_cli_version_flag() {
     with_isolated_typst_env(None, |_cache| {
         // Arrange & Act: Run with --version flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd.arg("--version").assert();
 
         // Assert: Should print version and exit 0
@@ -44,7 +42,7 @@ fn test_cli_version_flag() {
 fn test_cli_help_flag() {
     with_isolated_typst_env(None, |_cache| {
         // Arrange & Act: Run with --help flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd.arg("--help").assert();
 
         // Assert: Should print help and exit 0
@@ -63,7 +61,7 @@ fn test_cli_requires_project_root() {
         let root = temp.path();
 
         // Act: Run doctor command from non-project directory
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd.arg("doctor").current_dir(root).assert();
 
         // Assert: Doctor always exits 0 (even when no project found)
@@ -83,7 +81,7 @@ fn test_cli_finds_project_root_from_subdir() {
         fs::create_dir_all(&subdir).expect("Failed to create subdirectory");
 
         // Act: Run doctor command from subdirectory
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd.arg("doctor").current_dir(&subdir).assert();
 
         // Assert: Should find project root and execute command
@@ -101,7 +99,7 @@ fn test_cli_verbose_flag() {
         create_test_project(root);
 
         // Act: Run with --verbose flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("--verbose")
             .arg("doctor")
@@ -122,7 +120,7 @@ fn test_cli_json_flag_for_doctor() {
         create_test_project(root);
 
         // Act: Run doctor with --json flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd.arg("doctor").arg("--json").current_dir(root).assert();
 
         // Assert: Should output valid JSON
@@ -150,7 +148,7 @@ fn test_cli_typst_docs_status() {
         create_test_project(root);
 
         // Act: Run typst docs status
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("typst")
             .arg("docs")

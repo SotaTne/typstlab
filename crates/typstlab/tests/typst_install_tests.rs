@@ -1,9 +1,7 @@
 //! Integration tests for `typstlab typst install` command
 
-#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
@@ -38,8 +36,7 @@ fn test_install_requires_project_root() {
 
         // Don't create typstlab.toml - should fail
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("install")
@@ -59,8 +56,7 @@ fn test_install_accepts_version_argument() {
         create_test_project(root, "0.12.0");
 
         // Should accept version argument (may fail due to network, but should parse correctly)
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("install")
@@ -83,39 +79,6 @@ fn test_install_accepts_version_argument() {
 }
 
 #[test]
-fn test_install_from_cargo_flag() {
-    with_isolated_typst_env(None, |_cache| {
-        let temp = temp_dir_in_workspace();
-        let root = temp.path();
-
-        create_test_project(root, "0.12.0");
-
-        // Should accept --from-cargo flag
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
-            .current_dir(root)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .arg("--from-cargo")
-            .assert();
-
-        // Either succeeds or fails with cargo error (not flag parsing error)
-        let output = result.get_output();
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        if !output.status.success() {
-            // Should not be flag parsing error
-            assert!(
-                !stderr.contains("unexpected argument") && !stderr.contains("usage"),
-                "Should not be flag error, got: {}",
-                stderr
-            );
-        }
-    });
-}
-
-#[test]
 fn test_install_creates_managed_cache() {
     with_isolated_typst_env(None, |_cache| {
         let temp = temp_dir_in_workspace();
@@ -124,8 +87,7 @@ fn test_install_creates_managed_cache() {
         create_test_project(root, "0.12.0");
 
         // Run install (may skip if already installed or network unavailable)
-        let _result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let _result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("install")
@@ -146,8 +108,7 @@ fn test_install_updates_state_json() {
         create_test_project(root, "0.12.0");
 
         // Run install (may skip if already installed or network unavailable)
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("install")

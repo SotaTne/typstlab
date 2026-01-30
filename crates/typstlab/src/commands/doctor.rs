@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
+use typstlab_core::status::schema::{Check, CheckStatus};
 
 /// Doctor command JSON output schema
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,24 +32,6 @@ where
     S: Serializer,
 {
     serializer.serialize_str(&path.display().to_string())
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Check {
-    id: String,
-    name: String,
-    status: CheckStatus,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    details: Option<HashMap<String, serde_json::Value>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum CheckStatus {
-    Ok,
-    Warning,
-    Error,
 }
 
 /// Run environment health check
@@ -118,7 +101,7 @@ fn check_config_validity(ctx_result: &Result<Context>) -> Check {
         Ok(_) => Check {
             id: "config_valid".to_string(),
             name: "Configuration file".to_string(),
-            status: CheckStatus::Ok,
+            status: CheckStatus::Pass,
             message: "typstlab.toml is valid".to_string(),
             details: None,
         },
@@ -191,7 +174,7 @@ fn create_typst_ok_check(info: &typstlab_typst::info::TypstInfo) -> Check {
     Check {
         id: "typst_available".to_string(),
         name: "Typst toolchain".to_string(),
-        status: CheckStatus::Ok,
+        status: CheckStatus::Pass,
         message: format!("Typst {} available", info.version),
         details: Some(details),
     }
@@ -270,7 +253,7 @@ fn print_human_readable(output: &DoctorOutput) {
     println!("{}", "Checks:".bold());
     for check in &output.checks {
         let status_str = match check.status {
-            CheckStatus::Ok => "✓".green(),
+            CheckStatus::Pass => "✓".green(),
             CheckStatus::Warning => "⚠".yellow(),
             CheckStatus::Error => "✗".red(),
         };

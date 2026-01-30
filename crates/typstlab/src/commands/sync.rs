@@ -6,7 +6,8 @@ use chrono::Utc;
 use typstlab_core::project::generate_all_papers;
 use typstlab_core::state::{State, SyncState};
 use typstlab_core::status::engine::StatusEngine;
-use typstlab_core::status::schema::SuggestedAction;
+
+use typstlab_core::status::schema::Action;
 
 /// Run sync command
 ///
@@ -164,7 +165,7 @@ fn sync_apply_mode(ctx: &Context, sync_docs: bool, sync_tools: bool) -> Result<(
 /// v0.1: Only auto-execute typst install and docs sync based on flags
 fn apply_actions(
     ctx: &Context,
-    actions: &[SuggestedAction],
+    actions: &[Action],
     sync_docs: bool,
     sync_tools: bool,
 ) -> Result<()> {
@@ -173,20 +174,13 @@ fn apply_actions(
     }
 
     for action in actions {
-        match action {
-            SuggestedAction::RunCommand {
-                command,
-                description,
-            } => {
-                apply_command_action(ctx, command, description, sync_docs, sync_tools)?;
-            }
-            _ => {
-                // Skip InstallTool, CreateFile, EditFile
-                if ctx.verbose {
-                    println!("  • Skipping non-command action");
-                }
-            }
-        }
+        apply_command_action(
+            ctx,
+            &action.command,
+            &action.description,
+            sync_docs,
+            sync_tools,
+        )?;
     }
 
     Ok(())

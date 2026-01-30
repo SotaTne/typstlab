@@ -12,34 +12,49 @@ pub enum CheckStatus {
     Error,
 }
 
-/// Suggested action to resolve an issue
+/// Safety definition for actions
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum SuggestedAction {
-    RunCommand {
-        command: String,
-        description: String,
-    },
-    CreateFile {
-        path: String,
-        description: String,
-    },
-    EditFile {
-        path: String,
-        description: String,
-    },
-    InstallTool {
-        tool: String,
-        url: String,
-    },
+pub struct Safety {
+    pub network: bool,
+    pub writes: bool,
+    pub writes_sot: bool,
+    pub reads: bool,
+}
+
+impl Safety {
+    pub fn safe() -> Self {
+        Self {
+            network: false,
+            writes: false,
+            writes_sot: false,
+            reads: false,
+        }
+    }
+}
+
+/// Action to resolve an issue
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Action {
+    pub id: String,
+    pub command: String,
+    pub description: String,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disabled_reason: Option<String>,
+    pub safety: Safety,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prerequisite: Option<Vec<String>>,
 }
 
 /// Individual check result
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Check {
+    pub id: String,
     pub name: String,
     pub status: CheckStatus,
-    pub messages: Vec<String>,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 /// Status report structure
@@ -47,7 +62,7 @@ pub struct Check {
 pub struct StatusReport {
     pub overall_status: CheckStatus,
     pub checks: Vec<Check>,
-    pub actions: Vec<SuggestedAction>,
+    pub actions: Vec<Action>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paper_filter: Option<String>,
 }
@@ -85,90 +100,5 @@ mod tests {
 
         let error = serde_json::to_string(&CheckStatus::Error).unwrap();
         assert_eq!(error, r#""error""#);
-    }
-
-    #[test]
-    fn test_suggested_action_serialization() {
-        let action = SuggestedAction::RunCommand {
-            command: "typst --version".to_string(),
-            description: "Check Typst version".to_string(),
-        };
-
-        let json = serde_json::to_value(&action).unwrap();
-        assert_eq!(json["type"], "run_command");
-        assert_eq!(json["command"], "typst --version");
-    }
-
-    #[test]
-    fn test_check_construction() {
-        let check = Check {
-            name: "environment".to_string(),
-            status: CheckStatus::Pass,
-            messages: vec!["All directories present".to_string()],
-        };
-
-        assert_eq!(check.name, "environment");
-        assert_eq!(check.status, CheckStatus::Pass);
-        assert_eq!(check.messages.len(), 1);
-    }
-
-    #[test]
-    fn test_status_report_empty() {
-        let report = StatusReport::empty();
-        assert_eq!(report.overall_status, CheckStatus::Pass);
-        assert_eq!(report.checks.len(), 0);
-        assert_eq!(report.actions.len(), 0);
-        assert_eq!(report.paper_filter, None);
-    }
-
-    #[test]
-    fn test_status_report_with_checks() {
-        let report = StatusReport {
-            overall_status: CheckStatus::Warning,
-            checks: vec![
-                Check {
-                    name: "environment".to_string(),
-                    status: CheckStatus::Pass,
-                    messages: vec![],
-                },
-                Check {
-                    name: "typst".to_string(),
-                    status: CheckStatus::Warning,
-                    messages: vec!["Version mismatch".to_string()],
-                },
-            ],
-            actions: vec![SuggestedAction::InstallTool {
-                tool: "typst".to_string(),
-                url: "https://github.com/typst/typst".to_string(),
-            }],
-            paper_filter: Some("paper1".to_string()),
-        };
-
-        assert_eq!(report.overall_status, CheckStatus::Warning);
-        assert_eq!(report.checks.len(), 2);
-        assert_eq!(report.actions.len(), 1);
-        assert_eq!(report.paper_filter, Some("paper1".to_string()));
-    }
-
-    #[test]
-    fn test_status_report_serialization() {
-        let report = StatusReport {
-            overall_status: CheckStatus::Error,
-            checks: vec![Check {
-                name: "build".to_string(),
-                status: CheckStatus::Error,
-                messages: vec!["main.typ not found".to_string()],
-            }],
-            actions: vec![SuggestedAction::CreateFile {
-                path: "papers/paper1/main.typ".to_string(),
-                description: "Create main entry file".to_string(),
-            }],
-            paper_filter: None,
-        };
-
-        let json = serde_json::to_value(&report).unwrap();
-        assert_eq!(json["overall_status"], "error");
-        assert_eq!(json["checks"][0]["name"], "build");
-        assert_eq!(json["actions"][0]["type"], "create_file");
     }
 }

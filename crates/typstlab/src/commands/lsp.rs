@@ -1,13 +1,17 @@
-use crate::cli::LspCommands;
+//! LSP command - start Language Server
+//!
+//! In v0.1, this is a placeholder/stub.
+
 use anyhow::Result;
 
+use crate::cli::LspCommands;
+
+/// Run LSP server
 pub fn run(command: Option<LspCommands>) -> Result<()> {
     match command {
         Some(LspCommands::Stdio) | None => {
-            eprintln!("Starting LSP server (stdio)...");
-            // In a real implementation, this would start the LSP event loop
-            // typst_lsp::main_loop();
-            Ok(())
+            println!("LSP server running on stdio (stub)");
         }
     }
+    Ok(())
 }

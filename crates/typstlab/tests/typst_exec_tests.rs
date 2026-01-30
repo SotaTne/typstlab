@@ -1,9 +1,7 @@
 //! Integration tests for `typstlab typst exec` command
 
-#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
@@ -38,8 +36,7 @@ fn test_exec_requires_project_root() {
 
         // Don't create typstlab.toml - should fail
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("exec")
@@ -60,8 +57,7 @@ fn test_exec_requires_double_dash() {
         create_test_project(root, "0.12.0");
 
         // Should fail without --
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("exec")
@@ -80,8 +76,7 @@ fn test_exec_forwards_to_typst() {
         create_test_project(root, "0.12.0");
 
         // Try to link first (may fail if system typst not available)
-        let link_result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let link_result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("link")
@@ -95,8 +90,7 @@ fn test_exec_forwards_to_typst() {
         }
 
         // Run exec with --version
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("exec")
@@ -127,8 +121,7 @@ fn test_exec_fails_if_not_resolved() {
         create_test_project(root, "0.12.0");
 
         // Don't link - should fail
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("exec")
@@ -151,8 +144,7 @@ fn test_exec_preserves_exit_code() {
         create_test_project(root, "0.12.0");
 
         // Try to link first
-        let link_result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let link_result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("link")
@@ -166,8 +158,7 @@ fn test_exec_preserves_exit_code() {
         }
 
         // Run with invalid command (should fail)
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("exec")

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use typstlab_core::project::{create_project, init_project, validate_name};
 
 /// Create a new project
@@ -54,7 +54,7 @@ pub fn run_new_project(
         // For now, let's create a helper `create_paper_in_project`.
 
         env::set_current_dir(&project_dir)?;
-        crate::commands::paper::run_new(id, verbose)?;
+        crate::commands::scaffold::paper::run(id, None, None, verbose)?;
         // Restore CWD? Not strictly necessary for CLI run but good practice if tests reuse process.
         env::set_current_dir(&current_dir)?;
     }
@@ -114,7 +114,7 @@ pub fn run_init(path: Option<String>, paper_id: Option<String>, verbose: bool) -
     if let Some(id) = paper_id {
         let prev_cwd = env::current_dir()?;
         env::set_current_dir(&target_path)?;
-        crate::commands::paper::run_new(id, verbose)?;
+        crate::commands::scaffold::paper::run(id, None, None, verbose)?;
         env::set_current_dir(prev_cwd)?;
     }
 
@@ -162,7 +162,7 @@ fn print_project_structure(verbose: bool) {
 fn print_next_steps_project(project_name: &str) {
     println!("\n{} Next steps:", "→".cyan());
     println!("  1. cd {}", project_name);
-    println!("  2. typstlab paper new <paper-id>");
+    println!("  2. typstlab gen paper <paper-id>");
     println!("  3. typstlab build --paper <paper-id>");
 }
 

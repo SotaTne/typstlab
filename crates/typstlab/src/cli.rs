@@ -51,8 +51,11 @@ pub enum Commands {
         paper: Option<String>,
     },
 
-    /// Paper management
-    #[command(alias = "p")]
+    /// Scaffold new project items (paper, layout, lib)
+    #[command(subcommand)]
+    Gen(GenCommands),
+
+    /// Paper management (list, etc.)
     Paper(PaperArgs),
 
     /// Build paper to PDF
@@ -108,6 +111,31 @@ pub enum Commands {
     Mcp(McpCommands),
 }
 
+#[derive(Subcommand, Debug)]
+pub enum GenCommands {
+    /// Create a new paper
+    Paper {
+        /// Paper ID (becomes directory name)
+        id: String,
+        /// Layout to use (optional, defaults to project default)
+        #[arg(short, long)]
+        layout: Option<String>,
+        /// Title of the paper (optional)
+        #[arg(short, long)]
+        title: Option<String>,
+    },
+    /// Create a new layout
+    Layout {
+        /// Layout name (becomes directory name in layouts/)
+        name: String,
+    },
+    /// Create a new library (stub)
+    Lib {
+        /// Library name
+        name: String,
+    },
+}
+
 #[derive(Args)]
 pub struct PaperArgs {
     #[command(subcommand)]
@@ -116,11 +144,6 @@ pub struct PaperArgs {
 
 #[derive(Subcommand)]
 pub enum PaperCommands {
-    /// Create a new paper
-    New {
-        /// Paper ID (becomes directory name)
-        id: String,
-    },
     /// List all papers
     List {
         /// Output as JSON

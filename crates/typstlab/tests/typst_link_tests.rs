@@ -1,9 +1,7 @@
 //! Integration tests for `typstlab typst link` command
 
-#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
@@ -38,8 +36,7 @@ fn test_link_requires_project_root() {
 
         // Don't create typstlab.toml - should fail
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("link")
@@ -59,8 +56,7 @@ fn test_link_with_system_typst_version_mismatch() {
         create_test_project(root, "0.12.0");
 
         // Attempt to link - will likely fail if system typst is different version
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("link")
@@ -107,16 +103,14 @@ fn test_link_force_flag_triggers_refresh() {
         create_test_project(root, version);
 
         // First link
-        let _ = Command::cargo_bin("typstlab")
-            .unwrap()
+        let _ = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("link")
             .assert();
 
         // Second link with --force (should succeed)
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("link")
@@ -152,8 +146,7 @@ fn test_link_creates_state_json() {
         create_test_project(root, version);
 
         // Run link
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("link")
@@ -195,8 +188,7 @@ fn test_link_creates_bin_shim() {
         create_test_project(root, version);
 
         // Run link
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("link")

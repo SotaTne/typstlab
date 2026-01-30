@@ -1,9 +1,7 @@
 //! Integration tests for typst docs commands
 
-#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -75,7 +73,7 @@ fn test_docs_status_before_sync() {
         let project = create_test_project();
 
         // Act: Run docs status before any sync
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("typst")
             .arg("docs")
@@ -106,7 +104,7 @@ fn test_docs_status_json_structure() {
         let project = create_test_project();
 
         // Act: Run docs status with --json flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("typst")
             .arg("docs")
@@ -153,7 +151,7 @@ fn test_docs_sync_downloads_docs() {
         );
 
         // Act: Run docs sync
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("typst")
             .arg("docs")
@@ -194,7 +192,7 @@ fn test_docs_status_after_sync() {
         // Arrange: Create test project and sync docs
         let project = create_test_project();
 
-        let mut sync_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut sync_cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         sync_cmd
             .arg("typst")
             .arg("docs")
@@ -204,7 +202,7 @@ fn test_docs_status_after_sync() {
             .success();
 
         // Act: Check status after sync
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("typst")
             .arg("docs")
@@ -237,7 +235,7 @@ fn test_docs_clear_removes_docs() {
         let project = create_test_project();
         let docs_dir = project.path().join(".typstlab/kb/typst/docs");
 
-        let mut sync_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut sync_cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         sync_cmd
             .arg("typst")
             .arg("docs")
@@ -249,7 +247,7 @@ fn test_docs_clear_removes_docs() {
         assert!(docs_dir.exists(), "Docs directory should exist after sync");
 
         // Act: Run docs clear
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("typst")
             .arg("docs")
@@ -281,7 +279,7 @@ fn test_docs_status_after_clear() {
         let project = create_test_project();
 
         // Sync first
-        let mut sync_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut sync_cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         sync_cmd
             .arg("typst")
             .arg("docs")
@@ -291,7 +289,7 @@ fn test_docs_status_after_clear() {
             .success();
 
         // Clear docs
-        let mut clear_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut clear_cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         clear_cmd
             .arg("typst")
             .arg("docs")
@@ -301,7 +299,7 @@ fn test_docs_status_after_clear() {
             .success();
 
         // Act: Check status after clear
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("typst")
             .arg("docs")
@@ -335,7 +333,7 @@ fn test_docs_sync_respects_network_policy_never() {
         let docs_dir = project.path().join(".typstlab/kb/typst/docs");
 
         // Act: Attempt to sync with network policy "never"
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("typst")
             .arg("docs")
@@ -373,7 +371,7 @@ fn test_docs_sync_updates_state_json() {
         let state_path = project.path().join(".typstlab/state.json");
 
         // Act: Run docs sync
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         cmd.arg("typst")
             .arg("docs")
             .arg("sync")
@@ -426,7 +424,7 @@ fn test_docs_clear_updates_state_json() {
         let project = create_test_project();
         let state_path = project.path().join(".typstlab/state.json");
 
-        let mut sync_cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut sync_cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         sync_cmd
             .arg("typst")
             .arg("docs")
@@ -436,7 +434,7 @@ fn test_docs_clear_updates_state_json() {
             .success();
 
         // Act: Clear docs
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         cmd.arg("typst")
             .arg("docs")
             .arg("clear")
@@ -476,7 +474,7 @@ fn test_docs_verbose_flag() {
         let project = create_test_project();
 
         // Act: Run docs sync with --verbose flag
-        let mut cmd = Command::cargo_bin(env!("CARGO_PKG_NAME")).unwrap();
+        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
         let assert = cmd
             .arg("--verbose")
             .arg("typst")

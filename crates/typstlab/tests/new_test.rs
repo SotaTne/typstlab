@@ -1,9 +1,7 @@
 //! Integration tests for `typstlab new` and `init` commands
 
-#![allow(deprecated)]
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
@@ -15,8 +13,7 @@ fn test_new_project_defaults_to_empty() {
         let temp = temp_dir_in_workspace();
         let root = temp.path();
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("empty-project")
@@ -47,8 +44,7 @@ fn test_new_project_with_paper_flag() {
         let temp = temp_dir_in_workspace();
         let root = temp.path();
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("paper-project")
@@ -74,8 +70,7 @@ fn test_init_project_in_current_dir() {
         let project_dir = root.join("init-project");
         fs::create_dir(&project_dir).unwrap();
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("init")
             .assert()
@@ -96,8 +91,7 @@ fn test_init_project_with_paper_flag() {
         let project_dir = root.join("init-paper-project");
         fs::create_dir(&project_dir).unwrap();
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("init")
             .arg("--paper")
@@ -116,16 +110,14 @@ fn test_new_project_fails_if_exists() {
         let temp = temp_dir_in_workspace();
         let root = temp.path();
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("existing-project")
             .assert()
             .success();
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
             .arg("existing-project")
@@ -144,16 +136,14 @@ fn test_init_fails_if_already_initialized() {
         fs::create_dir(&project_dir).unwrap();
 
         // First init
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("init")
             .assert()
             .success();
 
         // Second init - should fail
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("init")
             .assert()

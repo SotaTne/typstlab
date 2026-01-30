@@ -2,7 +2,7 @@
 
 use crate::status::{
     engine::{CheckContext, CheckResult, StatusCheck},
-    schema::SuggestedAction,
+    schema::{Action, Safety},
 };
 
 pub struct BuildCheck;
@@ -16,7 +16,7 @@ impl StatusCheck for BuildCheck {
         let papers = context.target_papers();
 
         if papers.is_empty() {
-            return CheckResult::pass();
+            return CheckResult::pass("build", "No papers found to check");
         }
 
         let mut messages = Vec::new();
@@ -31,9 +31,19 @@ impl StatusCheck for BuildCheck {
             if !paper.has_main_file() {
                 has_error = true;
                 messages.push(format!("Paper '{}': main.typ not found", paper_id));
-                actions.push(SuggestedAction::CreateFile {
-                    path: format!("papers/{}/main.typ", paper_id),
+                actions.push(Action {
+                    id: format!("create_main_{}", paper_id),
+                    command: format!("touch papers/{}/main.typ", paper_id), // Naive command for now
                     description: format!("Create main entry file for paper '{}'", paper_id),
+                    enabled: true,
+                    disabled_reason: None,
+                    safety: Safety {
+                        network: false,
+                        writes: true,
+                        writes_sot: true,
+                        reads: false,
+                    },
+                    prerequisite: None,
                 });
             }
 
@@ -50,17 +60,33 @@ impl StatusCheck for BuildCheck {
 
         // Return result based on findings
         if has_error {
-            let mut result =
-                CheckResult::error("One or more papers missing main.typ").with_messages(messages);
+            let primary_message = "One or more papers missing main.typ".to_string();
+            let mut result = CheckResult::error("build_structure", primary_message);
+
+            // Add detailed messages
+            // For now, let's join messages if they fit, or just use the summary and rely on "details".
+            // Actually, let's put the list of issues in details.
+            result = result.with_detail(
+                "issues",
+                serde_json::Value::Array(
+                    messages
+                        .into_iter()
+                        .map(serde_json::Value::String)
+                        .collect(),
+                ),
+            );
+
             for action in actions {
                 result = result.with_action(action);
             }
             result
         } else if has_warning {
-            CheckResult::warning("Some papers missing _generated/ directory")
-                .with_messages(messages)
+            CheckResult::warning(
+                "build_structure",
+                "Some papers missing _generated/ directory",
+            )
         } else {
-            CheckResult::pass()
+            CheckResult::pass("build_structure", "All papers structurally valid")
         }
     }
 }
@@ -167,10 +193,19 @@ version = "0.12.0"
         let result = check.run(&context);
 
         assert_eq!(result.status, CheckStatus::Error);
+        // Message is generic summary
         assert!(result
-            .messages
-            .iter()
-            .any(|m| m.contains("main.typ not found")));
+            .message
+            .contains("One or more papers missing main.typ"));
+
+        // Detailed issues in details
+        let details = result.details.expect("Should have details");
+        let issues = details.get("issues").expect("Should have issues list");
+        assert!(issues.as_array().unwrap().iter().any(|v| v
+            .as_str()
+            .unwrap()
+            .contains("Paper 'paper1': main.typ not found")));
+
         assert!(!result.actions.is_empty());
     }
 
@@ -206,9 +241,8 @@ version = "0.12.0"
 
         assert_eq!(result.status, CheckStatus::Warning);
         assert!(result
-            .messages
-            .iter()
-            .any(|m| m.contains("_generated/ directory not found")));
+            .message
+            .contains("Some papers missing _generated/ directory"));
     }
 
     #[test]

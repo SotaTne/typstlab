@@ -1006,6 +1006,33 @@ typstlab init --paper report
 - `network`: false
 - `writes_sot`: true
 
+#### 5.2.3 `typstlab paper list`
+
+プロジェクト内のすべての paper を一覧表示する。
+
+**Usage**:
+
+```bash
+typstlab paper list
+typstlab paper list --json
+```
+
+**Options**:
+
+- `--json`: JSON 形式で出力
+
+**動作**:
+
+1. プロジェクトルートを検索
+2. `papers/` ディレクトリをスキャン
+3. 各 paper の情報を表示（ID / Title / Language / Date）
+
+**Safety classification**:
+
+- `network`: false
+- `reads`: true (papers/, paper.toml)
+- `writes`: false
+
 ### 5.3 Scaffolding Commands (`gen`)
 
 #### 5.3.1 `typstlab gen paper <id>`
@@ -1037,9 +1064,24 @@ typstlab gen paper thesis --layout ieee --title "My Thesis"
 
 #### 5.3.2 `typstlab gen layout <name>`
 
-> **Note**: v0.2以降で実装予定。v0.1では未実装（"Not implemented" エラーまたは警告を表示）。
-
 カスタムレイアウトのテンプレートを生成する。
+
+**Usage**:
+
+```bash
+typstlab gen layout my-layout
+```
+
+**動作**:
+
+1. `layouts/<name>/` を作成
+2. `meta.tmp.typ`, `header.typ`, `refs.tmp.typ` を生成
+
+**Safety classification**:
+
+- `network`: false
+- `writes`: true
+- `writes_sot`: true（layouts/ は SOT）
 
 #### 5.3.3 `typstlab gen lib <name>`
 
@@ -1103,6 +1145,31 @@ typstlab sync --all            # Everything (Setup equivalent)
 - `writes`: true
 - `writes_sot`: false
 
+#### 5.4.3 `typstlab generate [--paper <id>]`
+
+_generated/ を生成・更新する（ビルドはしない）。
+
+**Usage**:
+
+```bash
+typstlab generate --paper report   # 特定 paper
+typstlab generate                  # 全 paper
+```
+
+**動作**:
+
+1. paper.toml を読む
+2. layout を解決
+3. _generated/ を生成
+4. state.json は更新しない（ビルドしていないので）
+
+**Safety classification**:
+
+- `network`: false
+- `reads`: true
+- `writes`: true（papers/*/_generated/ を更新）
+- `writes_sot`: false
+
 ### 5.5 Execution Commands
 
 #### 5.5.1 `typstlab build [target]`
@@ -1133,6 +1200,32 @@ typstlab build papers/report   # Build from path context
 
 - `network`: false
 - `writes`: true (dist/)
+
+#### 5.5.2 `typstlab watch`
+
+> **Note**: v0.2で実装予定。v0.1では未実装。
+
+指定した paper の変更を監視して自動ビルドする。
+
+**Usage**:
+
+```bash
+typstlab watch --paper report
+```
+
+**動作**:
+
+1. 依存ファイルを監視（main.typ, sections/, assets/, refs/, figures/）
+2. paper.toml の変更も監視
+3. 変更検知 → debounce (500ms) → build
+4. Typst の incremental compilation に任せる
+
+**Safety classification**:
+
+- `network`: false
+- `reads`: true
+- `writes`: true（build と同等）
+- `writes_sot`: false
 
 ### 5.6 Status & Diagnosis
 
@@ -1222,348 +1315,6 @@ typstlab lsp stdio
 - `tinymist` 等のLSPサーバー機能をラップして起動、または `Stdio` 経由でエディタと通信する。
 - v0.1 では "Not implemented" の警告、または最小限の起動シーケンスのみ実装。
 
-
-#### 5.2.1 `typstlab new <project-name>`
-
-新しい typstlab プロジェクトを作成する。
-
-**Usage**:
-
-```bash
-typstlab new my-research
-```
-
-**動作**:
-
-1. `<project-name>/` ディレクトリを作成
-2. `typstlab.toml` を生成（デフォルト値）
-3. 必須ディレクトリを作成（`layouts/`, `refs/`, `papers/`, `dist/`, etc.）
-4. builtin layouts をコピー（`layouts/default/`, `layouts/minimal/`）
-5. `.typstlab/` を初期化
-
-**Safety classification (v0.1)**：
-
-- `network`: false
-- `reads`: false
-- `writes`: true
-- `writes_sot`: true（typstlab.toml, pyproject.toml, uv.lock 等の SOT を新規作成）
-
-**Exit code**: 成功 0, 失敗 1
-
-#### 5.2.2 `typstlab paper new <paper-id>`
-
-新しい paper を作成する。
-
-**Usage**:
-
-```bash
-typstlab paper new report
-```
-
-**Options** (v0.1):
-
-- None (basic paper creation only)
-
-**Options** (v0.2 予定):
-
-- `--title <title>`: paper のタイトル
-- `--theme <name>`: テーマ名（省略時は default）
-- `--author <name>`: 著者名
-
-**動作** (v0.1):
-
-1. `papers/<paper-id>/` を作成
-2. `paper.toml` を生成
-3. `main.typ` を生成（初期テンプレート）
-4. `_generated/` を生成（layouts から）
-5. `sections/`, `assets/` を作成
-
-**Safety classification (v0.1)**：
-
-- `network`: false
-- `reads`: true
-- `writes`: true
-- `writes_sot`: true（papers/<id>/paper.toml, papers/<id>/main.typ を作成）
-  - ただし `_generated/` は派生物なので、それ自体は SOT ではない
-
-**Exit code**: 成功 0, 失敗 1
-
-#### 5.2.3 `typstlab paper list`
-
-プロジェクト内のすべての paper を一覧表示する。
-
-**Usage**:
-
-```bash
-typstlab paper list
-typstlab paper list --json
-typstlab paper list --verbose
-```
-
-**Options** (v0.1):
-
-- `--json`: JSON 形式で出力
-
-**動作**:
-
-1. プロジェクトルートを検索
-2. `papers/` ディレクトリをスキャン
-3. 各 paper の情報を表示:
-   - ID
-   - Title (paper.toml から)
-   - Language
-   - Date
-   - Path (--verbose 時)
-   - Layout (--verbose 時)
-
-**Output format**:
-
-Human-readable (default):
-
-```plaintext
-→ Papers in project:
-
-  • paper1
-    Title: My Paper
-    Language: en
-    Date: 2026-01-15
-
-→ Total: 1 paper(s)
-```
-
-JSON (--json):
-
-```json
-{
-  "papers": [
-    {
-      "id": "paper1",
-      "title": "My Paper",
-      "language": "en",
-      "date": "2026-01-15",
-      "path": "/path/to/papers/paper1"
-    }
-  ],
-  "count": 1
-}
-```
-
-**Safety classification (v0.1)**：
-
-- `network`: false
-- `reads`: true (papers/, paper.toml)
-- `writes`: false
-
-**Exit code**: 成功 0, 失敗 1
-
-### 5.3 Build Commands
-
-#### 5.3.1 `typstlab build --paper <id>`
-
-指定した paper をビルドする。
-
-**Usage**:
-
-```bash
-typstlab build --paper report
-typstlab build --paper report --full
-```
-
-**Options**:
-
-- `--paper <id>`: ビルドする paper の ID（必須）
-- `--full`: 強制的に _generated/ を再生成
-
-**動作**:
-
-1. paper.toml を読む
-2. _generated/ が古ければ再生成（--full なら常に）
-3. `typst compile papers/<id>/main.typ dist/<id>/<output_name>.pdf`
-4. state.json の build.last を更新
-
-**Safety classification (v0.1)**：
-
-- `network`: false
-- `reads`: true
-- `writes`: true（dist/ と state.json を更新）
-- `writes_sot`: false
-
-**Exit code**: 成功 0, 失敗 1
-
-#### 5.3.2 `typstlab watch --paper <id>`
-
-> **Note**: v0.2で実装予定。v0.1では未実装。
-
-指定した paper の変更を監視して自動ビルドする。
-
-**Usage**:
-
-```bash
-typstlab watch --paper report
-```
-
-**動作**:
-
-1. 依存ファイルを監視（main.typ, sections/, assets/, refs/, figures/）
-2. paper.toml の変更も監視
-3. 変更検知 → debounce (500ms) → build
-4. Typst の incremental compilation に任せる
-
-**Safety classification (v0.1)**：
-
-- `network`: false
-- `reads`: true
-- `writes`: true（build と同等）
-- `writes_sot`: false
-
-**Exit code**: 中断まで実行（Ctrl-C で exit 0）
-
-### 5.4 Status Commands
-
-#### 5.4.1 `typstlab status [--paper <id>] [--json]`
-
-プロジェクトまたは paper の状態を取得する。
-
-**Usage**:
-
-```bash
-typstlab status                    # プロジェクト全体
-typstlab status --paper report     # 特定 paper
-typstlab status --paper report --json
-```
-
-**動作**:
-
-1. プロジェクトルートを検出
-2. typstlab.toml, state.json を読む
-3. checks を実行（Typst 解決、paper 存在、etc.）
-4. actions を提案
-5. JSON または人間向けフォーマットで出力
-
-**Exit code**: 常に 0
-
-#### 5.4.2 `typstlab doctor [--json]`
-
-ツールチェーンと環境の健全性を診断する。
-
-**Usage**:
-
-```bash
-typstlab doctor
-typstlab doctor --json
-```
-
-**動作**:
-
-1. Typst の可用性チェック
-2. uv の可用性チェック
-3. docs の整合性チェック
-4. プロジェクト構造の検証
-5. 修復方法を actions で提示
-
-**Exit code**: 常に 0
-
-### 5.5 Generate Command
-
-#### 5.5.1 `typstlab generate [--paper <id>] [--all]`
-
-_generated/ を生成・更新する（ビルドはしない）。
-
-**Usage**:
-
-```bash
-typstlab generate --paper report   # 特定 paper
-typstlab generate --all            # 全 paper
-```
-
-**動作**:
-
-1. paper.toml を読む
-2. layout を解決
-3. _generated/ を生成
-4. state.json は更新しない（ビルドしていないので）
-
-**Safety classification (v0.1)**：
-
-- `network`: false
-- `reads`: true
-- `writes`: true（papers/*/_generated/ を更新）
-- `writes_sot`: false
-
-**Exit code**: 成功 0, 失敗 1
-
-### 5.6 Sync Command
-
-#### 5.6.1 `typstlab sync [--apply]`
-
-プロジェクトが想定する環境でビルド可能な状態に到達することを保証する。
-
-**Usage**:
-
-```bash
-typstlab sync              # デフォルトモード（SOT 非変更）
-typstlab sync --apply      # ネットワーク通信・managed install を許可
-```
-
-**sync が保証する到達状態（v0.1）**:
-
-- Typst が解決済み（要求バージョンと一致）
-- uv が解決済み（required の場合）
-- bin/ shim が存在
-- _generated/ が最新
-- docs が存在し、バージョン整合（--apply 時のみ取得）
-
-**動作（デフォルトモード）**:
-
-1. `typstlab typst link` を実行（Typst 解決）
-2. `typstlab link uv` を実行（uv 解決）
-3. bin/ shim を生成
-4. `typstlab generate --all` を実行（全 paper の _generated/ 更新）
-5. state.json を更新
-
-**動作（--apply モード）**:
-
-上記に加えて：
-
-- `typstlab doctor --json` を実行
-- 以下の actions を自動実行（v0.1 で固定）:
-  - `typstlab typst install <version>`（Typst が未解決の場合のみ）
-  - `typstlab typst docs sync`（docs が不整合の場合のみ）
-
-**設計思想の位置づけ**：
-
-- `sync --apply` は **human-oriented convenience command** である
-- MCP / status / doctor が提示する actions の contract とは独立している
-- エージェントは `sync --apply` を使わず、status/doctor の actions を個別に実行すべき
-- この設計により「自動実行判断はエージェント側」という原則を維持しながら、人間向けの利便性も提供する
-
-**重要な原則**:
-
-- デフォルトモードは **SOT（正）を変更しない**
-- `.typstlab/`, `_generated/`, `bin/` は派生物なので生成・上書きする
-- `--apply` なしではネットワーク通信を行わない
-- 既存の SOT（refs/, papers/, typstlab.toml 等）は変更しない
-
-**冪等性（idempotency）**:
-
-- `sync` は同じ project に対して複数回実行しても結果は変わらない
-- 副作用は `.typstlab/`, `_generated/`, `bin/` に限定される
-- エージェントは安心して何度でも `sync` を呼べる
-
-**Safety classification (v0.1)**：
-
-- `sync`（デフォルト）:
-  - `network`: false
-  - `reads`: true
-  - `writes`: true（bin/, _generated/, .typstlab/, state.json を更新）
-  - `writes_sot`: false
-- `sync --apply`:
-  - `network`: true（typst install / docs sync が走りうる）
-  - `reads`: true
-  - `writes`: true（上記 + managed cache / docs）
-  - `writes_sot`: false
-
-**Exit code**: 成功 0, 失敗 1
 
 ### 5.7 Typst Commands
 

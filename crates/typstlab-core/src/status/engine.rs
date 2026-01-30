@@ -6,7 +6,7 @@ use crate::{
     project::Project,
     status::{
         checks::{BuildCheck, EnvCheck, RefsCheck, TypstCheck},
-        schema::{Check, CheckStatus, StatusReport, SuggestedAction},
+        schema::{CheckStatus, StatusReport},
     },
 };
 
@@ -48,48 +48,63 @@ impl<'a> CheckContext<'a> {
 
 /// Result of a single check
 pub struct CheckResult {
+    pub id: String,
     pub status: CheckStatus,
-    pub messages: Vec<String>,
-    pub actions: Vec<SuggestedAction>,
+    pub message: String,
+    pub details: Option<std::collections::HashMap<String, serde_json::Value>>,
+    pub actions: Vec<crate::status::schema::Action>,
 }
 
 impl CheckResult {
     /// Create a passing check result
-    pub fn pass() -> Self {
+    pub fn pass(id: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
+            id: id.into(),
             status: CheckStatus::Pass,
-            messages: vec![],
+            message: message.into(),
+            details: None,
             actions: vec![],
         }
     }
 
     /// Create a warning check result
-    pub fn warning(message: impl Into<String>) -> Self {
+    pub fn warning(id: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
+            id: id.into(),
             status: CheckStatus::Warning,
-            messages: vec![message.into()],
+            message: message.into(),
+            details: None,
             actions: vec![],
         }
     }
 
     /// Create an error check result
-    pub fn error(message: impl Into<String>) -> Self {
+    pub fn error(id: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
+            id: id.into(),
             status: CheckStatus::Error,
-            messages: vec![message.into()],
+            message: message.into(),
+            details: None,
             actions: vec![],
         }
     }
 
     /// Add an action to this result
-    pub fn with_action(mut self, action: SuggestedAction) -> Self {
+    pub fn with_action(mut self, action: crate::status::schema::Action) -> Self {
         self.actions.push(action);
         self
     }
 
-    /// Add multiple messages
-    pub fn with_messages(mut self, messages: Vec<String>) -> Self {
-        self.messages.extend(messages);
+    /// Add details
+    pub fn with_detail(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
+        let details = self
+            .details
+            .get_or_insert_with(std::collections::HashMap::new);
+        details.insert(key.into(), value.into());
         self
     }
 }
@@ -141,10 +156,12 @@ impl StatusEngine {
                 _ => CheckStatus::Pass,
             };
 
-            all_checks.push(Check {
+            all_checks.push(crate::status::schema::Check {
+                id: result.id,
                 name: check.name().to_string(),
                 status: result.status,
-                messages: result.messages,
+                message: result.message,
+                details: result.details,
             });
 
             all_actions.extend(result.actions);
@@ -285,17 +302,18 @@ name = "{}"
 
     #[test]
     fn test_check_result_constructors() {
-        let pass = CheckResult::pass();
+        let pass = CheckResult::pass("test_ok", "All good");
         assert_eq!(pass.status, CheckStatus::Pass);
-        assert_eq!(pass.messages.len(), 0);
+        assert_eq!(pass.message, "All good");
+        assert_eq!(pass.id, "test_ok");
 
-        let warning = CheckResult::warning("Test warning");
+        let warning = CheckResult::warning("test_warn", "Test warning");
         assert_eq!(warning.status, CheckStatus::Warning);
-        assert_eq!(warning.messages[0], "Test warning");
+        assert_eq!(warning.message, "Test warning");
 
-        let error = CheckResult::error("Test error");
+        let error = CheckResult::error("test_err", "Test error");
         assert_eq!(error.status, CheckStatus::Error);
-        assert_eq!(error.messages[0], "Test error");
+        assert_eq!(error.message, "Test error");
     }
 
     #[test]

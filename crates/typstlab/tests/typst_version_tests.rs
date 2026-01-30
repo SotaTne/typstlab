@@ -1,9 +1,7 @@
 //! Integration tests for `typstlab typst version` command
 
-#![allow(deprecated)] // cargo_bin is deprecated but will be replaced in implementation phase
-
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::CommandCargoExt;
+use assert_cmd::cargo_bin;
 use predicates::prelude::*;
 use std::fs;
 use std::process::Command;
@@ -38,8 +36,7 @@ fn test_version_requires_project_root() {
 
         // Don't create typstlab.toml - should fail
 
-        Command::cargo_bin("typstlab")
-            .unwrap()
+        Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("version")
@@ -58,8 +55,7 @@ fn test_version_shows_required_version() {
         create_test_project(root, "0.12.0");
 
         // Should show required version even if not resolved
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("version")
@@ -85,8 +81,7 @@ fn test_version_json_output() {
 
         create_test_project(root, "0.12.0");
 
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("version")
@@ -125,12 +120,11 @@ fn test_version_with_resolved_typst() {
 
         // Install typst using setup_test_typst
         let typstlab_bin =
-            std::path::PathBuf::from(Command::cargo_bin("typstlab").unwrap().get_program());
+            std::path::PathBuf::from(Command::new(cargo_bin!("typstlab")).get_program());
         let _typst_path = setup_test_typst(&typstlab_bin, root);
 
         // Run version command
-        let result = Command::cargo_bin("typstlab")
-            .unwrap()
+        let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("version")

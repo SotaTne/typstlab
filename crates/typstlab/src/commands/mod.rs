@@ -5,6 +5,7 @@ pub mod doctor;
 pub mod generate;
 pub mod lsp;
 pub mod mcp;
+pub mod scaffold;
 
 pub mod new;
 pub mod paper;

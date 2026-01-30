@@ -2,7 +2,7 @@
 
 use crate::status::{
     engine::{CheckContext, CheckResult, StatusCheck},
-    schema::SuggestedAction,
+    schema::{Action, CheckStatus, Safety},
 };
 
 pub struct EnvCheck;
@@ -24,9 +24,19 @@ impl StatusCheck for EnvCheck {
         if !config_path.exists() {
             has_error = true;
             messages.push("typstlab.toml not found".to_string());
-            actions.push(SuggestedAction::CreateFile {
-                path: "typstlab.toml".to_string(),
-                description: "Create project configuration file".to_string(),
+            actions.push(Action {
+                id: "init_project".to_string(),
+                command: "typstlab init".to_string(),
+                description: "Initialize new project".to_string(),
+                enabled: true,
+                disabled_reason: None,
+                safety: Safety {
+                    network: false,
+                    writes: true,
+                    writes_sot: true,
+                    reads: false,
+                },
+                prerequisite: None,
             });
         }
 
@@ -35,9 +45,19 @@ impl StatusCheck for EnvCheck {
         if !papers_dir.exists() {
             has_error = true;
             messages.push("papers/ directory not found".to_string());
-            actions.push(SuggestedAction::RunCommand {
+            actions.push(Action {
+                id: "create_papers_dir".to_string(),
                 command: "mkdir papers".to_string(),
                 description: "Create papers directory".to_string(),
+                enabled: true,
+                disabled_reason: None,
+                safety: Safety {
+                    network: false,
+                    writes: true,
+                    writes_sot: false,
+                    reads: false,
+                },
+                prerequisite: None,
             });
         }
 
@@ -50,18 +70,17 @@ impl StatusCheck for EnvCheck {
 
         // Return result based on findings
         if has_error {
-            CheckResult::error("Required directories missing")
-                .with_messages(messages)
-                .with_action(actions.into_iter().next().unwrap_or_else(|| {
-                    SuggestedAction::RunCommand {
-                        command: "mkdir papers".to_string(),
-                        description: "Create required directories".to_string(),
-                    }
-                }))
+            let primary_message = messages.join(", ");
+            let mut result = CheckResult::error("project_structure", primary_message);
+            for action in actions {
+                result = result.with_action(action);
+            }
+            result
         } else if has_warning {
-            CheckResult::warning("Optional directories missing").with_messages(messages)
+            let primary_message = messages.join(", ");
+            CheckResult::warning("project_structure", primary_message)
         } else {
-            CheckResult::pass()
+            CheckResult::pass("project_structure", "All required directories present")
         }
     }
 }
@@ -104,7 +123,7 @@ version = "0.12.0"
         let result = check.run(&context);
 
         assert_eq!(result.status, CheckStatus::Pass);
-        assert_eq!(result.messages.len(), 0);
+        assert_eq!(result.message, "All required directories present");
     }
 
     #[test]
@@ -137,10 +156,7 @@ version = "0.12.0"
         let result = check.run(&context);
 
         assert_eq!(result.status, CheckStatus::Error);
-        assert!(result
-            .messages
-            .iter()
-            .any(|m| m.contains("papers/ directory not found")));
+        assert!(result.message.contains("papers/ directory not found"));
         assert!(!result.actions.is_empty());
     }
 
@@ -176,9 +192,6 @@ version = "0.12.0"
         let result = check.run(&context);
 
         assert_eq!(result.status, CheckStatus::Warning);
-        assert!(result
-            .messages
-            .iter()
-            .any(|m| m.contains("layouts/ directory not found")));
+        assert!(result.message.contains("layouts/ directory not found"));
     }
 }

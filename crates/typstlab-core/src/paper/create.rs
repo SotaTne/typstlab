@@ -30,7 +30,7 @@ use std::path::Path;
 /// - Paper directory already exists
 /// - Directory creation fails
 /// - File writing fails
-pub fn create_paper(project: &Project, paper_id: &str) -> Result<()> {
+pub fn create_paper(project: &Project, paper_id: &str, title: Option<String>) -> Result<()> {
     // Validate paper ID for security
     validate_name(paper_id)?;
 
@@ -51,7 +51,7 @@ pub fn create_paper(project: &Project, paper_id: &str) -> Result<()> {
     fs::create_dir(paper_dir.join("rules"))?;
 
     // Create paper.toml
-    create_paper_toml(&paper_dir, paper_id)?;
+    create_paper_toml(&paper_dir, paper_id, title)?;
 
     // Create main.typ
     create_main_typ(&paper_dir)?;
@@ -66,13 +66,14 @@ pub fn create_paper(project: &Project, paper_id: &str) -> Result<()> {
 }
 
 /// Create paper.toml with paper configuration
-fn create_paper_toml(paper_dir: &Path, paper_id: &str) -> Result<()> {
+fn create_paper_toml(paper_dir: &Path, paper_id: &str, title: Option<String>) -> Result<()> {
     let today = Local::now().format("%Y-%m-%d").to_string();
+    let title = title.unwrap_or_else(|| "New Paper".to_string());
 
     let content = format!(
         r#"[paper]
 id = "{}"
-title = "New Paper"
+title = "{}"
 language = "en"
 date = "{}"
 
@@ -94,7 +95,7 @@ targets = ["pdf"]
 [output]
 name = "{}"
 "#,
-        paper_id, today, paper_id
+        paper_id, title, today, paper_id
     );
 
     fs::write(paper_dir.join("paper.toml"), content)?;
@@ -187,7 +188,7 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        let result = create_paper(&project, "paper1");
+        let result = create_paper(&project, "paper1", None);
         assert!(result.is_ok());
 
         let paper_dir = temp.path().join("papers/paper1");
@@ -205,7 +206,7 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        create_paper(&project, "my-paper").unwrap();
+        create_paper(&project, "my-paper", None).unwrap();
 
         let toml_path = temp.path().join("papers/my-paper/paper.toml");
         let content = fs::read_to_string(toml_path).unwrap();
@@ -221,7 +222,7 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        create_paper(&project, "paper1").unwrap();
+        create_paper(&project, "paper1", None).unwrap();
 
         let main_typ_path = temp.path().join("papers/paper1/main.typ");
         let content = fs::read_to_string(main_typ_path).unwrap();
@@ -237,10 +238,10 @@ version = "0.12.0"
         let project = create_test_project(temp.path());
 
         // Create first time - should succeed
-        create_paper(&project, "paper1").unwrap();
+        create_paper(&project, "paper1", None).unwrap();
 
         // Create second time - should fail
-        let result = create_paper(&project, "paper1");
+        let result = create_paper(&project, "paper1", None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }
@@ -250,7 +251,7 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        create_paper(&project, "paper1").unwrap();
+        create_paper(&project, "paper1", None).unwrap();
 
         // _generated/ is not created by create_paper
         // It will be created by caller after reloading project
