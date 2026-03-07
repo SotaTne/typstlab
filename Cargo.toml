@@ -1,0 +1,20 @@
+[workspace]
+
+members = [
+    "crates/typstlab-cli",
+    "crates/typstlab-config",
+    "crates/typstlab-docs-typst",
+    "crates/typstlab-hooks",
+    "crates/typstlab-mcp",
+    "crates/typstlab-service",
+    "crates/typstlab-plugins",
+    "crates/typstlab-project",
+    "crates/typstlab-plugin-protocol",
+    "crates/typstlab-testkit",
+    "crates/typstlab-toolchain",
+    "crates/typstlab-toolchain-api",
+    "crates/typstlab-typst-runner",
+    "crates/typstlab-wasi", "crates/typstla-macros",
+]
+
+resolver = "3"
