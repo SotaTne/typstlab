@@ -3,10 +3,6 @@
 version = 4
 
 [[package]]
-name = "typstla-macros"
-version = "0.1.0"
-
-[[package]]
 name = "typstlab-cli"
 version = "0.1.0"
 
@@ -20,6 +16,10 @@ version = "0.1.0"
 
 [[package]]
 name = "typstlab-hooks"
+version = "0.1.0"
+
+[[package]]
+name = "typstlab-macros"
 version = "0.1.0"
 
 [[package]]
@@ -39,6 +39,14 @@ name = "typstlab-protocol"
 version = "0.1.0"
 
 [[package]]
+name = "typstlab-service"
+version = "0.1.0"
+
+[[package]]
+name = "typstlab-testkit"
+version = "0.1.0"
+
+[[package]]
 name = "typstlab-toolchain"
 version = "0.1.0"
 
@@ -52,12 +60,4 @@ version = "0.1.0"
 
 [[package]]
 name = "typstlab-wasi"
-version = "0.1.0"
-
-[[package]]
-name = "typstlab_operators"
-version = "0.1.0"
-
-[[package]]
-name = "typstlab_testkit"
 version = "0.1.0"
