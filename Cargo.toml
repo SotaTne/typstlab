@@ -14,7 +14,8 @@ members = [
     "crates/typstlab-toolchain",
     "crates/typstlab-toolchain-api",
     "crates/typstlab-typst-runner",
-    "crates/typstlab-wasi", "crates/typstla-macros",
+    "crates/typstlab-wasi",
+    "crates/typstla-macros",
 ]
 
 resolver = "3"
