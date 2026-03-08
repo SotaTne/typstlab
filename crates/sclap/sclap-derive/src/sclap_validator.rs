@@ -1,21 +1,21 @@
-use crate::sclap_context_cfg::{SclapContextCfg, parse_struct_fields};
+use crate::sclap_validator_cfg::{SclapValidatorCfg, parse_struct_fields};
 use crate::utils::core_crate_path;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, parse_macro_input};
 
-pub fn derive_sclap_context(input: TokenStream) -> TokenStream {
+pub fn derive_sclap_validator(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let core_path = core_crate_path();
 
-    match derive_sclap_context_impl(input, core_path) {
+    match derive_sclap_validator_impl(input, core_path) {
         Ok(tokens) => tokens.into(),
         Err(err) => err.to_compile_error().into(),
     }
 }
 
-pub(crate) fn derive_sclap_context_impl(
+pub(crate) fn derive_sclap_validator_impl(
     input: DeriveInput,
     core_path: TokenStream2,
 ) -> syn::Result<TokenStream2> {
@@ -23,7 +23,7 @@ pub(crate) fn derive_sclap_context_impl(
     if matches!(input.data, Data::Enum(_) | Data::Union(_)) {
         return Err(Error::new_spanned(
             input.ident,
-            "SclapContext can only be derived for structs",
+            "SclapValidator can only be derived for structs",
         ));
     }
 
@@ -32,13 +32,13 @@ pub(crate) fn derive_sclap_context_impl(
         _ => {
             return Err(Error::new_spanned(
                 &input.ident,
-                "SclapContext can only be derived for structs",
+                "SclapValidator can only be derived for structs",
             ));
         }
     };
     let struct_name = input.ident;
     let cfg = parse_struct_fields(fields)?;
-    Ok(generate_sclap_context_impl(
+    Ok(generate_sclap_validator_impl(
         &struct_name,
         &input.generics,
         &cfg,
@@ -46,10 +46,10 @@ pub(crate) fn derive_sclap_context_impl(
     ))
 }
 
-pub(crate) fn generate_sclap_context_impl(
+pub(crate) fn generate_sclap_validator_impl(
     struct_name: &syn::Ident,
     generics: &syn::Generics,
-    cfg: &SclapContextCfg,
+    cfg: &SclapValidatorCfg,
     core_path: TokenStream2,
 ) -> TokenStream2 {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -71,7 +71,7 @@ pub(crate) fn generate_sclap_context_impl(
 
     // 3. 最終的なコード生成
     quote! {
-        impl #impl_generics #core_path::SclapContext for #struct_name #ty_generics #where_clause {
+        impl #impl_generics #core_path::SclapValidator for #struct_name #ty_generics #where_clause {
             // 変数をそのまま渡す。これで CheckHasIterator はパスする。
             const KEYS: &'static [&'static str] = &[ #(#keys_iter),* ];
 
@@ -100,7 +100,7 @@ mod tests {
             .collect()
     }
 
-    fn sample_cfg() -> SclapContextCfg {
+    fn sample_cfg() -> SclapValidatorCfg {
         let mut validator_map = HashMap::new();
         validator_map.insert(
             "version".to_string(),
@@ -110,14 +110,14 @@ mod tests {
             ),
         );
 
-        SclapContextCfg {
+        SclapValidatorCfg {
             keys: vec!["version".to_string()],
             validator_map,
         }
     }
 
-    // derive_sclap_context_impl: input validation + cfg parsing orchestration.
-    mod derive_sclap_context_impl_tests {
+    // derive_sclap_validator_impl: input validation + cfg parsing orchestration.
+    mod derive_sclap_validator_impl_tests {
         use super::*;
 
         #[test]
@@ -126,7 +126,7 @@ mod tests {
                 enum Demo { A }
             };
             let err =
-                derive_sclap_context_impl(input, quote!(::sclap_core)).expect_err("should fail");
+                derive_sclap_validator_impl(input, quote!(::sclap_core)).expect_err("should fail");
             assert!(err.to_string().contains("only be derived for structs"));
         }
 
@@ -138,7 +138,7 @@ mod tests {
                 }
             };
             let err =
-                derive_sclap_context_impl(input, quote!(::sclap_core)).expect_err("should fail");
+                derive_sclap_validator_impl(input, quote!(::sclap_core)).expect_err("should fail");
             assert!(err.to_string().contains("requires `#[sclap(...)]"));
         }
 
@@ -151,17 +151,17 @@ mod tests {
                 }
             };
             let tokens =
-                derive_sclap_context_impl(input, quote!(::sclap_core)).expect("should parse");
+                derive_sclap_validator_impl(input, quote!(::sclap_core)).expect("should parse");
             let got = normalized(&tokens);
 
-            assert!(got.contains("impl::sclap_core::SclapContextforDemo"));
+            assert!(got.contains("impl::sclap_core::SclapValidatorforDemo"));
             assert!(got.contains("constKEYS:&'static[&'staticstr]=&[\"version\"]"));
             assert!(got.contains("\"version\"=>validators::version_check(&self.version,req_val),"));
         }
     }
 
-    // generate_sclap_context_impl: token generation from parsed cfg.
-    mod generate_sclap_context_impl_tests {
+    // generate_sclap_validator_impl: token generation from parsed cfg.
+    mod generate_sclap_validator_impl_tests {
         use super::*;
 
         #[test]
@@ -171,10 +171,10 @@ mod tests {
             let cfg = sample_cfg();
 
             let tokens =
-                generate_sclap_context_impl(&struct_name, &generics, &cfg, quote!(::sclap_core));
+                generate_sclap_validator_impl(&struct_name, &generics, &cfg, quote!(::sclap_core));
             let got = normalized(&tokens);
 
-            assert!(got.contains("impl::sclap_core::SclapContextforMyContext"));
+            assert!(got.contains("impl::sclap_core::SclapValidatorforMyContext"));
             assert!(got.contains("constKEYS:&'static[&'staticstr]=&[\"version\"]"));
             assert!(got.contains("match*req_key"));
             assert!(got.contains("\"version\"=>validators::version_check(&self.version,req_val),"));
@@ -193,10 +193,10 @@ mod tests {
             let cfg = sample_cfg();
 
             let tokens =
-                generate_sclap_context_impl(&struct_name, &generics, &cfg, quote!(::sclap_core));
+                generate_sclap_validator_impl(&struct_name, &generics, &cfg, quote!(::sclap_core));
             let got = normalized(&tokens);
 
-            assert!(got.contains("impl<T>::sclap_core::SclapContextforMyContext<T>whereT:Clone"));
+            assert!(got.contains("impl<T>::sclap_core::SclapValidatorforMyContext<T>whereT:Clone"));
         }
     }
 }

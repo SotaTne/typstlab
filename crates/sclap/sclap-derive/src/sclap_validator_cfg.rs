@@ -2,7 +2,7 @@ use crate::utils::ident_match;
 use std::collections::HashMap;
 use syn::{Error, Field, Fields, Ident, Path, Result};
 
-pub(crate) struct SclapContextCfg {
+pub(crate) struct SclapValidatorCfg {
     pub(crate) keys: Vec<String>,
     pub(crate) validator_map: HashMap<String, (Ident, Path)>,
 }
@@ -26,12 +26,12 @@ fn parse_field_sclap_attr(field: &Field) -> Result<(String, (Ident, Path))> {
     let Some(attr) = found_attr else {
         return Err(Error::new_spanned(
             field,
-            "#[derive(SclapContext)]` requires `#[sclap(...)].",
+            "#[derive(SclapValidator)]` requires `#[sclap(...)].",
         ));
     };
 
     let ident = field.ident.clone().ok_or_else(|| {
-        Error::new_spanned(field, "Tuple structs are not supported by SclapContext")
+        Error::new_spanned(field, "Tuple structs are not supported by SclapValidator")
     })?;
 
     let mut key = ident.to_string();
@@ -63,7 +63,7 @@ fn parse_field_sclap_attr(field: &Field) -> Result<(String, (Ident, Path))> {
     Ok((key, (ident, validator_path)))
 }
 
-pub(crate) fn parse_struct_fields(fields: &Fields) -> Result<SclapContextCfg> {
+pub(crate) fn parse_struct_fields(fields: &Fields) -> Result<SclapValidatorCfg> {
     let mut keys = Vec::new();
     let mut validator_map = HashMap::new();
 
@@ -72,14 +72,14 @@ pub(crate) fn parse_struct_fields(fields: &Fields) -> Result<SclapContextCfg> {
         if keys.contains(&key) {
             return Err(Error::new_spanned(
                 field,
-                format!("Duplicate key `{key}` found in SclapContext fields"),
+                format!("Duplicate key `{key}` found in SclapValidator fields"),
             ));
         }
         keys.push(key.clone());
         validator_map.insert(key, (ident, validator_path));
     }
 
-    Ok(SclapContextCfg {
+    Ok(SclapValidatorCfg {
         keys,
         validator_map,
     })

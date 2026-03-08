@@ -23,6 +23,13 @@
 //!     output: "json".to_string(),
 //! });
 
-mod sclap_context;
-mod sclap_context_cfg;
+mod sclap_validator;
+mod sclap_validator_cfg;
 mod utils;
+
+use proc_macro::TokenStream;
+
+#[proc_macro_derive(SclapValidator, attributes(sclap))]
+pub fn derive_feature(input: TokenStream) -> TokenStream {
+    sclap_validator::derive_sclap_validator(input)
+}

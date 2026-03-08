@@ -1,3 +1,3 @@
-pub trait SclapContext {
+pub trait SclapValidator {
     const KEYS: &'static [&'static str] = &[];
 }
