@@ -16,6 +16,9 @@ members = [
     "crates/typstlab-typst-runner",
     "crates/typstlab-wasi",
     "crates/typstlab-macros",
+    "crates/sclap/sclap",
+    "crates/sclap/sclap-derive",
+    "crates/sclap/sclap-core",
 ]
 
 resolver = "3"
