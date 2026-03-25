@@ -30,7 +30,16 @@ use std::path::Path;
 /// - Paper directory already exists
 /// - Directory creation fails
 /// - File writing fails
-pub fn create_paper(project: &Project, paper_id: &str, title: Option<String>) -> Result<()> {
+pub fn create_paper<F>(
+    project: &Project,
+    paper_id: &str,
+    title: Option<String>,
+    template: Option<String>,
+    init_remote: Option<F>,
+) -> Result<()>
+where
+    F: FnOnce(&str, &Path) -> Result<()>,
+{
     // Validate paper ID for security
     validate_name(paper_id)?;
 
@@ -42,26 +51,61 @@ pub fn create_paper(project: &Project, paper_id: &str, title: Option<String>) ->
         bail!("Paper '{}' already exists", paper_id);
     }
 
-    // Create paper directory
-    fs::create_dir(&paper_dir)?;
+    // Handle template if provided
+    if let Some(template_name) = template {
+        let template_dir = project.root.join("templates").join(&template_name);
 
-    // Create subdirectories
-    fs::create_dir(paper_dir.join("sections"))?;
-    fs::create_dir(paper_dir.join("assets"))?;
-    fs::create_dir(paper_dir.join("rules"))?;
+        if template_dir.exists() {
+            let paper_title = title.clone().unwrap_or_else(|| paper_id.to_string());
+            fs::create_dir_all(&paper_dir)?;
+            expand_local_template(&template_dir, &paper_dir, &paper_title)?;
+        } else if let Some(init_fn) = init_remote {
+            // Remote template (e.g. @preview/jaconf)
+            init_fn(&template_name, &paper_dir)?;
+        } else {
+            bail!(
+                "Template '{}' not found and no remote initializer provided",
+                template_name
+            );
+        }
+    } else {
+        // Default scaffolding
+        fs::create_dir_all(&paper_dir)?;
+        fs::create_dir(paper_dir.join("sections"))?;
+        fs::create_dir(paper_dir.join("assets"))?;
+        fs::create_dir(paper_dir.join("rules"))?;
+        create_main_typ(&paper_dir)?;
+        create_rules_readme(&paper_dir)?;
+    }
 
-    // Create paper.toml
-    create_paper_toml(&paper_dir, paper_id, title)?;
+    // Always create paper.toml if it wasn't provided by template
+    if !paper_dir.join("paper.toml").exists() {
+        create_paper_toml(&paper_dir, paper_id, title)?;
+    }
 
-    // Create main.typ
-    create_main_typ(&paper_dir)?;
+    Ok(())
+}
 
-    // Create rules/README.md
-    create_rules_readme(&paper_dir)?;
+fn expand_local_template(src: &Path, dst: &Path, title: &str) -> Result<()> {
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
 
-    // Note: _generated/ directory will be created by caller after reloading project
-    // This is necessary because generate_paper() needs the paper to be in project.papers
-
+        if src_path.is_dir() {
+            fs::create_dir_all(&dst_path)?;
+            expand_local_template(&src_path, &dst_path, title)?;
+        } else {
+            // Read as string to perform replacement
+            if let Ok(content) = fs::read_to_string(&src_path) {
+                let expanded = content.replace("{{title}}", title);
+                fs::write(dst_path, expanded)?;
+            } else {
+                // binary files
+                fs::copy(src_path, dst_path)?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -188,7 +232,7 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        let result = create_paper(&project, "paper1", None);
+        let result = create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None);
         assert!(result.is_ok());
 
         let paper_dir = temp.path().join("papers/paper1");
@@ -206,7 +250,7 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        create_paper(&project, "my-paper", None).unwrap();
+        create_paper::<fn(&str, &Path) -> Result<()>>(&project, "my-paper", None, None, None).unwrap();
 
         let toml_path = temp.path().join("papers/my-paper/paper.toml");
         let content = fs::read_to_string(toml_path).unwrap();
@@ -222,7 +266,7 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        create_paper(&project, "paper1", None).unwrap();
+        create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None).unwrap();
 
         let main_typ_path = temp.path().join("papers/paper1/main.typ");
         let content = fs::read_to_string(main_typ_path).unwrap();
@@ -238,24 +282,70 @@ version = "0.12.0"
         let project = create_test_project(temp.path());
 
         // Create first time - should succeed
-        create_paper(&project, "paper1", None).unwrap();
+        create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None).unwrap();
 
         // Create second time - should fail
-        let result = create_paper(&project, "paper1", None);
+        let result = create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }
 
     #[test]
-    fn test_create_paper_without_generated() {
+    fn test_create_paper_with_local_template() {
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        create_paper(&project, "paper1", None).unwrap();
+        // Create mock local template
+        let template_dir = temp.path().join("templates").join("my_template");
+        std::fs::create_dir_all(&template_dir).unwrap();
+        std::fs::write(template_dir.join("main.typ"), "Hello {{title}}").unwrap();
+        std::fs::write(template_dir.join("other.typ"), "Some {{title}} thing").unwrap();
 
-        // _generated/ is not created by create_paper
-        // It will be created by caller after reloading project
-        let generated_dir = temp.path().join("papers/paper1/_generated");
-        assert!(!generated_dir.exists());
+        create_paper::<fn(&str, &Path) -> Result<()>>(
+            &project,
+            "paper_tmpl",
+            Some("My Awesome Paper".to_string()),
+            Some("my_template".to_string()),
+            None,
+        )
+        .unwrap();
+
+        let paper_dir = temp.path().join("papers/paper_tmpl");
+        assert!(paper_dir.exists());
+
+        // Check if template files were copied and variables substituted
+        let main_content = std::fs::read_to_string(paper_dir.join("main.typ")).unwrap();
+        assert_eq!(main_content, "Hello My Awesome Paper");
+
+        let other_content = std::fs::read_to_string(paper_dir.join("other.typ")).unwrap();
+        assert_eq!(other_content, "Some My Awesome Paper thing");
+    }
+
+    #[test]
+    fn test_create_paper_with_remote_template() {
+        let temp = TempDir::new().unwrap();
+        let project = create_test_project(temp.path());
+
+        let mut called = false;
+        create_paper(
+            &project,
+            "paper_remote",
+            None,
+            Some("@preview/jaconf".to_string()),
+            Some(|template: &str, path: &Path| {
+                assert_eq!(template, "@preview/jaconf");
+                std::fs::create_dir_all(path).unwrap();
+                std::fs::write(path.join("main.typ"), "Remote Content").unwrap();
+                called = true;
+                Ok(())
+            }),
+        )
+        .unwrap();
+
+        assert!(called);
+        let paper_dir = temp.path().join("papers/paper_remote");
+        assert!(paper_dir.exists());
+        let content = std::fs::read_to_string(paper_dir.join("main.typ")).unwrap();
+        assert_eq!(content, "Remote Content");
     }
 }

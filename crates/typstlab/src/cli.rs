@@ -24,12 +24,7 @@ pub enum Commands {
     /// Setup environment (install + sync --all)
     Setup,
 
-    /// Generate _generated/ directories with rendered templates
-    Generate {
-        /// Paper ID to generate (if not specified, generates all papers)
-        #[arg(short, long)]
-        paper: Option<String>,
-    },
+
 
     /// Create new project
     New {
@@ -69,46 +64,64 @@ pub enum Commands {
         full: bool,
     },
 
-    /// Typst toolchain management
-    #[command(subcommand)]
-    Typst(TypstCommands),
 
-    /// Show project status
-    Status {
-        /// Paper ID to filter status check
-        #[arg(short, long)]
-        paper: Option<String>,
-
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Synchronize project to build-ready state
-    Sync {
-        /// Include documentation sync (network)
-        #[arg(long)]
-        docs: bool,
-
-        /// Include toolchain resolution/install (network)
-        #[arg(long)]
-        tools: bool,
-
-        /// Include everything (equivalent to --docs --tools)
-        #[arg(long)]
-        all: bool,
-    },
-
-    /// Run Language Server Protocol server
-    Lsp {
-        /// Run in stdio mode (default)
-        #[command(subcommand)]
-        command: Option<LspCommands>,
-    },
 
     /// Run Model Context Protocol server
     #[command(subcommand)]
     Mcp(McpCommands),
+
+    /// Management of the Typst toolchain
+    Typst(TypstArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct TypstArgs {
+    #[command(subcommand)]
+    pub command: TypstSubcommands,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum TypstSubcommands {
+    /// Install Tipst of the specified version or the version in typstlab.toml
+    Install {
+        /// Version to install (e.g. 0.12.0)
+        version: Option<String>,
+    },
+    /// Show current Typst version
+    Version {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// List all managed and system Typst versions
+    Versions {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Execute Typst binary directly
+    Exec {
+        /// Arguments to pass to Typst
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Typst documentation management
+    #[command(subcommand)]
+    Docs(DocsCommands),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum DocsCommands {
+    /// Synchronize Typst documentation
+    Sync,
+    /// Clear local Typst documentation
+    Clear,
+    /// Show documentation sync status
+    Status {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -117,11 +130,11 @@ pub enum GenCommands {
     Paper {
         /// Paper ID (becomes directory name)
         id: String,
-        /// Layout to use (optional, defaults to project default)
+        /// Template to use (local path or typst package e.g., @preview/jaconf)
         #[arg(short, long)]
-        layout: Option<String>,
+        template: Option<String>,
         /// Title of the paper (optional)
-        #[arg(short, long)]
+        #[arg(long)]
         title: Option<String>,
     },
     /// Create a new layout
@@ -152,61 +165,7 @@ pub enum PaperCommands {
     },
 }
 
-#[derive(Subcommand)]
-pub enum TypstCommands {
-    /// Link to system or managed Typst
-    Link {
-        /// Force re-resolution even if cached
-        #[arg(short, long)]
-        force: bool,
-    },
 
-    /// Install Typst version
-    Install {
-        /// Version to install (e.g., "0.12.0")
-        version: String,
-    },
-
-    /// Show Typst version information
-    Version {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// List all installed Typst versions
-    Versions {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Execute Typst binary with arguments
-    #[command(trailing_var_arg = true)]
-    Exec {
-        /// Arguments to pass to Typst (after --)
-        #[arg(allow_hyphen_values = true)]
-        args: Vec<String>,
-    },
-
-    /// Documentation management
-    #[command(subcommand)]
-    Docs(DocsCommands),
-}
-
-#[derive(Subcommand)]
-pub enum DocsCommands {
-    /// Download Typst documentation
-    Sync,
-
-    /// Remove local documentation
-    Clear,
-
-    /// Show documentation status
-    Status {
-        #[arg(long)]
-        json: bool,
-    },
-}
 
 #[derive(Subcommand)]
 pub enum McpCommands {
@@ -221,8 +180,4 @@ pub enum McpCommands {
     },
 }
 
-#[derive(Subcommand)]
-pub enum LspCommands {
-    /// Run in stdio mode
-    Stdio,
-}
+

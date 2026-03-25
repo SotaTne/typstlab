@@ -2,7 +2,7 @@
 
 use crate::status::{
     engine::{CheckContext, CheckResult, StatusCheck},
-    schema::{Action, CheckStatus, Safety},
+    schema::{Action, Safety},
 };
 
 pub struct EnvCheck;

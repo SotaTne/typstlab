@@ -22,7 +22,6 @@ impl StatusCheck for BuildCheck {
         let mut messages = Vec::new();
         let mut actions = Vec::new();
         let mut has_error = false;
-        let mut has_warning = false;
 
         for paper in papers {
             let paper_id = paper.id();
@@ -45,16 +44,6 @@ impl StatusCheck for BuildCheck {
                     },
                     prerequisite: None,
                 });
-            }
-
-            // Check _generated/ exists (Warning if missing)
-            let generated_dir = paper.generated_dir();
-            if !generated_dir.exists() {
-                has_warning = true;
-                messages.push(format!(
-                    "Paper '{}': _generated/ directory not found (optional)",
-                    paper_id
-                ));
             }
         }
 
@@ -80,11 +69,6 @@ impl StatusCheck for BuildCheck {
                 result = result.with_action(action);
             }
             result
-        } else if has_warning {
-            CheckResult::warning(
-                "build_structure",
-                "Some papers missing _generated/ directory",
-            )
         } else {
             CheckResult::pass("build_structure", "All papers structurally valid")
         }
@@ -97,7 +81,7 @@ mod tests {
     use crate::{project::Project, status::schema::CheckStatus};
     use typstlab_testkit::temp_dir_in_workspace;
 
-    fn create_paper(root: &std::path::Path, id: &str, with_main: bool, with_generated: bool) {
+    fn create_paper(root: &std::path::Path, id: &str, with_main: bool) {
         let paper_dir = root.join("papers").join(id);
         std::fs::create_dir_all(&paper_dir).unwrap();
 
@@ -122,10 +106,6 @@ name = "{}"
         if with_main {
             std::fs::write(paper_dir.join("main.typ"), "// Main file").unwrap();
         }
-
-        if with_generated {
-            std::fs::create_dir(paper_dir.join("_generated")).unwrap();
-        }
     }
 
     #[test]
@@ -147,8 +127,7 @@ version = "0.12.0"
         )
         .unwrap();
 
-        std::fs::create_dir(root.join("papers")).unwrap();
-        create_paper(root, "paper1", true, true);
+        create_paper(root, "paper1", true);
 
         let project = Project::load(root.to_path_buf()).unwrap();
         let context = CheckContext {
@@ -180,8 +159,7 @@ version = "0.12.0"
         )
         .unwrap();
 
-        std::fs::create_dir(root.join("papers")).unwrap();
-        create_paper(root, "paper1", false, true); // No main.typ
+        create_paper(root, "paper1", false); // No main.typ
 
         let project = Project::load(root.to_path_buf()).unwrap();
         let context = CheckContext {
@@ -209,41 +187,7 @@ version = "0.12.0"
         assert!(!result.actions.is_empty());
     }
 
-    #[test]
-    fn test_build_check_warning_missing_generated_dir() {
-        let temp = temp_dir_in_workspace();
-        let root = temp.path();
 
-        std::fs::write(
-            root.join("typstlab.toml"),
-            r#"
-[project]
-name = "test"
-init_date = "2026-01-14"
-
-[typst]
-version = "0.12.0"
-"#,
-        )
-        .unwrap();
-
-        std::fs::create_dir(root.join("papers")).unwrap();
-        create_paper(root, "paper1", true, false); // No _generated/
-
-        let project = Project::load(root.to_path_buf()).unwrap();
-        let context = CheckContext {
-            project: &project,
-            target_paper: None,
-        };
-
-        let check = BuildCheck;
-        let result = check.run(&context);
-
-        assert_eq!(result.status, CheckStatus::Warning);
-        assert!(result
-            .message
-            .contains("Some papers missing _generated/ directory"));
-    }
 
     #[test]
     fn test_build_check_with_paper_filter() {
@@ -263,9 +207,8 @@ version = "0.12.0"
         )
         .unwrap();
 
-        std::fs::create_dir(root.join("papers")).unwrap();
-        create_paper(root, "paper1", true, true);
-        create_paper(root, "paper2", false, true); // paper2 missing main.typ
+        create_paper(root, "paper1", true);
+        create_paper(root, "paper2", false); // paper2 missing main.typ
 
         let project = Project::load(root.to_path_buf()).unwrap();
 

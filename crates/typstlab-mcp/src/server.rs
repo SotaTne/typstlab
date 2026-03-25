@@ -478,21 +478,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_offline_mode_includes_status() {
-        let temp = temp_dir_in_workspace();
-        let ctx = McpContext::new(temp.path().to_path_buf());
-        let server = TypstlabServer::new(ctx, true); // offline = true
-
-        // cmd_status should be available in offline mode
-        let tools = server.tool_router.list_all();
-        let status_tool = tools.iter().find(|t| t.name == "cmd_status");
-        assert!(
-            status_tool.is_some(),
-            "cmd_status should be available in offline mode"
-        );
-    }
-
-    #[tokio::test]
     async fn test_offline_mode_excludes_build() {
         let temp = temp_dir_in_workspace();
         let ctx = McpContext::new(temp.path().to_path_buf());
@@ -504,21 +489,6 @@ mod tests {
         assert!(
             build_tool.is_none(),
             "cmd_build should NOT be available in offline mode"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_offline_mode_excludes_generate() {
-        let temp = temp_dir_in_workspace();
-        let ctx = McpContext::new(temp.path().to_path_buf());
-        let server = TypstlabServer::new(ctx, true); // offline = true
-
-        // cmd_generate should NOT be available in offline mode
-        let tools = server.tool_router.list_all();
-        let generate_tool = tools.iter().find(|t| t.name == "cmd_generate");
-        assert!(
-            generate_tool.is_none(),
-            "cmd_generate should NOT be available in offline mode"
         );
     }
 }

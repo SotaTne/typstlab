@@ -2,11 +2,11 @@ use crate::context::Context;
 use anyhow::{Result, bail};
 use colored::Colorize;
 use typstlab_core::paper::create_paper;
-use typstlab_core::project::{Project, generate_paper, validate_name};
+use typstlab_core::project::validate_name;
 
 pub fn run(
     paper_id: String,
-    layout: Option<String>,
+    template: Option<String>,
     title: Option<String>,
     verbose: bool,
 ) -> Result<()> {
@@ -15,8 +15,8 @@ pub fn run(
 
     if verbose {
         println!("{} Creating paper '{}' in project", "→".cyan(), paper_id);
-        if let Some(l) = &layout {
-            println!("  Theme: {}", l);
+        if let Some(t) = &template {
+            println!("  Template: {}", t);
         }
         if let Some(t) = &title {
             println!("  Title: {}", t);
@@ -32,26 +32,35 @@ pub fn run(
     }
 
     // Create paper scaffold
-    create_paper(&ctx.project, &paper_id, title)?;
+    create_paper(
+        &ctx.project,
+        &paper_id,
+        title,
+        template,
+        Some(|template: &str, path: &std::path::Path| {
+            use typstlab_typst::exec::{exec_typst, ExecOptions};
 
-    // If layout specified, we'd need to update paper.toml after creation
-    // For v0.1 we might just use the default or add layout support to create_paper
-    if let Some(_l) = layout {
-        // TODO: Update paper.toml with custom theme
-        if verbose {
-            println!(
-                "  ! Custom layout specified, but theme override in paper.toml is not yet automated in v0.1"
-            );
-        }
-    }
+            let exec_opts = ExecOptions {
+                project_root: ctx.project.root.clone(),
+                args: vec![
+                    "init".to_string(),
+                    template.to_string(),
+                    path.to_string_lossy().to_string(),
+                ],
+                required_version: ctx.project.config().typst.version.clone(),
+            };
 
-    // Reload project to include newly created paper
-    let project = Project::load(ctx.project.root.clone())?;
+            let result = exec_typst(exec_opts)?;
+            if result.exit_code != 0 {
+                bail!("typst init failed: {}", result.stderr);
+            }
+            Ok(())
+        }),
+    )?;
 
-    // Generate _generated/ directory
-    generate_paper(&project, &paper_id)?;
 
-    let paper_dir = project.root.join("papers").join(&paper_id);
+
+    let paper_dir = ctx.project.root.join("papers").join(&paper_id);
 
     println!(
         "{} Created paper '{}' at {}",
@@ -74,7 +83,7 @@ fn print_paper_structure(verbose: bool) {
         println!("  - sections/ (for paper sections)");
         println!("  - assets/ (for images, etc.)");
         println!("  - rules/ (for paper-specific rules)");
-        println!("  - _generated/ (generated layout files)");
+
     }
 }
 

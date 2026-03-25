@@ -8,25 +8,19 @@ use typstlab_typst::install::{
 };
 use typstlab_typst::resolve::managed_cache_dir;
 
-use super::link;
+use super::util;
 
 /// Execute `typstlab typst install` command
-pub fn execute_install(version: String, _from_cargo: bool) -> Result<()> {
-    // Note: from_cargo is deprecated/ignored in v0.1 as per DESIGN.md
-    // We keep the internal argument signature for now to match main.rs but simply ignore it,
-    // or we can remove it. Let's remove it properly.
-    // Wait, main.rs calls it. I should update signature.
+pub fn execute_install(version_arg: Option<String>) -> Result<()> {
     // Find project root
     let project = Project::from_current_dir()?;
     let root = &project.root;
 
-    /*
-    if from_cargo {
-        // ... legacy implementation removed ...
-        bail!("--from-cargo is no longer supported in v0.1");
-    }
-    */
-    // Removed legacy code and closing brace mismatch
+    // Use provided version or fallback to project config
+    let version = version_arg.unwrap_or_else(|| {
+        println!("→ No version specified, using version from typstlab.toml");
+        project.config().typst.version.clone()
+    });
 
     println!("Installing Typst {} from GitHub Releases...", version);
 
@@ -86,11 +80,11 @@ pub fn execute_install(version: String, _from_cargo: bool) -> Result<()> {
 
     println!("✓ Verified: Typst {}", installed_version_num);
 
-    // 6. Create bin/typst shim (reuse from link.rs)
-    link::create_bin_shim(root, &binary_path)?;
+    // 6. Create bin/typst shim
+    util::create_bin_shim(root, &binary_path)?;
 
-    // 7. Update state.json (reuse from link.rs)
-    link::update_state(root, &binary_path, &version, "managed".to_string())?;
+    // 7. Update state.json
+    util::update_state(root, &binary_path, &version, "managed".to_string())?;
 
     println!("✓ Typst {} installation complete", version);
 

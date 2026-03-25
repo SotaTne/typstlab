@@ -139,24 +139,4 @@ fn test_cli_json_flag_for_doctor() {
     });
 }
 
-#[test]
-fn test_cli_typst_docs_status() {
-    with_isolated_typst_env(None, |_cache| {
-        // Arrange: Create test project
-        let temp = temp_dir_in_workspace();
-        let root = temp.path();
-        create_test_project(root);
 
-        // Act: Run typst docs status
-        let mut cmd = Command::new(cargo_bin!(env!("CARGO_PKG_NAME")));
-        let assert = cmd
-            .arg("typst")
-            .arg("docs")
-            .arg("status")
-            .current_dir(root)
-            .assert();
-
-        // Assert: Should execute successfully (status always exits 0)
-        assert.success();
-    });
-}

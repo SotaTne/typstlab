@@ -9,17 +9,6 @@ use typstlab_mcp::handlers::docs::{DocsGetArgs, DocsTool};
 use typstlab_mcp::server::TypstlabServer;
 use typstlab_testkit::temp_dir_in_workspace;
 
-fn parse_result(result: &rmcp::model::CallToolResult) -> Value {
-    let text = result.content[0].as_text().unwrap();
-    // docs_get returns raw text content, no wrapping JSON unless error?
-    // Wait, docs_get returns text.
-    // So the 'text' field IS the file content.
-    // It's not JSON unless we structured it.
-    // The test helper `parse_result` in other tests assumes JSON.
-    // But `docs_get` returns plain text of the file.
-    // So we don't parse as JSON.
-    Value::String(text.text.clone())
-}
 
 #[tokio::test]
 async fn test_docs_get_pagination_page1() {

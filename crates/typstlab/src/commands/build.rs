@@ -6,7 +6,7 @@ use chrono::Utc;
 use colored::Colorize;
 use std::fs;
 use std::time::Instant;
-use typstlab_core::project::generate_paper;
+
 use typstlab_core::state::{BuildState, LastBuild};
 use typstlab_typst::exec::{ExecOptions, exec_typst};
 
@@ -70,7 +70,7 @@ pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
 }
 
 /// Core build logic (extracted for reuse and parallel execution)
-fn build_paper(ctx: &Context, paper_id: &str, full: bool, verbose: bool) -> Result<()> {
+fn build_paper(ctx: &Context, paper_id: &str, _full: bool, verbose: bool) -> Result<()> {
     // Step 1: Find paper
     if verbose {
         println!("{} Finding paper '{}'", "→".cyan(), paper_id);
@@ -104,28 +104,7 @@ fn build_paper(ctx: &Context, paper_id: &str, full: bool, verbose: bool) -> Resu
         }
     }
 
-    // Step 4: Check/generate _generated/ directory
-    let generated_dir = paper.generated_dir();
-    if full || !generated_dir.exists() {
-        if verbose {
-            if full {
-                println!(
-                    "{} [{}] Forcing regeneration of _generated/",
-                    "→".cyan(),
-                    paper_id
-                );
-            } else {
-                println!(
-                    "{} [{}] Generating _generated/ (not found)",
-                    "→".cyan(),
-                    paper_id
-                );
-            }
-        }
 
-        // generate_paper reads project files, thread-safe for reading usually.
-        generate_paper(&ctx.project, paper_id)?;
-    }
 
     // Step 5: Create dist/<paper_id>/ directory
     let dist_dir = ctx.project.root.join("dist").join(paper_id);

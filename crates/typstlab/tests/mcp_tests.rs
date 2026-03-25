@@ -99,10 +99,7 @@ async fn test_mcp_tools_list_includes_expected_tools() -> Result<()> {
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
 
     for expected in [
-        "cmd_generate",
-        "cmd_status",
         "cmd_build",
-        "cmd_typst_docs_status",
         "rules_browse",
         "rules_search",
         "docs_browse",
@@ -122,7 +119,6 @@ async fn test_mcp_tools_list_offline_filters_network_tools() -> Result<()> {
 
     let tools = service.list_all_tools().await?;
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_ref()).collect();
-    assert!(!names.contains(&"cmd_generate"));
     assert!(!names.contains(&"cmd_build"));
 
     service.cancel().await.ok();
@@ -378,42 +374,12 @@ async fn test_mcp_read_resource_rejects_symlink_outside_root() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_mcp_cmd_status_returns_schema() -> Result<()> {
-    let project = create_test_project();
-    let service = connect_mcp(project.path(), &[]).await?;
 
-    let result = service
-        .call_tool(CallToolRequestParams {
-            meta: None,
-            name: "cmd_status".into(),
-            arguments: Some(json_args(json!({}))),
-            task: None,
-        })
-        .await?;
-
-    let payload = structured_payload(&result);
-    assert!(payload.get("overall_status").is_some());
-    assert!(payload.get("checks").is_some());
-
-    service.cancel().await.ok();
-    Ok(())
-}
 
 #[tokio::test]
-async fn test_mcp_cmd_generate_and_build_reject_missing_paper() -> Result<()> {
+async fn test_mcp_cmd_build_reject_missing_paper() -> Result<()> {
     let project = create_test_project();
     let service = connect_mcp(project.path(), &[]).await?;
-
-    let generate_result = service
-        .call_tool(CallToolRequestParams {
-            meta: None,
-            name: "cmd_generate".into(),
-            arguments: Some(json_args(json!({ "paper_id": "missing" }))),
-            task: None,
-        })
-        .await;
-    assert!(generate_result.is_err());
 
     let build_result = service
         .call_tool(CallToolRequestParams {
@@ -429,27 +395,4 @@ async fn test_mcp_cmd_generate_and_build_reject_missing_paper() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_mcp_typst_docs_status_matches_cli_schema() -> Result<()> {
-    let project = create_test_project();
-    let service = connect_mcp(project.path(), &[]).await?;
 
-    let result = service
-        .call_tool(CallToolRequestParams {
-            meta: None,
-            name: "cmd_typst_docs_status".into(),
-            arguments: Some(json_args(json!({}))),
-            task: None,
-        })
-        .await?;
-
-    let payload = structured_payload(&result);
-    assert!(payload.get("present").is_some());
-    assert!(payload.get("version").is_some());
-    assert!(payload.get("synced_at").is_some());
-    assert!(payload.get("source").is_some());
-    assert!(payload.get("path").is_some());
-
-    service.cancel().await.ok();
-    Ok(())
-}

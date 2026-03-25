@@ -29,21 +29,42 @@ version = "{}"
 }
 
 #[test]
-fn test_install_requires_project_root() {
+fn test_install_requires_project_root_when_no_arg() {
     with_isolated_typst_env(None, |_cache| {
         let temp = temp_dir_in_workspace();
         let root = temp.path();
 
-        // Don't create typstlab.toml - should fail
-
+        // Don't create typstlab.toml - should fail when no arg is provided
         Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("install")
-            .arg("0.12.0")
             .assert()
             .failure()
             .stderr(predicate::str::contains("typstlab.toml"));
+    });
+}
+
+#[test]
+fn test_install_defaults_to_config_version() {
+    with_isolated_typst_env(None, |_cache| {
+        let temp = temp_dir_in_workspace();
+        let root = temp.path();
+
+        create_test_project(root, "0.12.0");
+
+        // Should work without version argument by reading typstlab.toml
+        let result = Command::new(cargo_bin!("typstlab"))
+            .current_dir(root)
+            .arg("typst")
+            .arg("install")
+            .assert();
+
+        let output = result.get_output();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        
+        // Check if it mentions using version from typstlab.toml
+        assert!(stdout.contains("using version from typstlab.toml"));
     });
 }
 
@@ -55,26 +76,19 @@ fn test_install_accepts_version_argument() {
 
         create_test_project(root, "0.12.0");
 
-        // Should accept version argument (may fail due to network, but should parse correctly)
+        // Should accept version argument
         let result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("install")
-            .arg("0.12.0")
+            .arg("0.11.1")
             .assert();
 
-        // Either succeeds or fails with network/download error (not argument error)
         let output = result.get_output();
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        if !output.status.success() {
-            // Should not be argument parsing error
-            assert!(
-                !stderr.contains("argument") && !stderr.contains("usage"),
-                "Should not be argument error, got: {}",
-                stderr
-            );
-        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        
+        // Should install the specified version, not the one in config
+        assert!(stdout.contains("Installing Typst 0.11.1"));
     });
 }
 
@@ -86,40 +100,11 @@ fn test_install_creates_managed_cache() {
 
         create_test_project(root, "0.12.0");
 
-        // Run install (may skip if already installed or network unavailable)
+        // Run install
         let _result = Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("typst")
             .arg("install")
-            .arg("0.12.0")
             .assert();
-
-        // Note: We cannot reliably test cache creation in CI without network
-        // This test mainly verifies the command structure
-    });
-}
-
-#[test]
-fn test_install_updates_state_json() {
-    with_isolated_typst_env(None, |_cache| {
-        let temp = temp_dir_in_workspace();
-        let root = temp.path();
-
-        create_test_project(root, "0.12.0");
-
-        // Run install (may skip if already installed or network unavailable)
-        let result = Command::new(cargo_bin!("typstlab"))
-            .current_dir(root)
-            .arg("typst")
-            .arg("install")
-            .arg("0.12.0")
-            .assert();
-
-        // If successful, state.json should be updated
-        if result.get_output().status.success() {
-            let _state_path = root.join(".typstlab").join("state.json");
-            // State may not be created if install was skipped
-            // This is acceptable behavior
-        }
     });
 }

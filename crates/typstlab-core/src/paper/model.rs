@@ -176,12 +176,9 @@ impl Paper {
     pub fn has_main_file(&self) -> bool {
         self.absolute_main_file_path().exists()
     }
-
-    /// Get the path to the _generated directory
-    pub fn generated_dir(&self) -> std::path::PathBuf {
-        self.root.join("_generated")
-    }
 }
+
+
 
 impl PaperConfig {
     /// paper.toml を読み込む
@@ -418,30 +415,7 @@ name = "report"
         assert!(paper.has_main_file());
     }
 
-    #[test]
-    fn test_paper_generated_dir_path() {
-        use typstlab_testkit::temp_dir_in_workspace;
 
-        let temp = temp_dir_in_workspace();
-        let paper_dir = temp.path().join("report");
-        std::fs::create_dir(&paper_dir).unwrap();
-
-        let toml_content = r#"
-[paper]
-id = "report"
-title = "My Report"
-language = "en"
-date = "2026-01-05"
-
-[output]
-name = "report"
-"#;
-        std::fs::write(paper_dir.join("paper.toml"), toml_content).unwrap();
-
-        let paper = Paper::load(paper_dir.clone()).unwrap();
-        let generated = paper.generated_dir();
-        assert_eq!(generated, paper_dir.join("_generated"));
-    }
 
     #[test]
     fn test_paper_config_with_default_main_file() {

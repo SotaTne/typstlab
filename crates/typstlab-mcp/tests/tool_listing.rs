@@ -48,7 +48,7 @@ async fn test_public_tools_match_design_online() {
     let tools = server.tool_router.list_all();
     let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
-    // DESIGN.md 5.10.1で定義されたonlineモードのツール
+    // 現在実装されているonlineモードのツール
     let expected_tools = vec![
         "rules_browse",
         "rules_search",
@@ -57,33 +57,30 @@ async fn test_public_tools_match_design_online() {
         "docs_browse",
         "docs_search",
         "docs_get",
-        "cmd_generate",
         "cmd_build",
-        "cmd_status",
-        "cmd_typst_docs_status",
+        "cmd_build_and_render",
     ];
 
     for expected in &expected_tools {
         assert!(
             tool_names.contains(expected),
-            "Missing tool in online mode: {}",
-            expected
+            "Missing tool in online mode: {}. Found: {:?}",
+            expected, tool_names
         );
     }
 }
 
 #[tokio::test]
 async fn test_public_tools_match_design_offline() {
-    // offlineモードでcmd_generate/cmd_buildが除外されること
+    // offlineモードの公開ツールセットの検証
     let temp = temp_dir_in_workspace();
     let ctx = McpContext::new(temp.path().to_path_buf());
-    // offlineモードで初期化
     let server = TypstlabServer::new(ctx, true);
 
     let tools = server.tool_router.list_all();
     let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
 
-    // offlineで使えるツール
+    // offlineで使えるツール (Cmd系は現在はすべてnetwork: trueのため除外される)
     let expected_tools = vec![
         "rules_browse",
         "rules_search",
@@ -92,15 +89,13 @@ async fn test_public_tools_match_design_offline() {
         "docs_browse",
         "docs_search",
         "docs_get",
-        "cmd_status",
-        "cmd_typst_docs_status",
     ];
 
     for expected in &expected_tools {
         assert!(
             tool_names.contains(expected),
-            "Missing tool in offline mode: {}",
-            expected
+            "Missing tool in offline mode: {}. Found: {:?}",
+            expected, tool_names
         );
     }
 }
