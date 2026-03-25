@@ -2,6 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 use std::env;
 use std::path::Path;
+use typstlab_core::path::has_absolute_or_rooted_component;
 use typstlab_core::project::{create_project, init_project, validate_name};
 
 /// Create a new project
@@ -81,7 +82,7 @@ pub fn run_init(path: Option<String>, paper_id: Option<String>, verbose: bool) -
     };
 
     // Resolve absolute path for clarity
-    let target_path = if target_path.is_absolute() {
+    let target_path = if has_absolute_or_rooted_component(&target_path) {
         target_path
     } else {
         current_dir.join(target_path)

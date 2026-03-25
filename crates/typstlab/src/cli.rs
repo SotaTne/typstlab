@@ -24,8 +24,6 @@ pub enum Commands {
     /// Setup environment (install + sync --all)
     Setup,
 
-
-
     /// Create new project
     New {
         /// Project name (becomes directory name)
@@ -63,8 +61,6 @@ pub enum Commands {
         #[arg(long)]
         full: bool,
     },
-
-
 
     /// Run Model Context Protocol server
     #[command(subcommand)]
@@ -165,8 +161,6 @@ pub enum PaperCommands {
     },
 }
 
-
-
 #[derive(Subcommand)]
 pub enum McpCommands {
     /// Run the MCP server over stdio
@@ -179,5 +173,3 @@ pub enum McpCommands {
         offline: bool,
     },
 }
-
-

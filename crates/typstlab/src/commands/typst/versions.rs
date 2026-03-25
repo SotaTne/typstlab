@@ -30,8 +30,8 @@ pub fn execute_versions(json: bool) -> Result<()> {
         for entry in fs::read_dir(cache_dir)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_dir() {
-                if let Some(version) = path.file_name().and_then(|n| n.to_str()) {
+            if path.is_dir()
+                && let Some(version) = path.file_name().and_then(|n| n.to_str()) {
                     let binary_path = path.join("typst");
                     #[cfg(windows)]
                     let binary_path = path.join("typst.exe");
@@ -46,7 +46,6 @@ pub fn execute_versions(json: bool) -> Result<()> {
                         });
                     }
                 }
-            }
         }
     }
 
@@ -95,32 +94,30 @@ pub fn execute_versions(json: bool) -> Result<()> {
             "versions": entries
         });
         println!("{}", serde_json::to_string_pretty(&output)?);
+    } else if entries.is_empty() {
+        println!("No Typst versions found.");
     } else {
-        if entries.is_empty() {
-            println!("No Typst versions found.");
-        } else {
-            println!("{}", "Typst versions:".bold());
-            for entry in &entries {
-                let current_marker = if entry.is_current {
-                    "*".green()
-                } else {
-                    " ".into()
-                };
+        println!("{}", "Typst versions:".bold());
+        for entry in &entries {
+            let current_marker = if entry.is_current {
+                "*".green()
+            } else {
+                " ".into()
+            };
 
-                let source_marker = if entry.source == "system" {
-                    "(local)".dimmed()
-                } else {
-                    "(managed)".dimmed()
-                };
+            let source_marker = if entry.source == "system" {
+                "(local)".dimmed()
+            } else {
+                "(managed)".dimmed()
+            };
 
-                println!(
-                    "{} {:<10} {:<10} {}",
-                    current_marker,
-                    entry.version.cyan(),
-                    source_marker,
-                    entry.path.display().to_string().dimmed()
-                );
-            }
+            println!(
+                "{} {:<10} {:<10} {}",
+                current_marker,
+                entry.version.cyan(),
+                source_marker,
+                entry.path.display().to_string().dimmed()
+            );
         }
     }
 

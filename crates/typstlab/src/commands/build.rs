@@ -17,6 +17,7 @@ use typstlab_typst::exec::{ExecOptions, exec_typst};
 /// * `paper_id` - Paper ID to build (required)
 /// * `full` - Force regenerate _generated/ before build
 /// * `verbose` - Enable verbose output if true
+///
 /// Build all papers in the project
 pub fn run_all(full: bool, verbose: bool) -> Result<()> {
     let ctx = Context::new(verbose)?;
@@ -94,17 +95,15 @@ fn build_paper(ctx: &Context, paper_id: &str, _full: bool, verbose: bool) -> Res
     }
 
     // Step 3: Check root directory exists (if specified)
-    if let Some(root_dir) = paper.typst_root_dir() {
-        if !root_dir.exists() {
-            bail!(
-                "Root directory '{}' not found for paper '{}'",
-                root_dir.display(),
-                paper_id
-            );
-        }
+    if let Some(root_dir) = paper.typst_root_dir()
+        && !root_dir.exists()
+    {
+        bail!(
+            "Root directory '{}' not found for paper '{}'",
+            root_dir.display(),
+            paper_id
+        );
     }
-
-
 
     // Step 5: Create dist/<paper_id>/ directory
     let dist_dir = ctx.project.root.join("dist").join(paper_id);
