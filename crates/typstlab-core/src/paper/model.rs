@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub struct PaperConfig {
     pub paper: PaperMeta,
     #[serde(default)]
-    pub layout: LayoutConfig,
+    pub template: TemplateConfig,
     pub output: OutputConfig,
     #[serde(default)]
     pub build: PaperBuildConfig,
@@ -32,13 +32,13 @@ pub struct Author {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutConfig {
-    /// Theme name (corresponds to directory in layouts/)
-    #[serde(default = "default_layout_theme")]
+pub struct TemplateConfig {
+    /// Theme name (corresponds to directory in templates/)
+    #[serde(default = "default_template_theme")]
     pub theme: String,
 }
 
-impl Default for LayoutConfig {
+impl Default for TemplateConfig {
     fn default() -> Self {
         Self {
             theme: "default".to_string(),
@@ -46,7 +46,7 @@ impl Default for LayoutConfig {
     }
 }
 
-fn default_layout_theme() -> String {
+fn default_template_theme() -> String {
     "default".to_string()
 }
 
@@ -178,8 +178,6 @@ impl Paper {
     }
 }
 
-
-
 impl PaperConfig {
     /// paper.toml を読み込む
     pub fn from_file(path: impl AsRef<std::path::Path>) -> crate::error::Result<Self> {
@@ -233,7 +231,7 @@ name = "report"
         let config: PaperConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.paper.id, "report");
         assert_eq!(config.paper.title, "My Report");
-        assert_eq!(config.layout.theme, "default");
+        assert_eq!(config.template.theme, "default");
         assert_eq!(config.build.targets, vec!["pdf"]);
     }
 
@@ -256,7 +254,7 @@ name = "Bob"
 email = "bob@example.com"
 affiliation = "Company"
 
-[layout]
+[template]
 theme = "ieee"
 
 [output]
@@ -271,7 +269,7 @@ sets = ["core", "report-2026q1"]
         let config: PaperConfig = toml::from_str(toml).unwrap();
         assert_eq!(config.paper.id, "report");
         assert_eq!(config.paper.authors.len(), 2);
-        assert_eq!(config.layout.theme, "ieee");
+        assert_eq!(config.template.theme, "ieee");
         assert_eq!(
             config.refs.as_ref().unwrap().sets,
             vec!["core", "report-2026q1"]
@@ -414,8 +412,6 @@ name = "report"
         let paper = Paper::load(paper_dir).unwrap();
         assert!(paper.has_main_file());
     }
-
-
 
     #[test]
     fn test_paper_config_with_default_main_file() {

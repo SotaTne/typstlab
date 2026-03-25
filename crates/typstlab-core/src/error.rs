@@ -88,12 +88,12 @@ pub enum TypstlabError {
     #[error("REFS_KEY_COLLISION: key '{key}' exists in multiple sets: {sets}")]
     RefsKeyCollision { key: String, sets: String },
 
-    // Layout errors
-    #[error("LAYOUT_NOT_FOUND: layout '{0}' not found")]
-    LayoutNotFound(String),
+    // Template errors
+    #[error("TEMPLATE_NOT_FOUND: template '{0}' not found")]
+    TemplateNotFound(String),
 
-    #[error("LAYOUT_INVALID: {0}")]
-    LayoutInvalid(String),
+    #[error("TEMPLATE_INVALID: {0}")]
+    TemplateInvalid(String),
 
     // IO errors
     #[error("IO_ERROR: {0}")]

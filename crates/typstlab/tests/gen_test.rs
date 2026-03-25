@@ -53,7 +53,7 @@ fn test_gen_paper_in_project() {
 }
 
 #[test]
-fn test_gen_layout_in_project() {
+fn test_gen_template_in_project() {
     with_isolated_typst_env(None, |_cache| {
         let temp = temp_dir_in_workspace();
         let root = temp.path();
@@ -61,26 +61,26 @@ fn test_gen_layout_in_project() {
         Command::new(cargo_bin!("typstlab"))
             .current_dir(root)
             .arg("new")
-            .arg("layout-project")
+            .arg("template-project")
             .assert()
             .success();
 
-        let project_dir = root.join("layout-project");
+        let project_dir = root.join("template-project");
 
-        // Run gen layout
+        // Run gen template
         Command::new(cargo_bin!("typstlab"))
             .current_dir(&project_dir)
             .arg("gen")
-            .arg("layout")
-            .arg("custom-layout")
+            .arg("template")
+            .arg("custom-template")
             .assert()
             .success();
 
         // Verify files
-        let layout_dir = project_dir.join("layouts").join("custom-layout");
-        assert!(layout_dir.exists());
-        assert!(layout_dir.join("meta.tmp.typ").exists());
-        assert!(layout_dir.join("header.typ").exists());
+        let template_dir = project_dir.join("templates").join("custom-template");
+        assert!(template_dir.exists());
+        assert!(template_dir.join("main.tmp.typ").exists());
+        assert!(template_dir.join("template.typ").exists());
     });
 }
 

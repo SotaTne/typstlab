@@ -151,7 +151,7 @@ fn print_project_structure(verbose: bool) {
         println!("  - typstlab.toml (project configuration)");
         println!("  - .gitignore");
         println!("  - papers/ (for papers)");
-        println!("  - layouts/ (with builtin layouts)");
+        println!("  - templates/ (with builtin templates)");
         println!("  - refs/ (for references)");
         println!("  - dist/ (for build outputs)");
         println!("  - rules/ (for project-level rules)");

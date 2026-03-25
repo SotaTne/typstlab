@@ -61,11 +61,11 @@ impl StatusCheck for EnvCheck {
             });
         }
 
-        // Check layouts/ directory exists (optional)
-        let layouts_dir = root.join("layouts");
-        if !layouts_dir.exists() {
+        // Check templates/ directory exists (optional)
+        let templates_dir = root.join("templates");
+        if !templates_dir.exists() {
             has_warning = true;
-            messages.push("layouts/ directory not found (optional)".to_string());
+            messages.push("templates/ directory not found (optional)".to_string());
         }
 
         // Return result based on findings
@@ -111,7 +111,7 @@ version = "0.12.0"
         .unwrap();
 
         std::fs::create_dir(root.join("papers")).unwrap();
-        std::fs::create_dir(root.join("layouts")).unwrap();
+        std::fs::create_dir(root.join("templates")).unwrap();
 
         let project = Project::load(root.to_path_buf()).unwrap();
         let context = CheckContext {
@@ -161,11 +161,11 @@ version = "0.12.0"
     }
 
     #[test]
-    fn test_env_check_warning_missing_layouts_dir() {
+    fn test_env_check_warning_missing_templates_dir() {
         let temp = temp_dir_in_workspace();
         let root = temp.path();
 
-        // Create project with papers/ but without layouts/
+        // Create project with papers/ but without templates/
         std::fs::write(
             root.join("typstlab.toml"),
             r#"
@@ -180,7 +180,7 @@ version = "0.12.0"
         .unwrap();
 
         std::fs::create_dir(root.join("papers")).unwrap();
-        // Don't create layouts/ directory
+        // Don't create templates/ directory
 
         let project = Project::load(root.to_path_buf()).unwrap();
         let context = CheckContext {
@@ -192,6 +192,6 @@ version = "0.12.0"
         let result = check.run(&context);
 
         assert_eq!(result.status, CheckStatus::Warning);
-        assert!(result.message.contains("layouts/ directory not found"));
+        assert!(result.message.contains("templates/ directory not found"));
     }
 }

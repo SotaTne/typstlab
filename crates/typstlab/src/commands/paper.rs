@@ -65,7 +65,7 @@ fn output_papers_human(papers: &[Paper], verbose: bool) {
 
             if verbose {
                 println!("    Path: {}", paper.root().display());
-                println!("    Theme: {}", paper.config().layout.theme);
+                println!("    Theme: {}", paper.config().template.theme);
             }
 
             println!();

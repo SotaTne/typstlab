@@ -44,7 +44,7 @@ pub enum Commands {
         paper: Option<String>,
     },
 
-    /// Scaffold new project items (paper, layout, lib)
+    /// Scaffold new project items (paper, template, lib)
     #[command(subcommand)]
     Gen(GenCommands),
 
@@ -133,9 +133,9 @@ pub enum GenCommands {
         #[arg(long)]
         title: Option<String>,
     },
-    /// Create a new layout
-    Layout {
-        /// Layout name (becomes directory name in layouts/)
+    /// Create a new template
+    Template {
+        /// Template name (becomes directory name in templates/)
         name: String,
     },
     /// Create a new library (stub)

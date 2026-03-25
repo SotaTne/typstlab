@@ -1,8 +1,8 @@
 //! Project detection and management
 
-pub mod builtin_layouts;
+pub mod builtin_templates;
 pub mod create;
-pub mod layout;
+pub mod template;
 
 use crate::config::Config;
 use crate::error::{Result, TypstlabError};
@@ -10,7 +10,7 @@ use crate::paper::Paper;
 use std::path::{Path, PathBuf};
 
 pub use create::{create_project, init_project, validate_name};
-pub use layout::{resolve_layout, Layout};
+pub use template::{resolve_template, Template};
 
 /// Represents a typstlab project
 #[derive(Debug)]

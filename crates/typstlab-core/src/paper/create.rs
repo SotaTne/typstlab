@@ -16,9 +16,6 @@ use std::path::Path;
 ///   - assets/ (empty directory for images, etc.)
 ///   - rules/ (directory for paper-specific rules, with README.md)
 ///
-/// Note: _generated/ directory is NOT created by this function.
-/// The caller should reload the project and call generate_paper() afterwards.
-///
 /// # Arguments
 ///
 /// * `project` - Project context (for accessing root and config)
@@ -127,9 +124,9 @@ date = "{}"
 # email = "author@example.com"
 # affiliation = "University"
 
-# Uncomment to specify custom layout
-# [layout]
-# theme = "default"  # or "minimal", or custom layout name
+# Specified template to use
+[template]
+theme = "default"  # or "minimal", or custom template name
 
 [build]
 targets = ["pdf"]
@@ -206,7 +203,7 @@ mod tests {
     fn create_test_project(root: &Path) -> Project {
         // Create minimal project structure
         fs::create_dir(root.join("papers")).unwrap();
-        fs::create_dir(root.join("layouts")).unwrap();
+        fs::create_dir(root.join("templates")).unwrap();
         fs::create_dir(root.join("refs")).unwrap();
         fs::create_dir(root.join("dist")).unwrap();
         fs::create_dir(root.join("rules")).unwrap();
@@ -259,21 +256,7 @@ version = "0.12.0"
         assert!(content.contains("id = \"my-paper\""));
         assert!(content.contains("[output]"));
         assert!(content.contains("name = \"my-paper\""));
-    }
-
-    #[test]
-    fn test_create_paper_valid_main_typ() {
-        let temp = TempDir::new().unwrap();
-        let project = create_test_project(temp.path());
-
-        create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None).unwrap();
-
-        let main_typ_path = temp.path().join("papers/paper1/main.typ");
-        let content = fs::read_to_string(main_typ_path).unwrap();
-
-        assert!(content.contains("#import"));
-        assert!(content.contains("_generated/meta.typ"));
-        assert!(!content.is_empty());
+        assert!(content.contains("[template]"));
     }
 
     #[test]
