@@ -11,7 +11,11 @@ pub fn cargo_bin_path() -> PathBuf {
 
     let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
 
-    let debug_bin = workspace_root.join("target/debug/typstlab");
+    let mut debug_bin = workspace_root.join("target/debug/typstlab");
+    if cfg!(windows) {
+        debug_bin.set_extension("exe");
+    }
+
     if debug_bin.exists() {
         return debug_bin;
     }
@@ -44,6 +48,7 @@ pub fn e2e_command(current_dir: &Path) -> Command {
     let mut cmd = Command::new(bin_path);
     cmd.current_dir(current_dir)
         .env("HOME", &isolated_home)
+        .env("USERPROFILE", &isolated_home)
         .env("TYPSTLAB_CACHE_DIR", isolated_home.join(".cache/typstlab"));
 
     cmd
