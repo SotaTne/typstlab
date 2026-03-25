@@ -57,8 +57,8 @@ name = "{}"
         std::fs::create_dir(paper_dir.join("_generated")).unwrap();
     }
 
-    // Create layouts/ directory
-    std::fs::create_dir(root.join("layouts")).unwrap();
+    // Create templates/ directory
+    std::fs::create_dir(root.join("templates")).unwrap();
 
     // Create refs/ directory with .bib file
     let refs_dir = root.join("refs");
@@ -221,7 +221,7 @@ version = "0.12.0"
     let papers_dir = root.join("papers");
     std::fs::create_dir(&papers_dir).unwrap();
 
-    // Create paper with main.typ but no _generated/ and no layouts/
+    // Create paper with main.typ but no _generated/ and no templates/
     let paper_dir = papers_dir.join("paper1");
     std::fs::create_dir(&paper_dir).unwrap();
     std::fs::write(
@@ -240,7 +240,7 @@ name = "paper1"
     .unwrap();
     std::fs::write(paper_dir.join("main.typ"), "// Content").unwrap();
 
-    // Don't create layouts/ or refs/ (optional)
+    // Don't create templates/ or refs/ (optional)
 
     // Load project
     let project = Project::load(root.to_path_buf()).unwrap();
@@ -256,7 +256,7 @@ name = "paper1"
         "Project with missing optional items should have Warning status"
     );
 
-    // Verify environment check has warning (no layouts/)
+    // Verify environment check has warning (no templates/)
     let env_check = report.checks.iter().find(|c| c.name == "environment");
     assert!(env_check.is_some());
     assert_eq!(env_check.unwrap().status, CheckStatus::Warning);
