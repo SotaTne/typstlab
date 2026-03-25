@@ -9,7 +9,6 @@ use typstlab_mcp::handlers::docs::{DocsGetArgs, DocsTool};
 use typstlab_mcp::server::TypstlabServer;
 use typstlab_testkit::temp_dir_in_workspace;
 
-
 #[tokio::test]
 async fn test_docs_get_pagination_page1() {
     let temp = temp_dir_in_workspace();

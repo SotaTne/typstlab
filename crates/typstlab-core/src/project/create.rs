@@ -35,7 +35,10 @@ pub fn create_project(root: &Path, project_name: &str) -> Result<()> {
 
     // Check if project already exists
     if project_dir.exists() {
-        bail!("Project directory '{}' already exists", project_dir.display());
+        bail!(
+            "Project directory '{}' already exists",
+            project_dir.display()
+        );
     }
 
     // Create directory structure

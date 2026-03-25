@@ -16,7 +16,7 @@ fn scenario_new_project_creation() {
         .stdout(predicate::str::contains("Created project 'project1'"));
 
     let project_dir = root.join("project1");
-    
+
     // Verify project files
     assert!(project_dir.join("typstlab.toml").exists());
     assert!(project_dir.join("templates/default/main.tmp.typ").exists());

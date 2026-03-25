@@ -2,9 +2,7 @@
 
 use anyhow::Result;
 use std::path::Path;
-use typstlab_core::{
-    state::{ResolvedSource, State, TypstState},
-};
+use typstlab_core::state::{ResolvedSource, State, TypstState};
 
 /// Create bin/typst shim
 pub fn create_bin_shim(project_root: &Path, resolved_path: &Path) -> Result<()> {

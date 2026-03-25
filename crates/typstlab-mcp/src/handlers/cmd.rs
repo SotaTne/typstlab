@@ -33,8 +33,6 @@ impl CmdTool {
         Self::build(server, args).await
     }
 
-
-
     pub async fn test_build_and_render(
         server: &TypstlabServer,
         args: BuildAndRenderArgs,
@@ -78,8 +76,6 @@ impl CmdTool {
         ToolRouter::new()
     }
 
-
-
     fn build_attr() -> Tool {
         Tool::new(
             Cow::Borrowed("cmd_build"),
@@ -107,10 +103,6 @@ impl CmdTool {
             writes_sot: false,
         })
     }
-
-
-
-
 
     pub async fn build(
         server: &TypstlabServer,
@@ -146,8 +138,6 @@ impl CmdTool {
 
         Ok(CallToolResult::success(contents))
     }
-
-
 }
 
 fn build_failed_error(exit_code: i32, stderr: &str) -> McpError {
@@ -197,7 +187,6 @@ fn build_blocking(
     let output_name = paper.config().output.name.as_str();
 
     validate_output_name(output_name)?;
-
 
     let output_path = build_output_path(&project.root, &paper_id, output_name)?;
     let main_file_path = paper.absolute_main_file_path();
@@ -348,8 +337,6 @@ fn find_paper<'a>(project: &'a Project, paper_id: &str) -> Result<&'a Paper, Mcp
         .ok_or_else(|| errors::invalid_params(format!("Paper '{}' not found", paper_id)))
 }
 
-
-
 fn build_output_path(
     project_root: &Path,
     paper_id: &str,
@@ -403,18 +390,12 @@ fn record_build_state(
     Ok(())
 }
 
-
-
-
-
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct BuildArgs {
     pub paper_id: String,
     #[serde(default)]
     pub full: bool,
 }
-
-
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 pub struct BuildAndRenderArgs {
@@ -465,8 +446,6 @@ mod tests {
         assert!(path.parent().unwrap().exists());
         assert!(path.parent().unwrap().ends_with("dist/paper"));
     }
-
-
 
     #[test]
     fn test_build_failed_error_sets_standard_code() {

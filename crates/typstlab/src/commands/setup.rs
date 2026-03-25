@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::context::Context;
+use anyhow::Result;
 
 pub fn run(verbose: bool) -> Result<()> {
     if verbose {
@@ -19,31 +19,43 @@ pub fn run(verbose: bool) -> Result<()> {
     if verbose {
         println!("→ Resolving Typst v{}...", ctx.config.typst.version);
     }
-    
+
     let result = typstlab_typst::resolve::resolve_typst(resolve_options)?;
-    
+
     match result {
-        typstlab_typst::resolve::ResolveResult::Resolved(info) |
-        typstlab_typst::resolve::ResolveResult::Cached(info) => {
+        typstlab_typst::resolve::ResolveResult::Resolved(info)
+        | typstlab_typst::resolve::ResolveResult::Cached(info) => {
             if verbose {
-                println!("✓ Typst v{} resolved at {}", info.version, info.path.display());
+                println!(
+                    "✓ Typst v{} resolved at {}",
+                    info.version,
+                    info.path.display()
+                );
             }
-            
+
             // Create shim and update state (same as typst install)
             crate::commands::typst::util::create_bin_shim(&ctx.project.root, &info.path)?;
             crate::commands::typst::util::update_state(
-                &ctx.project.root, 
-                &info.path, 
-                &info.version, 
-                info.source.to_string()
+                &ctx.project.root,
+                &info.path,
+                &info.version,
+                info.source.to_string(),
             )?;
 
             if verbose {
-                println!("✓ Setup complete. Currently active Typst path: {}", info.path.display());
+                println!(
+                    "✓ Setup complete. Currently active Typst path: {}",
+                    info.path.display()
+                );
             }
         }
-        typstlab_typst::resolve::ResolveResult::NotFound { required_version, .. } => {
-            anyhow::bail!("Failed to setup: Typst {} not found after resolution attempt.", required_version);
+        typstlab_typst::resolve::ResolveResult::NotFound {
+            required_version, ..
+        } => {
+            anyhow::bail!(
+                "Failed to setup: Typst {} not found after resolution attempt.",
+                required_version
+            );
         }
     }
 

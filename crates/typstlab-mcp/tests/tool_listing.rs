@@ -65,7 +65,8 @@ async fn test_public_tools_match_design_online() {
         assert!(
             tool_names.contains(expected),
             "Missing tool in online mode: {}. Found: {:?}",
-            expected, tool_names
+            expected,
+            tool_names
         );
     }
 }
@@ -95,7 +96,8 @@ async fn test_public_tools_match_design_offline() {
         assert!(
             tool_names.contains(expected),
             "Missing tool in offline mode: {}. Found: {:?}",
-            expected, tool_names
+            expected,
+            tool_names
         );
     }
 }

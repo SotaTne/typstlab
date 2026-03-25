@@ -8,7 +8,7 @@ fn create_mock_typst(home: &Path, version: &str) {
     let cache_dir = home.join(".cache/typstlab");
     let version_dir = cache_dir.join(version);
     fs::create_dir_all(&version_dir).unwrap();
-    
+
     #[cfg(unix)]
     let bin_path = version_dir.join("typst");
     #[cfg(windows)]
@@ -37,10 +37,7 @@ fn scenario_setup_with_mock_typst() {
     fs::create_dir_all(&project_dir).unwrap();
 
     // 1. Init project
-    e2e_command(&project_dir)
-        .arg("init")
-        .assert()
-        .success();
+    e2e_command(&project_dir).arg("init").assert().success();
 
     // 2. Mock Typst 0.12.0 in the isolated home cache
     let isolated_home = root.join(".isolated-home");
@@ -56,10 +53,13 @@ fn scenario_setup_with_mock_typst() {
     // 4. Verify results IN PROJECT ROOT
     assert!(project_dir.join("bin/typst").exists());
     assert!(project_dir.join(".typstlab/state.json").exists());
-    
+
     let state_content = fs::read_to_string(project_dir.join(".typstlab/state.json")).unwrap();
     if !state_content.contains("managed") {
-        panic!("state.json does not contain 'managed'. Content:\n{}", state_content);
+        panic!(
+            "state.json does not contain 'managed'. Content:\n{}",
+            state_content
+        );
     }
     assert!(state_content.contains("0.12.0"));
 }

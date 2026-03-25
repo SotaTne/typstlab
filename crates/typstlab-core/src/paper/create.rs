@@ -122,9 +122,9 @@ fn expand_local_template(src: &Path, dst: &Path, context: &TemplateContext) -> R
         } else if is_template {
             // Process as template
             let content = fs::read_to_string(&src_path)?;
-            let expanded = engine.render(&content, context).map_err(|e| {
-                anyhow::anyhow!("Template error in {}: {}", src_path.display(), e)
-            })?;
+            let expanded = engine
+                .render(&content, context)
+                .map_err(|e| anyhow::anyhow!("Template error in {}: {}", src_path.display(), e))?;
             fs::write(dst_path, expanded)?;
         } else {
             // Check if it should be processed even without .tmp. (for backward compatibility or legacy title)
@@ -274,7 +274,8 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        let result = create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None);
+        let result =
+            create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None);
         assert!(result.is_ok());
 
         let paper_dir = temp.path().join("papers/paper1");
@@ -292,7 +293,8 @@ version = "0.12.0"
         let temp = TempDir::new().unwrap();
         let project = create_test_project(temp.path());
 
-        create_paper::<fn(&str, &Path) -> Result<()>>(&project, "my-paper", None, None, None).unwrap();
+        create_paper::<fn(&str, &Path) -> Result<()>>(&project, "my-paper", None, None, None)
+            .unwrap();
 
         let toml_path = temp.path().join("papers/my-paper/paper.toml");
         let content = fs::read_to_string(toml_path).unwrap();
@@ -310,10 +312,12 @@ version = "0.12.0"
         let project = create_test_project(temp.path());
 
         // Create first time - should succeed
-        create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None).unwrap();
+        create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None)
+            .unwrap();
 
         // Create second time - should fail
-        let result = create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None);
+        let result =
+            create_paper::<fn(&str, &Path) -> Result<()>>(&project, "paper1", None, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }

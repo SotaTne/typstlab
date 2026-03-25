@@ -12,10 +12,7 @@ fn scenario_init_existing_directory() {
     fs::create_dir_all(&target).unwrap();
 
     // Run init command with isolated home
-    e2e_command(&target)
-        .arg("init")
-        .assert()
-        .success();
+    e2e_command(&target).arg("init").assert().success();
 
     assert!(target.join("typstlab.toml").exists());
 }

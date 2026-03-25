@@ -62,7 +62,7 @@ fn test_install_defaults_to_config_version() {
 
         let output = result.get_output();
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
+
         // Check if it mentions using version from typstlab.toml
         assert!(stdout.contains("using version from typstlab.toml"));
     });
@@ -86,7 +86,7 @@ fn test_install_accepts_version_argument() {
 
         let output = result.get_output();
         let stdout = String::from_utf8_lossy(&output.stdout);
-        
+
         // Should install the specified version, not the one in config
         assert!(stdout.contains("Installing Typst 0.11.1"));
     });

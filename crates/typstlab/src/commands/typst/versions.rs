@@ -31,21 +31,22 @@ pub fn execute_versions(json: bool) -> Result<()> {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir()
-                && let Some(version) = path.file_name().and_then(|n| n.to_str()) {
-                    let binary_path = path.join("typst");
-                    #[cfg(windows)]
-                    let binary_path = path.join("typst.exe");
+                && let Some(version) = path.file_name().and_then(|n| n.to_str())
+            {
+                let binary_path = path.join("typst");
+                #[cfg(windows)]
+                let binary_path = path.join("typst.exe");
 
-                    if binary_path.exists() {
-                        let is_current = current_path.as_ref() == Some(&binary_path);
-                        entries.push(VersionEntry {
-                            version: version.to_string(),
-                            source: "managed".to_string(),
-                            path: binary_path,
-                            is_current,
-                        });
-                    }
+                if binary_path.exists() {
+                    let is_current = current_path.as_ref() == Some(&binary_path);
+                    entries.push(VersionEntry {
+                        version: version.to_string(),
+                        source: "managed".to_string(),
+                        path: binary_path,
+                        is_current,
+                    });
                 }
+            }
         }
     }
 

@@ -33,8 +33,6 @@ async fn setup_docs_with_files(server: &TypstlabServer, count: usize) {
     }
 }
 
-
-
 #[tokio::test(flavor = "multi_thread")]
 async fn test_runtime_remains_responsive() {
     // yield_nowが機能することを確認

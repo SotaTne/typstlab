@@ -38,7 +38,7 @@ pub fn run(
         title,
         template,
         Some(|template: &str, path: &std::path::Path| {
-            use typstlab_typst::exec::{exec_typst, ExecOptions};
+            use typstlab_typst::exec::{ExecOptions, exec_typst};
 
             let exec_opts = ExecOptions {
                 project_root: ctx.project.root.clone(),
@@ -57,8 +57,6 @@ pub fn run(
             Ok(())
         }),
     )?;
-
-
 
     let paper_dir = ctx.project.root.join("papers").join(&paper_id);
 
@@ -83,7 +81,6 @@ fn print_paper_structure(verbose: bool) {
         println!("  - sections/ (for paper sections)");
         println!("  - assets/ (for images, etc.)");
         println!("  - rules/ (for paper-specific rules)");
-
     }
 }
 

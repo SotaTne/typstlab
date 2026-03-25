@@ -374,8 +374,6 @@ async fn test_mcp_read_resource_rejects_symlink_outside_root() -> Result<()> {
     Ok(())
 }
 
-
-
 #[tokio::test]
 async fn test_mcp_cmd_build_reject_missing_paper() -> Result<()> {
     let project = create_test_project();
@@ -394,5 +392,3 @@ async fn test_mcp_cmd_build_reject_missing_paper() -> Result<()> {
     service.cancel().await.ok();
     Ok(())
 }
-
-

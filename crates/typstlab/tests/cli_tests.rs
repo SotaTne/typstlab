@@ -138,5 +138,3 @@ fn test_cli_json_flag_for_doctor() {
         );
     });
 }
-
-

@@ -57,18 +57,25 @@ fn load_template_from_dir(dir: &Path, name: &str) -> Result<Template, TypstlabEr
     Ok(template)
 }
 
-fn load_files_recursive(base: &Path, current: &Path, template: &mut Template) -> Result<(), TypstlabError> {
+fn load_files_recursive(
+    base: &Path,
+    current: &Path,
+    template: &mut Template,
+) -> Result<(), TypstlabError> {
     for entry in std::fs::read_dir(current).map_err(TypstlabError::IoError)? {
         let entry = entry.map_err(TypstlabError::IoError)?;
         let path = entry.path();
-        
+
         if path.is_dir() {
             load_files_recursive(base, &path, template)?;
         } else {
             let relative_path = path.strip_prefix(base).map_err(|_| {
-                TypstlabError::Generic(format!("Failed to calculate relative path for {}", path.display()))
+                TypstlabError::Generic(format!(
+                    "Failed to calculate relative path for {}",
+                    path.display()
+                ))
             })?;
-            
+
             let content = std::fs::read_to_string(&path).map_err(|e| {
                 TypstlabError::TemplateInvalid(format!(
                     "Failed to read template file at {}: {}",
@@ -76,7 +83,7 @@ fn load_files_recursive(base: &Path, current: &Path, template: &mut Template) ->
                     e
                 ))
             })?;
-            
+
             template.files.push((relative_path.to_path_buf(), content));
         }
     }
@@ -122,7 +129,7 @@ mod tests {
 
         let template = load_template_from_dir(&dir, "test").unwrap();
         assert_eq!(template.files.len(), 2);
-        
+
         let paths: Vec<PathBuf> = template.files.iter().map(|(p, _)| p.clone()).collect();
         assert!(paths.contains(&PathBuf::from("main.typ")));
         assert!(paths.contains(&PathBuf::from("sub/lib.typ")));

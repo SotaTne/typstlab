@@ -187,8 +187,6 @@ version = "0.12.0"
         assert!(!result.actions.is_empty());
     }
 
-
-
     #[test]
     fn test_build_check_with_paper_filter() {
         let temp = temp_dir_in_workspace();

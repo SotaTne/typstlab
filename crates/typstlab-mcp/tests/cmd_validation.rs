@@ -26,5 +26,3 @@ async fn test_cmd_build_rejects_path_traversal() {
         err
     );
 }
-
-
