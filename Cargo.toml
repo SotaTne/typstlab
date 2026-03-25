@@ -5,6 +5,7 @@ members = [
   "crates/typstlab-mcp",
   "crates/typstlab-testkit",
   "crates/typstlab-typst",
+  "e2e",
 ]
 
 resolver = "2"

@@ -86,10 +86,10 @@ pub fn update_state(
     };
 
     // Update typst section
-    let resolved_source = match source.as_str() {
-        "system" => ResolvedSource::System,
-        "managed" => ResolvedSource::Managed,
-        _ => ResolvedSource::System, // Default fallback
+    let resolved_source = if source.contains("managed") {
+        ResolvedSource::Managed
+    } else {
+        ResolvedSource::System
     };
 
     state.typst = Some(TypstState {

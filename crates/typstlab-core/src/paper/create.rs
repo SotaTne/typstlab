@@ -1,6 +1,7 @@
 //! Paper scaffold creation
 
 use crate::project::{validate_name, Project};
+use crate::template::{TemplateContext, TemplateEngine};
 use anyhow::{bail, Result};
 use chrono::Local;
 use std::fs;
@@ -55,7 +56,22 @@ where
         if template_dir.exists() {
             let paper_title = title.clone().unwrap_or_else(|| paper_id.to_string());
             fs::create_dir_all(&paper_dir)?;
-            expand_local_template(&template_dir, &paper_dir, &paper_title)?;
+
+            // Prepare template context
+            let today = Local::now().format("%Y-%m-%d").to_string();
+            let context_data = toml::from_str(&format!(
+                r#"[paper]
+id = "{}"
+title = "{}"
+date = "{}"
+language = "en"
+authors = []
+"#,
+                paper_id, paper_title, today
+            ))?;
+            let context = TemplateContext::new(context_data);
+
+            expand_local_template(&template_dir, &paper_dir, &context)?;
         } else if let Some(init_fn) = init_remote {
             // Remote template (e.g. @preview/jaconf)
             init_fn(&template_name, &paper_dir)?;
@@ -83,20 +99,49 @@ where
     Ok(())
 }
 
-fn expand_local_template(src: &Path, dst: &Path, title: &str) -> Result<()> {
+fn expand_local_template(src: &Path, dst: &Path, context: &TemplateContext) -> Result<()> {
+    let engine = TemplateEngine::new();
+
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
+
+        // Check if file should be renamed (remove .tmp. from name)
+        let (dst_file_name, is_template) = if file_name_str.contains(".tmp.") {
+            (file_name_str.replace(".tmp.", "."), true)
+        } else {
+            (file_name_str.to_string(), false)
+        };
+        let dst_path = dst.join(dst_file_name);
 
         if src_path.is_dir() {
             fs::create_dir_all(&dst_path)?;
-            expand_local_template(&src_path, &dst_path, title)?;
+            expand_local_template(&src_path, &dst_path, context)?;
+        } else if is_template {
+            // Process as template
+            let content = fs::read_to_string(&src_path)?;
+            let expanded = engine.render(&content, context).map_err(|e| {
+                anyhow::anyhow!("Template error in {}: {}", src_path.display(), e)
+            })?;
+            fs::write(dst_path, expanded)?;
         } else {
-            // Read as string to perform replacement
+            // Check if it should be processed even without .tmp. (for backward compatibility or legacy title)
             if let Ok(content) = fs::read_to_string(&src_path) {
-                let expanded = content.replace("{{title}}", title);
-                fs::write(dst_path, expanded)?;
+                // If it contains {{title}}, use simple replacement for legacy templates
+                if content.contains("{{title}}") {
+                    let title = context
+                        .data()
+                        .get("paper")
+                        .and_then(|p| p.get("title"))
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("");
+                    let expanded = content.replace("{{title}}", title);
+                    fs::write(dst_path, expanded)?;
+                } else {
+                    fs::copy(src_path, dst_path)?;
+                }
             } else {
                 // binary files
                 fs::copy(src_path, dst_path)?;

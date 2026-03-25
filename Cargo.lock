@@ -2818,6 +2818,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "typstlab-e2e-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_cmd",
+ "chrono",
+ "predicates",
+ "serde_json",
+ "tempfile",
+ "typstlab-testkit",
+]
+
+[[package]]
 name = "typstlab-mcp"
 version = "0.1.0"
 dependencies = [

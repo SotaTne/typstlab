@@ -13,8 +13,14 @@ pub fn get_builtin_template(name: &str) -> Option<Template> {
 /// Default template with main.tmp.typ and template.typ
 fn default_template() -> Template {
     Template::new("default")
-        .with_file("main.tmp.typ", include_str!("../../builtin_templates/default/main.tmp.typ"))
-        .with_file("template.typ", include_str!("../../builtin_templates/default/template.typ"))
+        .with_file(
+            "main.tmp.typ",
+            include_str!("../../builtin_templates/default/main.tmp.typ"),
+        )
+        .with_file(
+            "template.typ",
+            include_str!("../../builtin_templates/default/template.typ"),
+        )
 }
 
 #[cfg(test)]
