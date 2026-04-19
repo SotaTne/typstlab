@@ -2,6 +2,7 @@ use anyhow::Result;
 use colored::Colorize;
 use std::env;
 use std::path::Path;
+use typstlab_core::config::Config;
 use typstlab_core::path::has_absolute_or_rooted_component;
 use typstlab_core::project::{create_project, init_project, validate_name};
 
@@ -56,9 +57,16 @@ pub fn run_new_project(
 
         env::set_current_dir(&project_dir)?;
         crate::commands::scaffold::paper::run(id, None, None, verbose)?;
-        // Restore CWD? Not strictly necessary for CLI run but good practice if tests reuse process.
         env::set_current_dir(&current_dir)?;
     }
+
+    // Auto-sync documentation
+    if verbose {
+        println!("→ Syncing documentation...");
+    }
+    let config = Config::from_file(project_dir.join("typstlab.toml"))?;
+    let docs_target = project_dir.join(".typstlab/kb/typst/docs");
+    typstlab_typst::docs::sync_docs(&config.typst.version, &docs_target, verbose)?;
 
     print_project_structure(verbose);
     print_next_steps_project(&project_name);
@@ -76,7 +84,7 @@ pub fn run_new_project(
 pub fn run_init(path: Option<String>, paper_id: Option<String>, verbose: bool) -> Result<()> {
     let current_dir = env::current_dir()?;
     let target_path = if let Some(p) = &path {
-        Path::new(&p).to_path_buf()
+        typstlab_core::path::expand_tilde(Path::new(&p))
     } else {
         current_dir.clone()
     };
@@ -119,6 +127,14 @@ pub fn run_init(path: Option<String>, paper_id: Option<String>, verbose: bool) -
         env::set_current_dir(prev_cwd)?;
     }
 
+    // Auto-sync documentation
+    if verbose {
+        println!("→ Syncing documentation...");
+    }
+    let config = Config::from_file(target_path.join("typstlab.toml"))?;
+    let docs_target = target_path.join(".typstlab/kb/typst/docs");
+    typstlab_typst::docs::sync_docs(&config.typst.version, &docs_target, verbose)?;
+
     print_project_structure(verbose);
     // Next steps: stay in current dir if init .
     if target_path == current_dir {
@@ -154,7 +170,6 @@ fn print_project_structure(verbose: bool) {
         println!("  - templates/ (with builtin templates)");
         println!("  - refs/ (for references)");
         println!("  - dist/ (for build outputs)");
-        println!("  - rules/ (for project-level rules)");
         println!("  - .typstlab/ (for state and cache)");
     }
 }

@@ -2806,6 +2806,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "dirs",
  "fs2",
  "schemars",
  "serde",
@@ -2826,6 +2827,7 @@ dependencies = [
  "chrono",
  "predicates",
  "serde_json",
+ "sha2",
  "tempfile",
  "typstlab-testkit",
 ]
@@ -2860,6 +2862,7 @@ dependencies = [
  "flate2",
  "lazy_static",
  "mockito",
+ "sha2",
  "tar",
  "tempfile",
  "xz2",

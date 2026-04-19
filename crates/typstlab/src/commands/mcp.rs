@@ -3,7 +3,10 @@ use typstlab_mcp::TypstlabServer;
 
 /// Run MCP server in stdio mode
 pub fn run_stdio(root: Option<std::path::PathBuf>, offline: bool) -> Result<()> {
-    let root = root.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let root = match root {
+        Some(r) => typstlab_core::path::expand_tilde(&r),
+        None => std::env::current_dir().context("Failed to get current directory")?,
+    };
 
     // We need a tokio runtime for the server
     let rt = tokio::runtime::Builder::new_multi_thread()

@@ -32,7 +32,41 @@
 //! ```
 
 use anyhow::{bail, Result};
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
+
+/// Expand tilde (~) in path to user's home directory
+///
+/// # Examples
+///
+/// ```rust
+/// use typstlab_core::path::expand_tilde;
+/// use std::path::Path;
+///
+/// // ~/foo -> /home/user/foo
+/// let path = Path::new("~/dev/hoge");
+/// let expanded = expand_tilde(path);
+/// // Result depends on environment
+/// ```
+pub fn expand_tilde(path: &Path) -> PathBuf {
+    if !path.starts_with("~") {
+        return path.to_path_buf();
+    }
+
+    let home = match dirs::home_dir() {
+        Some(dir) => dir,
+        None => return path.to_path_buf(),
+    };
+
+    if path == Path::new("~") {
+        return home;
+    }
+
+    if let Ok(suffix) = path.strip_prefix("~") {
+        home.join(suffix)
+    } else {
+        path.to_path_buf()
+    }
+}
 
 /// Check if path is absolute OR rooted (cross-platform)
 ///
@@ -207,6 +241,28 @@ pub fn validate_paper_id(paper_id: &str) -> crate::error::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_expand_tilde() {
+        // Only test if home_dir is available
+        if let Some(home) = dirs::home_dir() {
+            let path = Path::new("~/dev/hoge");
+            let expanded = expand_tilde(path);
+            assert_eq!(expanded, home.join("dev/hoge"));
+
+            let path = Path::new("~");
+            let expanded = expand_tilde(path);
+            assert_eq!(expanded, home);
+
+            let path = Path::new("/tmp/foo");
+            let expanded = expand_tilde(path);
+            assert_eq!(expanded, Path::new("/tmp/foo"));
+
+            let path = Path::new("relative/path");
+            let expanded = expand_tilde(path);
+            assert_eq!(expanded, Path::new("relative/path"));
+        }
+    }
 
     // ============================================================================
     // Tests for has_absolute_or_rooted_component()

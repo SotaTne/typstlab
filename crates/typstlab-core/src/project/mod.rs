@@ -47,7 +47,12 @@ impl Project {
     /// ```
     pub fn find_root(start: &Path) -> Result<Option<Self>> {
         // Canonicalize to get absolute path and resolve symlinks
-        let mut current = start.canonicalize()?;
+        let mut current = start.canonicalize().map_err(|e| {
+            TypstlabError::IoError(std::io::Error::new(
+                e.kind(),
+                format!("Failed to canonicalize start path '{}': {}", start.display(), e),
+            ))
+        })?;
 
         loop {
             // Check if typstlab.toml exists in current directory
