@@ -1,6 +1,8 @@
 use crate::info::{TypstInfo, TypstSource};
 use semver::Version;
+use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use typstlab_core::{Result, TypstlabError};
@@ -41,12 +43,27 @@ pub enum ResolveResult {
 ///    - Windows: %LOCALAPPDATA%\typstlab\typst
 /// 3. Fallback: .tmp/ directory if cache_dir is unavailable
 pub fn managed_cache_dir() -> Result<PathBuf> {
-    // 1. Check TYPSTLAB_CACHE_DIR environment variable first (test isolation + CI customization)
+    let typst_cache = managed_cache_root()?.join("typst");
+    fs::create_dir_all(&typst_cache)
+        .map_err(|e| TypstlabError::Generic(format!("Failed to create cache directory: {}", e)))?;
+
+    Ok(typst_cache)
+}
+
+/// Get the managed cache directory for Typst documentation
+pub fn managed_docs_cache_dir() -> Result<PathBuf> {
+    let docs_cache = managed_cache_root()?.join("docs");
+    fs::create_dir_all(&docs_cache)
+        .map_err(|e| TypstlabError::Generic(format!("Failed to create docs cache directory: {}", e)))?;
+
+    Ok(docs_cache)
+}
+
+/// Internal helper to get the root of the managed cache
+fn managed_cache_root() -> Result<PathBuf> {
+    // 1. Check TYPSTLAB_CACHE_DIR environment variable first
     if let Ok(cache_override) = std::env::var("TYPSTLAB_CACHE_DIR") {
         let cache_path = PathBuf::from(cache_override);
-        fs::create_dir_all(&cache_path).map_err(|e| {
-            TypstlabError::Generic(format!("Failed to create cache directory: {}", e))
-        })?;
         return Ok(cache_path);
     }
 
@@ -54,17 +71,13 @@ pub fn managed_cache_dir() -> Result<PathBuf> {
     let base_cache = match dirs::cache_dir() {
         Some(dir) => dir,
         None => {
-            // 3. Fallback: use .tmp in project workspace for development/testing
+            // 3. Fallback: use .tmp in project workspace
             let workspace = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
             workspace.join(".tmp").join(".typstlab-cache")
         }
     };
 
-    let typst_cache = base_cache.join("typstlab").join("typst");
-    fs::create_dir_all(&typst_cache)
-        .map_err(|e| TypstlabError::Generic(format!("Failed to create cache directory: {}", e)))?;
-
-    Ok(typst_cache)
+    Ok(base_cache.join("typstlab"))
 }
 
 /// Validate that a Typst binary matches the expected version
@@ -238,22 +251,60 @@ fn resolve_managed(version: &str) -> Result<Option<TypstInfo>> {
     // Validate version matches
     match validate_version(&binary_path, version) {
         Ok(true) => {
-            // Version matches, return TypstInfo
-            Ok(Some(TypstInfo {
-                version: version.to_string(),
-                source: TypstSource::Managed,
-                path: binary_path,
-            }))
+            // Check hash if typst.lock exists
+            match verify_binary_hash(&binary_path, &version_dir) {
+                Ok(true) | Err(_) => {
+                    // Hash matches or no lock file to verify (assume OK if no lock)
+                    // Or if error reading lock, we continue (best effort)
+                    Ok(Some(TypstInfo {
+                        version: version.to_string(),
+                        source: TypstSource::Managed,
+                        path: binary_path,
+                    }))
+                }
+                Ok(false) => {
+                    // Hash mismatch! Binary is corrupted or modified.
+                    Ok(None)
+                }
+            }
         }
-        Ok(false) => {
-            // Version mismatch
-            Ok(None)
-        }
-        Err(_) => {
-            // Error executing or parsing version
-            Ok(None)
-        }
+        Ok(false) | Err(_) => Ok(None),
     }
+}
+
+/// Verifies binary hash against typst.lock
+///
+/// Returns Ok(true) if matches or lock doesn't exist.
+/// Returns Ok(false) if mismatch.
+fn verify_binary_hash(binary_path: &Path, version_dir: &Path) -> Result<bool> {
+    let lock_path = version_dir.join("typst.lock");
+
+    if !lock_path.exists() {
+        return Ok(true);
+    }
+
+    let expected_hash = std::fs::read_to_string(&lock_path).map_err(|e| {
+        TypstlabError::Generic(format!("Failed to read typst.lock: {}", e))
+    })?;
+
+    let mut file = fs::File::open(binary_path).map_err(|e| {
+        TypstlabError::Generic(format!("Failed to open binary for hashing: {}", e))
+    })?;
+
+    let mut hasher = Sha256::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let count = file.read(&mut buffer).map_err(|e| {
+            TypstlabError::Generic(format!("Failed to read binary for hashing: {}", e))
+        })?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let actual_hash = format!("{:x}", hasher.finalize());
+
+    Ok(actual_hash == expected_hash)
 }
 
 /// Resolve Typst from system PATH

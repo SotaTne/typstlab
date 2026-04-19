@@ -12,3 +12,4 @@ tempfile = "3.8"
 typstlab-testkit = { path = "../crates/typstlab-testkit" }
 chrono = "0.4"
 serde_json = "1.0"
+sha2 = "0.10"

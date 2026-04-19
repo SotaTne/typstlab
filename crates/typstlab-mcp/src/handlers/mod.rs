@@ -4,7 +4,6 @@ use serde_json::json;
 pub mod cmd;
 pub mod common;
 pub mod docs;
-pub mod rules;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Safety {

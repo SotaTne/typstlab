@@ -1,9 +1,9 @@
 use crate::context::McpContext;
 use crate::handlers::cmd::CmdTool;
 use crate::handlers::docs::DocsTool;
-use crate::handlers::rules::RulesTool;
+use rmcp::transport::stdio;
 use rmcp::{
-    RoleServer, ServerHandler,
+    RoleServer, ServerHandler, ServiceExt,
     handler::server::router::{prompt::PromptRouter, tool::ToolRouter},
     model::*,
     service::RequestContext,
@@ -33,8 +33,6 @@ impl TypstlabServer {
             tool_router.merge(CmdTool.into_router());
         }
 
-        tool_router.merge(RulesTool.into_router());
-
         Self {
             context,
             tool_router,
@@ -50,8 +48,10 @@ impl TypstlabServer {
         })?;
         let context = McpContext::new(project.root);
         let server = Self::new(context, offline);
-        let transport = rmcp::transport::io::stdio();
-        let service = rmcp::serve_server(server, transport).await?;
+        let transport = stdio();
+        let service = server.serve(transport).await.inspect_err(|e| {
+            tracing::error!("serving error: {:?}", e);
+        })?;
         service.waiting().await?;
         Ok(())
     }
@@ -117,19 +117,6 @@ impl ServerHandler for TypstlabServer {
         Ok(ListResourcesResult::with_all_items(vec![
             Resource::new(
                 RawResource {
-                    uri: "typstlab://rules".into(),
-                    name: "rules".into(),
-                    title: None,
-                    description: Some("Project rules and guidelines".into()),
-                    mime_type: Some("application/json".into()),
-                    size: None,
-                    icons: None,
-                    meta: None,
-                },
-                None,
-            ),
-            Resource::new(
-                RawResource {
                     uri: "typstlab://docs".into(),
                     name: "docs".into(),
                     title: None,
@@ -177,21 +164,8 @@ impl TypstlabServer {
         uri: &str,
         token: tokio_util::sync::CancellationToken,
     ) -> Result<ReadResourceResult, ErrorData> {
-        if uri == "typstlab://rules" {
-            return self.handle_rules_resource(uri, token).await;
-        }
         if uri == "typstlab://docs" {
             return self.handle_docs_resource(uri, token).await;
-        }
-
-        if let Some(path) = uri.strip_prefix("typstlab://rules/") {
-            let normalized = path.replace('\\', "/");
-            if normalized.is_empty() {
-                return Err(crate::errors::invalid_params("Resource path required"));
-            }
-            return self
-                .handle_rules_file(uri, Path::new(&normalized), token)
-                .await;
         }
 
         if let Some(path) = uri.strip_prefix("typstlab://docs/") {
@@ -203,40 +177,6 @@ impl TypstlabServer {
             "Resource not found: {}",
             uri
         )))
-    }
-
-    async fn handle_rules_resource(
-        &self,
-        uri: &str,
-        token: tokio_util::sync::CancellationToken,
-    ) -> Result<ReadResourceResult, ErrorData> {
-        let root = self.context.project_root.join("rules");
-        let project_root = self.context.project_root.clone();
-        let uri = uri.to_string();
-
-        let browse_res = tokio::task::spawn_blocking(move || {
-            crate::handlers::common::ops::browse_dir_sync(
-                &root,
-                &project_root,
-                None, // relative_path
-                &["md".to_string()],
-                1000,
-                token,
-            )
-        })
-        .await
-        .map_err(crate::errors::from_display)??;
-
-        let text = serde_json::to_string(&serde_json::json!({
-            "items": browse_res.items,
-            "missing": browse_res.missing,
-            "truncated": browse_res.truncated,
-        }))
-        .map_err(crate::errors::from_display)?;
-
-        Ok(ReadResourceResult {
-            contents: vec![ResourceContents::text(text, uri)],
-        })
     }
 
     async fn handle_docs_resource(
@@ -279,31 +219,6 @@ impl TypstlabServer {
     }
 
     // Extracted file handlers to keep methods small
-    async fn handle_rules_file(
-        &self,
-        uri: &str,
-        path: &Path,
-        token: tokio_util::sync::CancellationToken,
-    ) -> Result<ReadResourceResult, ErrorData> {
-        // path is already constructed correctly by caller as relative strict path
-        let target = match crate::handlers::rules::resolve_rules_path(
-            &self.context.project_root,
-            path,
-        )
-        .await
-        {
-            Ok(p) => p,
-            Err(e) => {
-                // Map path validation errors to correct codes
-                // resolve_rules_path returns invalid_params for scope violations, which maps to INVALID_INPUT
-                // path_escape maps to PATH_ESCAPE
-                return Err(e);
-            }
-        };
-
-        self.read_file_resource(uri, &target, token).await
-    }
-
     async fn handle_docs_file(
         &self,
         uri: &str,
@@ -409,7 +324,6 @@ mod tests {
 
         let tools = server.tool_router.list_all();
         let names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
-        assert!(names.contains(&"rules_browse".to_string()));
         assert!(names.contains(&"cmd_build".to_string()));
     }
 
@@ -422,34 +336,6 @@ mod tests {
         // but we can test it handles the URIs we expect in read_resource later.
         // For now, let's just ensure the server initializes.
         assert!(!server.tool_router.list_all().is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_read_resource_rules_root_returns_listing() {
-        let temp = temp_dir_in_workspace();
-        let rules_dir = temp.path().join("rules");
-        fs::create_dir_all(&rules_dir).await.unwrap();
-        fs::write(rules_dir.join("a.md"), "# A").await.unwrap();
-
-        let ctx = McpContext::new(temp.path().to_path_buf());
-        let server = TypstlabServer::new(ctx, false);
-
-        let res = server
-            .read_resource_by_uri(
-                "typstlab://rules",
-                tokio_util::sync::CancellationToken::new(),
-            )
-            .await
-            .expect("read resource");
-        let content = &res.contents[0];
-        let text = match content {
-            ResourceContents::TextResourceContents { text, .. } => text,
-            _ => panic!("expected text content"),
-        };
-        assert!(
-            text.contains("\"path\":\"rules/a.md\""),
-            "listing should include relative path"
-        );
     }
 
     #[tokio::test]

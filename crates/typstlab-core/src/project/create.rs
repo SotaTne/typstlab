@@ -16,7 +16,6 @@ use std::path::Path;
 /// - templates/ (with builtin templates)
 /// - refs/ (empty directory for common references)
 /// - dist/ (empty directory for build outputs)
-/// - rules/ (empty directory for project-level rules)
 /// - .typstlab/ (private directory for state and cache)
 ///
 /// # Arguments
@@ -47,7 +46,6 @@ pub fn create_project(root: &Path, project_name: &str) -> Result<()> {
     fs::create_dir_all(project_dir.join("templates"))?;
     fs::create_dir_all(project_dir.join("refs"))?;
     fs::create_dir_all(project_dir.join("dist"))?;
-    fs::create_dir_all(project_dir.join("rules"))?;
     fs::create_dir_all(project_dir.join(".typstlab"))?;
 
     // Copy builtin templates to templates/
@@ -84,7 +82,6 @@ pub fn init_project(target_dir: &Path) -> Result<()> {
     fs::create_dir_all(target_dir.join("templates"))?;
     fs::create_dir_all(target_dir.join("refs"))?;
     fs::create_dir_all(target_dir.join("dist"))?;
-    fs::create_dir_all(target_dir.join("rules"))?;
     fs::create_dir_all(target_dir.join(".typstlab"))?;
 
     // Copy builtin templates to templates/
@@ -229,7 +226,6 @@ mod tests {
         assert!(project_dir.join("templates").is_dir());
         assert!(project_dir.join("refs").is_dir());
         assert!(project_dir.join("dist").is_dir());
-        assert!(project_dir.join("rules").is_dir());
         assert!(project_dir.join(".typstlab").is_dir());
     }
 

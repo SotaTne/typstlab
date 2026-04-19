@@ -5,7 +5,7 @@ use typstlab_e2e_tests::{e2e_command, e2e_temp_dir};
 
 /// Helper to create a mock typst binary in the managed cache
 fn create_mock_typst(home: &Path, version: &str) {
-    let cache_dir = home.join(".cache/typstlab");
+    let cache_dir = home.join(".cache/typstlab/typst");
     let version_dir = cache_dir.join(version);
     fs::create_dir_all(&version_dir).unwrap();
 
@@ -18,14 +18,29 @@ fn create_mock_typst(home: &Path, version: &str) {
     {
         use std::os::unix::fs::PermissionsExt;
         let script = format!("#!/bin/sh\necho \"typst {}\"", version);
-        fs::write(&bin_path, script).unwrap();
+        fs::write(&bin_path, &script).unwrap();
         let mut perms = fs::metadata(&bin_path).unwrap().permissions();
         perms.set_mode(0o755);
         fs::set_permissions(&bin_path, perms).unwrap();
+
+        // Create typst.lock with sha256 of the script
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(script.as_bytes());
+        let hash = format!("{:x}", hasher.finalize());
+        fs::write(version_dir.join("typst.lock"), hash).unwrap();
     }
     #[cfg(windows)]
     {
-        fs::write(&bin_path, format!("@echo typst {}", version)).unwrap();
+        let script = format!("@echo typst {}", version);
+        fs::write(&bin_path, &script).unwrap();
+
+        // Create typst.lock with sha256 of the script
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(script.as_bytes());
+        let hash = format!("{:x}", hasher.finalize());
+        fs::write(version_dir.join("typst.lock"), hash).unwrap();
     }
 }
 

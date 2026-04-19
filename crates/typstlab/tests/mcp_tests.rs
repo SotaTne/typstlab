@@ -26,24 +26,6 @@ version = "0.12.0"
     temp_dir
 }
 
-fn setup_rules(project: &TempDir) {
-    let rules_dir = project.path().join("rules");
-    fs::create_dir_all(rules_dir.join("paper")).expect("Failed to create rules dir");
-    fs::write(
-        rules_dir.join("guidelines.md"),
-        "Use APA citations in the document.",
-    )
-    .expect("Failed to write rules file");
-
-    let paper_rules_dir = project.path().join("papers/paper1/rules");
-    fs::create_dir_all(&paper_rules_dir).expect("Failed to create paper rules dir");
-    fs::write(
-        paper_rules_dir.join("citations.md"),
-        "Paper-level rules mention APA citations.",
-    )
-    .expect("Failed to write paper rules file");
-}
-
 fn setup_docs(project: &TempDir) {
     let docs_dir = project.path().join(".typstlab/kb/typst/docs");
     fs::create_dir_all(&docs_dir).expect("Failed to create docs dir");
@@ -100,8 +82,6 @@ async fn test_mcp_tools_list_includes_expected_tools() -> Result<()> {
 
     for expected in [
         "cmd_build",
-        "rules_browse",
-        "rules_search",
         "docs_browse",
         "docs_search",
     ] {
@@ -126,106 +106,12 @@ async fn test_mcp_tools_list_offline_filters_network_tools() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_mcp_resources_list_includes_docs_and_rules() -> Result<()> {
+async fn test_mcp_resources_list_includes_docs() -> Result<()> {
     let project = create_test_project();
     let service = connect_mcp(project.path(), &[]).await?;
 
     let resources = service.list_all_resources().await?;
-    assert!(resources.iter().any(|res| res.uri == "typstlab://rules"));
     assert!(resources.iter().any(|res| res.uri == "typstlab://docs"));
-
-    service.cancel().await.ok();
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_mcp_rules_browse_lists_files_and_dirs() -> Result<()> {
-    let project = create_test_project();
-    setup_rules(&project);
-    let service = connect_mcp(project.path(), &[]).await?;
-
-    let result = service
-        .call_tool(CallToolRequestParams {
-            meta: None,
-            name: "rules_browse".into(),
-            arguments: Some(json_args(json!({ "path": "rules" }))),
-            task: None,
-        })
-        .await?;
-
-    let payload = structured_payload(&result);
-    let items = payload["items"].as_array().expect("items should be array");
-    assert!(items.iter().any(|item| item["type"] == "file"));
-    assert!(items.iter().any(|item| item["type"] == "directory"));
-    assert!(
-        items
-            .iter()
-            .any(|item| item["path"] == "rules/guidelines.md")
-    );
-
-    service.cancel().await.ok();
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_mcp_rules_browse_rejects_invalid_path() -> Result<()> {
-    // Phase 1.5以降: 存在しないパスはエラーではなくmissing=trueを返す
-    let project = create_test_project();
-    let service = connect_mcp(project.path(), &[]).await?;
-
-    let result = service
-        .call_tool(CallToolRequestParams {
-            meta: None,
-            name: "rules_browse".into(),
-            arguments: Some(json_args(json!({ "path": "nonexistent/dir" }))),
-            task: None,
-        })
-        .await;
-
-    // エラーではなく成功を返す
-    assert!(result.is_ok(), "Should return OK with missing=true");
-
-    let response = result.unwrap();
-    let content_text = response.content[0].as_text().unwrap();
-    let data: serde_json::Value = serde_json::from_str(&content_text.text).unwrap();
-
-    // missing=trueを期待
-    assert!(data["missing"].as_bool().unwrap());
-    assert_eq!(data["items"].as_array().unwrap().len(), 0);
-
-    service.cancel().await.ok();
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_mcp_rules_search_returns_origin() -> Result<()> {
-    let project = create_test_project();
-    setup_rules(&project);
-    let service = connect_mcp(project.path(), &[]).await?;
-
-    let result = service
-        .call_tool(CallToolRequestParams {
-            meta: None,
-            name: "rules_search".into(),
-            arguments: Some(json_args(json!({
-                "query": "APA",
-                "paper_id": "paper1",
-                "include_root": true
-            }))),
-            task: None,
-        })
-        .await?;
-
-    let payload = structured_payload(&result);
-    let matches = payload["matches"]
-        .as_array()
-        .expect("matches should be array");
-    let origins: Vec<&str> = matches
-        .iter()
-        .filter_map(|item| item["origin"].as_str())
-        .collect();
-    assert!(origins.contains(&"root"));
-    assert!(origins.contains(&"paper"));
 
     service.cancel().await.ok();
     Ok(())
@@ -272,23 +158,10 @@ async fn test_mcp_docs_browse_and_search() -> Result<()> {
 }
 
 #[tokio::test]
-async fn test_mcp_read_resource_rules_and_docs() -> Result<()> {
+async fn test_mcp_read_resource_docs() -> Result<()> {
     let project = create_test_project();
-    setup_rules(&project);
     setup_docs(&project);
     let service = connect_mcp(project.path(), &[]).await?;
-
-    let rules_result = service
-        .read_resource(ReadResourceRequestParams {
-            uri: "typstlab://rules/rules/guidelines.md".into(),
-            meta: None,
-        })
-        .await?;
-    let rules_text = match &rules_result.contents[0] {
-        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
-        _ => panic!("Expected text resource contents"),
-    };
-    assert!(rules_text.contains("APA citations"));
 
     let docs_result = service
         .read_resource(ReadResourceRequestParams {

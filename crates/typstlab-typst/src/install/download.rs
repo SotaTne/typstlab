@@ -42,6 +42,7 @@
 
 use crate::install::platform::binary_name;
 use crate::install::release::{Asset, ReleaseError};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -162,7 +163,10 @@ pub fn download_and_install(
     // 6. Atomic move to final destination
     atomic_move(&binary_path, &final_path)?;
 
-    // 7. Cleanup temporary files
+    // 7. Save binary hash to typst.lock if not exists
+    save_binary_hash(&final_path, &version_dir)?;
+
+    // 8. Cleanup temporary files
     // TempDir will be automatically cleaned up when extract_tempdir is dropped
     let _ = fs::remove_file(&archive_path);
 
@@ -631,6 +635,57 @@ fn atomic_move(from: &Path, to: &Path) -> Result<(), ReleaseError> {
 
     // Clean up source file (best-effort, ignore errors since install already succeeded)
     let _ = fs::remove_file(from);
+
+    Ok(())
+}
+
+/// Computes SHA-256 hash of the binary and saves it to typst.lock
+///
+/// If typst.lock already exists, generation is skipped.
+fn save_binary_hash(binary_path: &Path, version_dir: &Path) -> Result<(), ReleaseError> {
+    let lock_path = version_dir.join("typst.lock");
+
+    // Skip if already exists
+    if lock_path.exists() {
+        return Ok(());
+    }
+
+    // Compute hash
+    let mut file = fs::File::open(binary_path).map_err(|e| ReleaseError::IoError {
+        operation: format!("open binary for hashing: {}", binary_path.display()),
+        source: e,
+    })?;
+
+    let mut hasher = Sha256::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let count = file.read(&mut buffer).map_err(|e| ReleaseError::IoError {
+            operation: "read binary for hashing".to_string(),
+            source: e,
+        })?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let hash = format!("{:x}", hasher.finalize());
+
+    // Save hash atomically
+    let mut temp_lock =
+        tempfile::NamedTempFile::new_in(version_dir).map_err(|e| ReleaseError::IoError {
+            operation: "create temporary lock file".to_string(),
+            source: e,
+        })?;
+    temp_lock
+        .write_all(hash.as_bytes())
+        .map_err(|e| ReleaseError::IoError {
+            operation: "write hash to temporary lock file".to_string(),
+            source: e,
+        })?;
+    temp_lock.persist(lock_path).map_err(|e| ReleaseError::IoError {
+        operation: "persist typst.lock".to_string(),
+        source: e.error,
+    })?;
 
     Ok(())
 }

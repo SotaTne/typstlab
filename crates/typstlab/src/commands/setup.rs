@@ -48,6 +48,17 @@ pub fn run(verbose: bool) -> Result<()> {
                     info.path.display()
                 );
             }
+
+            // Sync documentation
+            if verbose {
+                println!("→ Syncing documentation...");
+            }
+            let docs_target = ctx.project.root.join(".typstlab/kb/typst/docs");
+            typstlab_typst::docs::sync_docs(&info.version, &docs_target, verbose)?;
+
+            if verbose {
+                println!("✓ Documentation synced.");
+            }
         }
         typstlab_typst::resolve::ResolveResult::NotFound {
             required_version, ..

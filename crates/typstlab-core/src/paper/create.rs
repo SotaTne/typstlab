@@ -86,9 +86,7 @@ authors = []
         fs::create_dir_all(&paper_dir)?;
         fs::create_dir(paper_dir.join("sections"))?;
         fs::create_dir(paper_dir.join("assets"))?;
-        fs::create_dir(paper_dir.join("rules"))?;
         create_main_typ(&paper_dir)?;
-        create_rules_readme(&paper_dir)?;
     }
 
     // Always create paper.toml if it wasn't provided by template
@@ -210,34 +208,6 @@ This is a new paper created with typstlab.
     Ok(())
 }
 
-/// Create rules/README.md with explanation
-fn create_rules_readme(paper_dir: &Path) -> Result<()> {
-    let content = r#"# Paper Rules Directory
-
-This directory is for paper-specific MCP rules and documentation.
-
-## Usage
-
-Place Markdown files (`.md`) in this directory to provide context and instructions
-specific to this paper. These rules can be accessed via MCP tools:
-
-- `rules_list` - List all rule files in this paper
-- `rules_get` - Retrieve full content of a rule file
-- `rules_page` - Get paginated view of a rule file
-- `rules_search` - Search across all rule files
-
-## Examples
-
-- `writing-style.md` - Style guide for this paper
-- `terminology.md` - Domain-specific terms and definitions
-- `outline.md` - Paper structure and section breakdown
-- `references.md` - Key papers and citations
-"#;
-
-    fs::write(paper_dir.join("rules/README.md"), content)?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,7 +221,6 @@ mod tests {
         fs::create_dir(root.join("templates")).unwrap();
         fs::create_dir(root.join("refs")).unwrap();
         fs::create_dir(root.join("dist")).unwrap();
-        fs::create_dir(root.join("rules")).unwrap();
         fs::create_dir(root.join(".typstlab")).unwrap();
 
         // Create typstlab.toml
@@ -284,8 +253,6 @@ version = "0.12.0"
         assert!(paper_dir.join("main.typ").exists());
         assert!(paper_dir.join("sections").is_dir());
         assert!(paper_dir.join("assets").is_dir());
-        assert!(paper_dir.join("rules").is_dir());
-        assert!(paper_dir.join("rules/README.md").exists());
     }
 
     #[test]

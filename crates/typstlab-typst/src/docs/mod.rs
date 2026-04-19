@@ -11,9 +11,12 @@ pub mod render_bodies;
 pub mod render_func;
 pub mod schema;
 
+use sha2::{Digest, Sha256};
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::time::Duration;
+use walkdir::WalkDir;
 
 // Re-exports
 pub use download::{DocsError, MAX_DOCS_SIZE};
@@ -52,80 +55,160 @@ pub use links::rewrite_docs_link;
 /// println!("Generated {} files", count);
 /// ```
 pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usize, DocsError> {
-    // Prepare lock path (.typstlab/kb/.lock)
-    // target_dir is typically .typstlab/kb/typst/docs, so we need to go up 2 levels
-    // to get to .typstlab/kb
-    let kb_dir = target_dir
-        .parent() // .typstlab/kb/typst
-        .and_then(|p| p.parent()) // .typstlab/kb
-        .ok_or_else(|| {
-            DocsError::LockError("Target dir must be under kb/typst/docs".to_string())
-        })?;
-    let lock_path = kb_dir.join("docs.lock");
+    // 1. Get central cache directory
+    let cache_root = crate::resolve::managed_docs_cache_dir().map_err(|e| {
+        DocsError::LockError(format!("Failed to get docs cache directory: {}", e))
+    })?;
+    let cache_dir = cache_root.join(version);
+    let manifest_path = cache_dir.join("manifest.lock");
 
-    // Acquire project-level lock (one sync at a time per project)
-    // This prevents race conditions when multiple processes sync docs simultaneously
+    // 2. Prepare lock for central cache (atomicity across processes)
+    let lock_path = cache_dir.join("sync.lock");
+    fs::create_dir_all(&cache_dir)?;
+
     let _lock_guard = typstlab_core::lock::acquire_lock(
         &lock_path,
-        Duration::from_secs(120), // 2 minutes timeout for docs download
-        &format!("Syncing documentation for Typst {}", version),
+        Duration::from_secs(300), // 5 minutes for download + generation
+        &format!("Syncing central docs cache for Typst {}", version),
     )
     .map_err(|e| DocsError::LockError(e.to_string()))?;
 
-    // Early exit if docs already exist (idempotency)
-    if target_dir.exists() {
-        // Count files recursively (matching generate behavior which only counts files, not dirs)
-        let file_count = count_files_recursively(target_dir)?;
-        if file_count > 0 {
-            // Docs already synced, return count
-            if verbose {
-                eprintln!(
-                    "Documentation for Typst {} already synced ({} files)",
-                    version, file_count
-                );
+    // 3. Sync to central cache if needed
+    if !manifest_path.exists() || !verify_manifest(&cache_dir, &manifest_path)? {
+        if verbose {
+            eprintln!("Central docs cache missing or invalid for version {}. Downloading...", version);
+        }
+        
+        // Clean up partially generated files
+        if cache_dir.exists() {
+            let _ = fs::remove_dir_all(&cache_dir);
+            fs::create_dir_all(&cache_dir)?;
+        }
+
+        // Download docs.json
+        let json_bytes = download_json::download_docs_json(version, verbose)?;
+        
+        // Parse JSON
+        let entries: Vec<schema::DocsEntry> = serde_json::from_slice(&json_bytes)?;
+        
+        // Generate Markdown files into cache
+        generate::generate_markdown_files(&entries, &cache_dir, verbose)?;
+        
+        // Generate manifest.lock
+        let manifest = generate_manifest(&cache_dir, &manifest_path)?;
+        fs::write(&manifest_path, manifest)?;
+    }
+
+    // 4. Copy from central cache to target_dir (with verification)
+    if verbose {
+        eprintln!("Copying documentation to project: {}", target_dir.display());
+    }
+    
+    // Acquire project-level lock for target_dir
+    let project_lock_dir = target_dir.parent().and_then(|p| p.parent()).unwrap_or(target_dir);
+    let project_lock = project_lock_dir.join("docs.lock");
+    let _proj_lock_guard = typstlab_core::lock::acquire_lock(
+        &project_lock,
+        Duration::from_secs(60),
+        "Installing docs to project",
+    ).map_err(|e| DocsError::LockError(e.to_string()))?;
+
+    // Copy files
+    fs::create_dir_all(target_dir)?;
+    let count = copy_with_verification(&cache_dir, target_dir, &manifest_path)?;
+
+    Ok(count)
+}
+
+/// Generates a manifest of files and their SHA-256 hashes
+fn generate_manifest(dir: &Path, manifest_path: &Path) -> Result<String, DocsError> {
+    let mut manifest = String::new();
+    for entry in WalkDir::new(dir) {
+        let entry = entry.map_err(|e| DocsError::IoError(e.into()))?;
+        if entry.file_type().is_file() {
+            let path = entry.path();
+            if path == manifest_path || path.extension().and_then(|s| s.to_str()) == Some("lock") {
+                continue;
             }
-            return Ok(file_count);
+            
+            let rel_path = path.strip_prefix(dir).unwrap();
+            let hash = compute_sha256(path)?;
+            manifest.push_str(&format!("{} {}\n", hash, rel_path.display()));
         }
     }
+    Ok(manifest)
+}
 
-    // Download docs.json
-    let json_bytes = download_json::download_docs_json(version, verbose)?;
-
-    // Parse JSON
-    let entries: Vec<schema::DocsEntry> = serde_json::from_slice(&json_bytes)?;
-
-    if verbose {
-        // eprintln!("Parsed {} top-level documentation entries", entries.len());
+/// Verifies that all files in the directory match the manifest
+fn verify_manifest(dir: &Path, manifest_path: &Path) -> Result<bool, DocsError> {
+    let content = fs::read_to_string(manifest_path)?;
+    for line in content.lines() {
+        if line.trim().is_empty() { continue; }
+        let parts: Vec<&str> = line.splitn(2, ' ').collect();
+        if parts.len() != 2 { continue; }
+        
+        let expected_hash = parts[0];
+        let rel_path = parts[1];
+        let full_path = dir.join(rel_path);
+        
+        if !full_path.exists() { return Ok(false); }
+        let actual_hash = compute_sha256(&full_path)?;
+        if actual_hash != expected_hash { return Ok(false); }
     }
+    Ok(true)
+}
 
-    // Generate Markdown files
-    let count = generate::generate_markdown_files(&entries, target_dir, verbose)?;
-
-    if verbose {
-        // eprintln!("Generated {} documentation files", count);
+/// Copies files from cache to project while verifying hashes
+fn copy_with_verification(src: &Path, dst: &Path, manifest_path: &Path) -> Result<usize, DocsError> {
+    let content = fs::read_to_string(manifest_path)?;
+    let mut count = 0;
+    for line in content.lines() {
+        if line.trim().is_empty() { continue; }
+        let parts: Vec<&str> = line.splitn(2, ' ').collect();
+        if parts.len() != 2 { continue; }
+        
+        let expected_hash = parts[0];
+        let rel_path = parts[1];
+        let src_path = src.join(rel_path);
+        let dst_path = dst.join(rel_path);
+        
+        // Verify source hash
+        let actual_hash = compute_sha256(&src_path)?;
+        if actual_hash != expected_hash {
+            return Err(DocsError::IoError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Cache corruption detected: {}", rel_path)
+            )));
+        }
+        
+        // Ensure parent exists
+        if let Some(parent) = dst_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        
+        // Copy file
+        fs::copy(&src_path, &dst_path)?;
+        count += 1;
     }
-
-    // Lock automatically released when _lock_guard is dropped
     Ok(count)
+}
+
+/// Computes SHA-256 hash of a file
+fn compute_sha256(path: &Path) -> Result<String, DocsError> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 { break; }
+        hasher.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// Recursively count files (not directories) in a directory tree
 ///
 /// This matches the behavior of generate_markdown_files() which only counts files.
-fn count_files_recursively(dir: &Path) -> Result<usize, DocsError> {
-    let mut count = 0;
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            count += count_files_recursively(&path)?;
-        } else {
-            count += 1;
-        }
-    }
-    Ok(count)
-}
-
 /// Test helpers for docs module
 pub mod test_helpers {
     use std::path::PathBuf;

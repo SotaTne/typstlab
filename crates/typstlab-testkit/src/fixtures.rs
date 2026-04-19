@@ -4,6 +4,8 @@
 //! particularly for extracting pre-downloaded typst binaries from
 //! the fixtures directory to avoid network access during tests.
 
+use sha2::{Digest, Sha256};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Get platform-specific archive name for typst
@@ -249,11 +251,30 @@ pub fn setup_test_typst(_typstlab_bin: &Path, _project_dir: &Path) -> PathBuf {
     // Get cache directory from environment (set by with_isolated_typst_env)
     let cache_dir = std::env::var("TYPSTLAB_CACHE_DIR")
         .expect("TYPSTLAB_CACHE_DIR should be set by with_isolated_typst_env");
-    let cache_path = PathBuf::from(cache_dir);
+    let cache_path = PathBuf::from(cache_dir).join("typst");
 
     // Extract binary from fixtures to cache directory (no GitHub API)
-    setup_typst_from_fixtures(&cache_path)
-        .expect("Failed to setup typst from fixtures - ensure fixtures/typst/v0.12.0/ exists")
+    let binary_path = setup_typst_from_fixtures(&cache_path)
+        .expect("Failed to setup typst from fixtures - ensure fixtures/typst/v0.12.0/ exists");
+
+    // NEW: Create typst.lock with actual hash to satisfy resolve verification
+    let version_dir = binary_path.parent().unwrap();
+    let lock_path = version_dir.join("typst.lock");
+
+    let mut file = std::fs::File::open(&binary_path).expect("Failed to open binary for hashing");
+    let mut hasher = Sha256::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let n = file.read(&mut buffer).expect("Failed to read binary for hashing");
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    let actual_hash = format!("{:x}", hasher.finalize());
+    std::fs::write(lock_path, actual_hash).expect("Failed to write typst.lock");
+
+    binary_path
 }
 
 #[cfg(test)]
