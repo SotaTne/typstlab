@@ -83,9 +83,8 @@ pub struct SyncState {
     pub last_sync: Option<DateTime<Utc>>,
 }
 
-impl State {
-    /// 空の State を作成
-    pub fn empty() -> Self {
+impl Default for State {
+    fn default() -> Self {
         Self {
             schema_version: "1.0".to_string(),
             machine: MachineInfo::detect(),
@@ -95,6 +94,13 @@ impl State {
             build: None,
             sync: None,
         }
+    }
+}
+
+impl State {
+    /// 空の State を作成
+    pub fn empty() -> Self {
+        Self::default()
     }
 
     /// state.json を読み込む
@@ -121,13 +127,6 @@ impl State {
     }
 
     /// state.json に書き込む（原子的更新）
-    ///
-    /// This method uses atomic file updates to prevent corruption:
-    /// 1. Acquire exclusive lock on .typstlab/.lock
-    /// 2. Write to temporary file (using tempfile crate)
-    /// 3. Fsync temporary file and parent directory
-    /// 4. Atomic persist (cross-platform, Windows compatible)
-    /// 5. Release lock (automatic via RAII)
     pub fn save(&self, path: impl AsRef<Path>) -> crate::error::Result<()> {
         let path = path.as_ref();
         let parent = ensure_parent_dir(path)?;
@@ -291,9 +290,9 @@ mod tests {
 
                 if i % 2 == 0 {
                     // Writer: update verify output path
-                    // Retry loop to handle potential lock timeouts under heavy contention
                     for _ in 0..5 {
-                        if let Ok(mut state) = State::load(&*path) {
+                        if let Ok(state) = State::load(&*path) {
+                            let mut state = state;
                             let mut build = state.build.unwrap_or(BuildState { last: None });
                             build.last = Some(LastBuild {
                                 paper: format!("paper-{}", i),

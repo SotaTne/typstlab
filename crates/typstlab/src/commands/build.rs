@@ -1,6 +1,6 @@
 //! Build command - compile papers to PDF using Typst
 
-use crate::context::Context;
+use typstlab_core::context::Context;
 use anyhow::{Result, bail};
 use chrono::Utc;
 use colored::Colorize;
@@ -20,8 +20,8 @@ use typstlab_typst::exec::{ExecOptions, exec_typst};
 ///
 /// Build all papers in the project
 pub fn run_all(full: bool, verbose: bool) -> Result<()> {
-    let ctx = Context::new(verbose)?;
-    let papers = ctx.project.papers();
+    let ctx = Context::builder().verbose(verbose).build()?;
+    let papers = ctx.project.as_ref().expect("Project not found").papers();
 
     if papers.is_empty() {
         println!("{} No papers found in project", "→".cyan());
@@ -66,7 +66,7 @@ pub fn run_all(full: bool, verbose: bool) -> Result<()> {
 
 /// Build a specific paper
 pub fn run(paper_id: String, full: bool, verbose: bool) -> Result<()> {
-    let ctx = Context::new(verbose)?;
+    let ctx = Context::builder().verbose(verbose).build()?;
     build_paper(&ctx, &paper_id, full, verbose)
 }
 
@@ -79,6 +79,8 @@ fn build_paper(ctx: &Context, paper_id: &str, _full: bool, verbose: bool) -> Res
 
     let paper = ctx
         .project
+        .as_ref()
+        .expect("Project not found")
         .find_paper(paper_id)
         .ok_or_else(|| anyhow::anyhow!("Paper '{}' not found", paper_id))?;
 
@@ -106,7 +108,7 @@ fn build_paper(ctx: &Context, paper_id: &str, _full: bool, verbose: bool) -> Res
     }
 
     // Step 5: Create dist/<paper_id>/ directory
-    let dist_dir = ctx.project.root.join("dist").join(paper_id);
+    let dist_dir = ctx.project.as_ref().expect("Project not found").root.join("dist").join(paper_id);
     fs::create_dir_all(&dist_dir)?;
 
     // Step 6: Build Typst compile command
@@ -134,9 +136,9 @@ fn build_paper(ctx: &Context, paper_id: &str, _full: bool, verbose: bool) -> Res
     let start_utc = Utc::now();
 
     let exec_result = exec_typst(ExecOptions {
-        project_root: ctx.project.root.clone(),
+        project_root: ctx.project.as_ref().expect("Project not found").root.clone(),
         args,
-        required_version: ctx.config.typst.version.clone(),
+        required_version: ctx.config.as_ref().expect("Config not found").typst.version.clone(),
     })?;
 
     let finish_utc = Utc::now();
@@ -165,9 +167,9 @@ fn build_paper(ctx: &Context, paper_id: &str, _full: bool, verbose: bool) -> Res
             }),
         };
 
-        let mut state = ctx.state.clone();
+        let mut state = ctx.state.as_ref().expect("State not found").clone();
         state.build = Some(build_state);
-        let state_path = ctx.project.root.join(".typstlab/state.json");
+        let state_path = ctx.project.as_ref().expect("Project not found").root.join(".typstlab/state.json");
         state.save(&state_path)?;
 
         bail!(
@@ -190,9 +192,9 @@ fn build_paper(ctx: &Context, paper_id: &str, _full: bool, verbose: bool) -> Res
         }),
     };
 
-    let mut state = ctx.state.clone();
+    let mut state = ctx.state.as_ref().expect("State not found").clone();
     state.build = Some(build_state);
-    let state_path = ctx.project.root.join(".typstlab/state.json");
+    let state_path = ctx.project.as_ref().expect("Project not found").root.join(".typstlab/state.json");
     state.save(&state_path)?;
 
     // Step 10: Success message

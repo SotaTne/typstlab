@@ -1,6 +1,6 @@
-use crate::context::Context;
 use anyhow::{Result, bail};
 use colored::Colorize;
+use typstlab_core::context::Context;
 use typstlab_core::paper::create_paper;
 use typstlab_core::project::validate_name;
 
@@ -11,9 +11,22 @@ pub fn run(
     verbose: bool,
 ) -> Result<()> {
     // Must be inside a project
-    let ctx = Context::new(verbose)?;
+    let ctx = Context::builder().verbose(verbose).build()?;
+    run_with_context(&ctx, paper_id, template, title)
+}
 
-    if verbose {
+pub fn run_with_context(
+    ctx: &Context,
+    paper_id: String,
+    template: Option<String>,
+    title: Option<String>,
+) -> Result<()> {
+    let project = ctx
+        .project
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Not in a typstlab project"))?;
+
+    if ctx.verbose {
         println!("{} Creating paper '{}' in project", "→".cyan(), paper_id);
         if let Some(t) = &template {
             println!("  Template: {}", t);
@@ -27,13 +40,13 @@ pub fn run(
     validate_name(&paper_id)?;
 
     // Check if paper already exists
-    if let Some(_existing) = ctx.project.find_paper(&paper_id) {
+    if let Some(_existing) = project.find_paper(&paper_id) {
         bail!("Paper '{}' already exists", paper_id);
     }
 
     // Create paper scaffold
     create_paper(
-        &ctx.project,
+        project,
         &paper_id,
         title,
         template,
@@ -41,13 +54,13 @@ pub fn run(
             use typstlab_typst::exec::{ExecOptions, exec_typst};
 
             let exec_opts = ExecOptions {
-                project_root: ctx.project.root.clone(),
+                project_root: project.root.clone(),
                 args: vec![
                     "init".to_string(),
                     template.to_string(),
                     path.to_string_lossy().to_string(),
                 ],
-                required_version: ctx.project.config().typst.version.clone(),
+                required_version: project.config().typst.version.clone(),
             };
 
             let result = exec_typst(exec_opts)?;
@@ -58,7 +71,7 @@ pub fn run(
         }),
     )?;
 
-    let paper_dir = ctx.project.root.join("papers").join(&paper_id);
+    let paper_dir = project.root.join("papers").join(&paper_id);
 
     println!(
         "{} Created paper '{}' at {}",
@@ -67,7 +80,7 @@ pub fn run(
         paper_dir.display()
     );
 
-    print_paper_structure(verbose);
+    print_paper_structure(ctx.verbose);
     print_next_steps_paper(&paper_id);
 
     Ok(())
@@ -80,7 +93,6 @@ fn print_paper_structure(verbose: bool) {
         println!("  - main.typ (main Typst file)");
         println!("  - sections/ (for paper sections)");
         println!("  - assets/ (for images, etc.)");
-        println!("  - rules/ (for paper-specific rules)");
     }
 }
 
@@ -89,4 +101,37 @@ fn print_next_steps_paper(paper_id: &str) {
     println!("  1. Edit papers/{}/paper.toml", paper_id);
     println!("  2. Edit papers/{}/main.typ", paper_id);
     println!("  3. typstlab build --paper {}", paper_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use typstlab_core::project::init_project;
+    use typstlab_testkit::temp_dir_in_workspace;
+
+    #[test]
+    fn test_run_paper_basic() {
+        let temp = temp_dir_in_workspace();
+        let project_dir = temp.path().to_path_buf();
+        init_project(&project_dir).unwrap();
+
+        let ctx = Context::builder()
+            .env(typstlab_core::context::Environment {
+                cache_root: temp.path().join(".cache"),
+                cwd: project_dir.clone(),
+            })
+            .project_root(project_dir.clone())
+            .verbose(true)
+            .build()
+            .unwrap();
+
+        let paper_id = "test-paper".to_string();
+
+        run_with_context(&ctx, paper_id.clone(), None, Some("Test Title".to_string())).unwrap();
+
+        let paper_dir = project_dir.join("papers").join(&paper_id);
+        assert!(paper_dir.exists());
+        assert!(paper_dir.join("paper.toml").exists());
+        assert!(paper_dir.join("main.typ").exists());
+    }
 }

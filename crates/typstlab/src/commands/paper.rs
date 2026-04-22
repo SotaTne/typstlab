@@ -1,5 +1,5 @@
 use crate::cli::PaperCommands;
-use crate::context::Context;
+use typstlab_core::context::Context;
 use anyhow::Result;
 use colored::Colorize;
 use typstlab_core::paper::Paper;
@@ -11,8 +11,8 @@ pub fn run(command: PaperCommands, verbose: bool) -> Result<()> {
 }
 
 fn run_list(json: bool, verbose: bool) -> Result<()> {
-    let ctx = Context::new(verbose)?;
-    let papers = ctx.project.papers();
+    let ctx = Context::builder().verbose(verbose).build()?;
+    let papers = ctx.project.as_ref().expect("Project not found").papers();
 
     if json {
         output_papers_json(papers)?;

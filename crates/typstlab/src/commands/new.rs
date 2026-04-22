@@ -1,26 +1,29 @@
 use anyhow::Result;
 use colored::Colorize;
-use std::env;
 use std::path::Path;
 use typstlab_core::config::Config;
+use typstlab_core::context::Context;
 use typstlab_core::path::has_absolute_or_rooted_component;
 use typstlab_core::project::{create_project, init_project, validate_name};
 
 /// Create a new project
-///
-/// # Arguments
-///
-/// * `project_name` - Name of the project (becomes directory name)
-/// * `paper_id` - Optional ID of a paper to generate immediately
-/// * `verbose` - Enable verbose output if true
 pub fn run_new_project(
     project_name: String,
     paper_id: Option<String>,
     verbose: bool,
 ) -> Result<()> {
-    let current_dir = env::current_dir()?;
+    let ctx = Context::minimal(verbose);
+    run_new_project_with_context(&ctx, project_name, paper_id)
+}
 
-    if verbose {
+pub fn run_new_project_with_context(
+    ctx: &Context,
+    project_name: String,
+    paper_id: Option<String>,
+) -> Result<()> {
+    let current_dir = &ctx.env.cwd;
+
+    if ctx.verbose {
         println!(
             "{} Creating project '{}' in {}",
             "→".cyan(),
@@ -29,11 +32,11 @@ pub fn run_new_project(
         );
     }
 
-    // Validate project name (also validated in create_project, but checked here for early failure)
+    // Validate project name
     validate_name(&project_name)?;
 
     // Create project scaffold
-    create_project(&current_dir, &project_name)?;
+    create_project(current_dir, &project_name)?;
 
     let project_dir = current_dir.join(&project_name);
 
@@ -46,43 +49,41 @@ pub fn run_new_project(
 
     // If paper_id provided, create paper
     if let Some(id) = paper_id {
-        // We need to change context to the new project dir temporarily to run_new_paper?
-        // run_new_paper expects to be inside a project.
-        // Or we can manually invoke create_paper logic on the new project path.
-        // But run_new_paper uses Context::new() which reads CWD.
-        // It's cleaner to implement a helper that takes project path explicitly.
-        // Or just change CWD? Changing CWD in library code is risky but CLI command usually ok.
-        // Better: refactor run_new_paper to take context or project path.
-        // For now, let's create a helper `create_paper_in_project`.
-
-        env::set_current_dir(&project_dir)?;
-        crate::commands::scaffold::paper::run(id, None, None, verbose)?;
-        env::set_current_dir(&current_dir)?;
+        // Use Builder to create a context for the new project
+        let project_ctx = Context::builder()
+            .env(ctx.env.clone())
+            .project_root(project_dir.clone())
+            .verbose(ctx.verbose)
+            .build()?;
+        crate::commands::scaffold::paper::run_with_context(&project_ctx, id, None, None)?;
     }
 
     // Auto-sync documentation
-    if verbose {
+    if ctx.verbose {
         println!("→ Syncing documentation...");
     }
     let config = Config::from_file(project_dir.join("typstlab.toml"))?;
     let docs_target = project_dir.join(".typstlab/kb/typst/docs");
-    typstlab_typst::docs::sync_docs(&config.typst.version, &docs_target, verbose)?;
+    typstlab_typst::docs::sync_docs(&config.typst.version, &docs_target, ctx.verbose)?;
 
-    print_project_structure(verbose);
+    print_project_structure(ctx.verbose);
     print_next_steps_project(&project_name);
 
     Ok(())
 }
 
 /// Initialize a project in an existing directory
-///
-/// # Arguments
-///
-/// * `path` - Path to initialize (defaults to CWD)
-/// * `paper_id` - Optional ID of a paper to generate immediately
-/// * `verbose` - Enable verbose output if true
 pub fn run_init(path: Option<String>, paper_id: Option<String>, verbose: bool) -> Result<()> {
-    let current_dir = env::current_dir()?;
+    let ctx = Context::minimal(verbose);
+    run_init_with_context(&ctx, path, paper_id)
+}
+
+pub fn run_init_with_context(
+    ctx: &Context,
+    path: Option<String>,
+    paper_id: Option<String>,
+) -> Result<()> {
+    let current_dir = &ctx.env.cwd;
     let target_path = if let Some(p) = &path {
         typstlab_core::path::expand_tilde(Path::new(&p))
     } else {
@@ -96,7 +97,7 @@ pub fn run_init(path: Option<String>, paper_id: Option<String>, verbose: bool) -
         current_dir.join(target_path)
     };
 
-    if verbose {
+    if ctx.verbose {
         println!(
             "{} Initializing project in {}",
             "→".cyan(),
@@ -104,11 +105,8 @@ pub fn run_init(path: Option<String>, paper_id: Option<String>, verbose: bool) -
         );
     }
 
-    // Ensure target dir exists (if specified via path)
+    // Ensure target dir exists
     if !target_path.exists() {
-        // If user specified path, maybe create it?
-        // `init` usually expects existing dir, OR create it if empty.
-        // Let's create it recursively if it doesn't exist (like mkdir -p).
         std::fs::create_dir_all(&target_path)?;
     }
 
@@ -121,37 +119,35 @@ pub fn run_init(path: Option<String>, paper_id: Option<String>, verbose: bool) -
     );
 
     if let Some(id) = paper_id {
-        let prev_cwd = env::current_dir()?;
-        env::set_current_dir(&target_path)?;
-        crate::commands::scaffold::paper::run(id, None, None, verbose)?;
-        env::set_current_dir(prev_cwd)?;
+        let project_ctx = Context::builder()
+            .env(ctx.env.clone())
+            .project_root(target_path.clone())
+            .verbose(ctx.verbose)
+            .build()?;
+        crate::commands::scaffold::paper::run_with_context(&project_ctx, id, None, None)?;
     }
 
     // Auto-sync documentation
-    if verbose {
+    if ctx.verbose {
         println!("→ Syncing documentation...");
     }
     let config = Config::from_file(target_path.join("typstlab.toml"))?;
     let docs_target = target_path.join(".typstlab/kb/typst/docs");
-    typstlab_typst::docs::sync_docs(&config.typst.version, &docs_target, verbose)?;
+    typstlab_typst::docs::sync_docs(&config.typst.version, &docs_target, ctx.verbose)?;
 
-    print_project_structure(verbose);
-    // Next steps: stay in current dir if init .
-    if target_path == current_dir {
+    print_project_structure(ctx.verbose);
+    
+    if target_path == *current_dir {
         print_next_steps_init_cwd();
+    } else if let Some(p) = &path {
+        print_next_steps_project(p);
     } else {
-        // If path relative, suggest cd
-        // We avoid pathdiff dependency here.
-        if let Some(p) = &path {
-            print_next_steps_project(p);
-        } else {
-            // Init current dir
-            print_next_steps_project("project");
-        }
+        print_next_steps_project("project");
     }
 
     Ok(())
 }
+
 
 /// Print next steps when initialized in CWD
 fn print_next_steps_init_cwd() {
@@ -184,5 +180,54 @@ fn print_next_steps_project(project_name: &str) {
 
 #[cfg(test)]
 mod tests {
-    // Integration tests will be in tests/ directory
+    use super::*;
+    use typstlab_testkit::temp_dir_in_workspace;
+    use std::fs;
+
+    #[test]
+    fn test_run_new_project_basic() {
+        let temp = temp_dir_in_workspace();
+        let ctx = Context::builder()
+            .env(typstlab_core::context::Environment {
+                cache_root: temp.path().join(".cache"),
+                cwd: temp.path().to_path_buf(),
+            })
+            .verbose(true)
+            .build()
+            .unwrap();
+
+        let project_name = "test-project".to_string();
+        
+        // Mock sync_docs behavior by not actually calling it during tests
+        // or just let it fail if it needs network but we are in a disconnected env.
+        // Actually, let's just test project creation part first.
+        
+        run_new_project_with_context(&ctx, project_name.clone(), None).unwrap();
+
+        let project_dir = temp.path().join(&project_name);
+        assert!(project_dir.exists());
+        assert!(project_dir.join("typstlab.toml").exists());
+        assert!(project_dir.join("papers").exists());
+    }
+
+    #[test]
+    fn test_run_init_basic() {
+        let temp = temp_dir_in_workspace();
+        let project_dir = temp.path().join("init-me");
+        fs::create_dir_all(&project_dir).unwrap();
+
+        let ctx = Context::builder()
+            .env(typstlab_core::context::Environment {
+                cache_root: temp.path().join(".cache"),
+                cwd: temp.path().to_path_buf(),
+            })
+            .verbose(true)
+            .build()
+            .unwrap();
+
+        run_init_with_context(&ctx, Some("init-me".to_string()), None).unwrap();
+
+        assert!(project_dir.join("typstlab.toml").exists());
+        assert!(project_dir.join("papers").exists());
+    }
 }

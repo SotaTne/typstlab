@@ -1,11 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
-use typstlab_core::project::Project;
-use typstlab_core::state::State;
-use typstlab_typst::resolve::managed_cache_dir;
+use typstlab_core::context::Context;
 
 #[derive(Serialize)]
 struct VersionEntry {
@@ -17,15 +15,18 @@ struct VersionEntry {
 
 /// Execute `typstlab typst versions` command
 pub fn execute_versions(json: bool) -> Result<()> {
-    // 1. Find project and state to identify current version
-    let project = Project::from_current_dir().ok();
-    let state = project.and_then(|p| State::load(p.root.join(".typstlab/state.json")).ok());
-    let current_path = state.and_then(|s| s.typst.map(|t| t.resolved_path));
+    let ctx = Context::builder().build()?;
+    execute_versions_with_context(&ctx, json)
+}
+
+pub fn execute_versions_with_context(ctx: &Context, json: bool) -> Result<()> {
+    // 1. Identify current version from state
+    let current_path = ctx.state.as_ref().and_then(|s| s.typst.as_ref().map(|t| t.resolved_path.clone()));
 
     let mut entries = Vec::new();
 
     // 2. Add managed versions from cache
-    let cache_dir = managed_cache_dir().context("Failed to get managed cache directory")?;
+    let cache_dir = ctx.env.typst_cache_dir();
     if cache_dir.exists() {
         for entry in fs::read_dir(cache_dir)? {
             let entry = entry?;
@@ -124,3 +125,47 @@ pub fn execute_versions(json: bool) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use typstlab_testkit::temp_dir_in_workspace;
+    use std::fs;
+
+    #[test]
+    fn test_execute_versions_empty() {
+        let temp = temp_dir_in_workspace();
+        let ctx = Context::builder()
+            .env(typstlab_core::context::Environment {
+                cache_root: temp.path().join(".cache"),
+                cwd: temp.path().to_path_buf(),
+            })
+            .build()
+            .unwrap();
+
+        execute_versions_with_context(&ctx, false).unwrap();
+    }
+
+    #[test]
+    fn test_execute_versions_with_managed() {
+        let temp = temp_dir_in_workspace();
+        let cache_root = temp.path().join(".cache");
+        let typst_cache = cache_root.join("typst");
+        let v_dir = typst_cache.join("0.12.0");
+        fs::create_dir_all(&v_dir).unwrap();
+        
+        let binary_path = v_dir.join("typst");
+        fs::write(&binary_path, "dummy").unwrap();
+
+        let ctx = Context::builder()
+            .env(typstlab_core::context::Environment {
+                cache_root,
+                cwd: temp.path().to_path_buf(),
+            })
+            .build()
+            .unwrap();
+
+        execute_versions_with_context(&ctx, false).unwrap();
+    }
+}
+

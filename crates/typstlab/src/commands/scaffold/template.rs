@@ -1,12 +1,12 @@
-use crate::context::Context;
+use typstlab_core::context::Context;
 use anyhow::Result;
 use colored::Colorize;
 use std::fs;
 
 pub fn run(name: String, verbose: bool) -> Result<()> {
-    let ctx = Context::new(verbose)?;
+    let ctx = Context::builder().verbose(verbose).build()?;
 
-    let template_dir = ctx.project.root.join("templates").join(&name);
+    let template_dir = ctx.project.as_ref().expect("Project not found").root.join("templates").join(&name);
 
     if template_dir.exists() {
         println!("{} Template '{}' already exists", "!".yellow(), name);

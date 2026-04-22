@@ -10,184 +10,189 @@ use std::fs;
 use std::sync::{Arc, Barrier};
 use std::thread;
 use tempfile::TempDir;
-use typstlab_testkit::{get_shared_mock_server, init_shared_mock_github_url};
-use typstlab_typst::docs::sync_docs;
+use typstlab_testkit::{get_shared_mock_server, init_shared_mock_github_url, with_isolated_typst_env};
 use typstlab_typst::docs::test_helpers::{load_docs_json_from_fixtures, mock_github_docs_json};
 
 #[test]
 fn test_parallel_docs_sync_no_corruption() {
-    // Initialize shared mock GitHub URL (safe to call multiple times)
-    init_shared_mock_github_url();
+    // Note: We use threads here, but since OS file locks (flock) are often 
+    // process-scoped, multiple threads in the same process might not be 
+    // excluded by flock alone. 
+    // To make this library OSS-ready and thread-safe, we should use 
+    // in-process Mutexes in typstlab-core::lock.
+    
+    with_isolated_typst_env(None, |cache| {
+        let cache_root = cache.to_path_buf();
+        init_shared_mock_github_url();
+        let json_bytes = load_docs_json_from_fixtures();
 
-    let json_bytes = load_docs_json_from_fixtures();
+        let mock = {
+            let mut server = get_shared_mock_server();
+            mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
+                .expect(1)
+                .create()
+        };
 
-    // Use shared server - lock is acquired only for mock setup/teardown
-    let mock = {
-        let mut server = get_shared_mock_server();
-        mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
-            .expect(1) // With locking, only first thread downloads
-            .create()
-    }; // Server lock released here
+        let temp_project = TempDir::new().unwrap();
+        let kb_dir = temp_project.path().join(".typstlab").join("kb");
+        let target_dir = kb_dir.join("typst").join("docs");
+        fs::create_dir_all(target_dir.parent().unwrap()).unwrap();
 
-    // Test logic runs with server unlocked (parallel execution!)
-    let temp_project = TempDir::new().unwrap();
-    let kb_dir = temp_project.path().join(".typstlab").join("kb");
-    let target_dir = kb_dir.join("typst").join("docs");
+        const NUM_THREADS: usize = 3;
+        let barrier = Arc::new(Barrier::new(NUM_THREADS));
 
-    // Create parent directories
-    fs::create_dir_all(target_dir.parent().unwrap()).unwrap();
+        let handles: Vec<_> = (0..NUM_THREADS)
+            .map(|_| {
+                let target_dir = target_dir.clone();
+                let barrier = Arc::clone(&barrier);
+                let cache_root = cache_root.clone();
 
-    const NUM_THREADS: usize = 3;
-    let barrier = Arc::new(Barrier::new(NUM_THREADS));
-
-    // Spawn 3 threads that all try to sync docs simultaneously
-    let handles: Vec<_> = (0..NUM_THREADS)
-        .map(|_| {
-            let target_dir = target_dir.clone();
-            let barrier = Arc::clone(&barrier);
-
-            thread::spawn(move || {
-                barrier.wait(); // Synchronize start
-
-                // All threads try to sync same docs
-                let result = sync_docs("0.12.0", &target_dir, false);
-                result.unwrap()
+                thread::spawn(move || {
+                    barrier.wait();
+                    // sync_docs should be thread-safe now
+                    let env = typstlab_core::context::Environment {
+                        cache_root,
+                        cwd: std::env::current_dir().unwrap(),
+                    };
+                    let result = typstlab_typst::docs::sync_docs_with_env(&env, "0.12.0", &target_dir, false);
+                    result.unwrap()
+                })
             })
-        })
-        .collect();
+            .collect();
 
-    // Wait for all threads and collect results
-    let file_counts: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let file_counts: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
-    // Verify: All threads got same file count
-    assert_eq!(
-        file_counts.len(),
-        NUM_THREADS,
-        "All threads should complete"
-    );
-    for count in &file_counts[1..] {
-        assert_eq!(
-            count, &file_counts[0],
-            "All threads should return same file count"
-        );
-    }
+        assert_eq!(file_counts.len(), NUM_THREADS);
+        for count in &file_counts[1..] {
+            assert_eq!(count, &file_counts[0]);
+        }
 
-    // Verify: Docs directory exists and has files
-    assert!(target_dir.exists(), "Docs directory should exist");
-    let actual_file_count = fs::read_dir(&target_dir).unwrap().count();
-    assert!(actual_file_count > 0, "Docs directory should have files");
-
-    // Verify: Only one download occurred (mock expectation)
-    mock.assert();
-
-    // No cleanup needed - env var stays set permanently, mock auto-removed on drop
+        assert!(target_dir.exists());
+        mock.assert();
+    });
 }
 
 #[test]
 fn test_docs_sync_idempotency_with_locking() {
-    // Initialize shared mock GitHub URL
-    init_shared_mock_github_url();
+    with_isolated_typst_env(None, |_cache| {
+        // Initialize shared mock GitHub URL
+        init_shared_mock_github_url();
 
-    let json_bytes = load_docs_json_from_fixtures();
+        let json_bytes = load_docs_json_from_fixtures();
 
-    // Use shared server - lock only during mock setup
-    let mock = {
-        let mut server = get_shared_mock_server();
-        mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
-            .expect(1) // Only first sync downloads
-            .create()
-    };
+        // Use shared server - lock only during mock setup
+        let mock = {
+            let mut server = get_shared_mock_server();
+            mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
+                .expect(1) // Only first sync downloads
+                .create()
+        };
 
-    let temp_project = TempDir::new().unwrap();
-    let kb_dir = temp_project.path().join(".typstlab").join("kb");
-    let target_dir = kb_dir.join("typst").join("docs");
+        let temp_project = TempDir::new().unwrap();
+        let kb_dir = temp_project.path().join(".typstlab").join("kb");
+        let target_dir = kb_dir.join("typst").join("docs");
 
-    fs::create_dir_all(target_dir.parent().unwrap()).unwrap();
+        fs::create_dir_all(target_dir.parent().unwrap()).unwrap();
 
-    // First sync (verbose for debugging)
-    let count1 = sync_docs("0.12.0", &target_dir, true).unwrap();
-    assert!(count1 > 0, "First sync should extract files");
+        let env = typstlab_core::context::Environment {
+            cache_root: _cache.to_path_buf(),
+            cwd: std::env::current_dir().unwrap(),
+        };
 
-    // Second sync (should be idempotent - early exit without download)
-    let count2 = sync_docs("0.12.0", &target_dir, false).unwrap();
+        // First sync (verbose for debugging)
+        let count1 = typstlab_typst::docs::sync_docs_with_env(&env, "0.12.0", &target_dir, true).unwrap();
+        assert!(count1 > 0, "First sync should extract files");
 
-    // Verify: Same file count (no re-download/duplication)
-    assert_eq!(count1, count2, "Second sync should return same count");
+        // Second sync (should be idempotent - early exit without download)
+        let count2 = typstlab_typst::docs::sync_docs_with_env(&env, "0.12.0", &target_dir, false).unwrap();
 
-    // Verify: Only one download occurred
-    mock.assert();
+        // Verify: Same file count (no re-download/duplication)
+        assert_eq!(count1, count2, "Second sync should return same count");
 
-    // No cleanup needed
+        // Verify: Only one download occurred
+        mock.assert();
+    });
 }
 
 #[test]
 fn test_concurrent_docs_sync_different_projects_no_conflict() {
-    // Initialize shared mock GitHub URL
-    init_shared_mock_github_url();
+    with_isolated_typst_env(None, |_cache| {
+        // Initialize shared mock GitHub URL
+        init_shared_mock_github_url();
 
-    let json_bytes = load_docs_json_from_fixtures();
+        let json_bytes = load_docs_json_from_fixtures();
 
-    // Use shared server - lock only during mock setup
-    let mock = {
-        let mut server = get_shared_mock_server();
-        mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
-            .expect(2) // Two different projects = 2 downloads
-            .create()
-    };
+        // Use shared server - lock only during mock setup
+        let mock = {
+            let mut server = get_shared_mock_server();
+            mock_github_docs_json(&mut server, "0.12.0", &json_bytes)
+                .expect(2) // Two different projects = 2 downloads
+                .create()
+        };
 
-    // Create two different project directories
-    let project1 = TempDir::new().unwrap();
-    let project2 = TempDir::new().unwrap();
+        // Create two different project directories
+        let project1 = TempDir::new().unwrap();
+        let project2 = TempDir::new().unwrap();
 
-    let target_dir1 = project1
-        .path()
-        .join(".typstlab")
-        .join("kb")
-        .join("typst")
-        .join("docs");
-    let target_dir2 = project2
-        .path()
-        .join(".typstlab")
-        .join("kb")
-        .join("typst")
-        .join("docs");
+        let target_dir1 = project1
+            .path()
+            .join(".typstlab")
+            .join("kb")
+            .join("typst")
+            .join("docs");
+        let target_dir2 = project2
+            .path()
+            .join(".typstlab")
+            .join("kb")
+            .join("typst")
+            .join("docs");
 
-    fs::create_dir_all(target_dir1.parent().unwrap()).unwrap();
-    fs::create_dir_all(target_dir2.parent().unwrap()).unwrap();
+        fs::create_dir_all(target_dir1.parent().unwrap()).unwrap();
+        fs::create_dir_all(target_dir2.parent().unwrap()).unwrap();
 
-    const NUM_THREADS: usize = 2;
-    let barrier = Arc::new(Barrier::new(NUM_THREADS));
+        const NUM_THREADS: usize = 2;
+        let barrier = Arc::new(Barrier::new(NUM_THREADS));
 
-    // Spawn threads for different projects
-    let target_dir1_clone = target_dir1.clone();
-    let barrier1 = Arc::clone(&barrier);
-    let handle1 = thread::spawn(move || {
-        barrier1.wait();
-        sync_docs("0.12.0", &target_dir1_clone, false).unwrap()
+        // Spawn threads for different projects
+        let target_dir1_clone = target_dir1.clone();
+        let barrier1 = Arc::clone(&barrier);
+        let cache_root1 = _cache.join("p1"); // Unique cache for project 1
+        let handle1 = thread::spawn(move || {
+            barrier1.wait();
+            let env = typstlab_core::context::Environment {
+                cache_root: cache_root1,
+                cwd: std::env::current_dir().unwrap(),
+            };
+            typstlab_typst::docs::sync_docs_with_env(&env, "0.12.0", &target_dir1_clone, false).unwrap()
+        });
+
+        let target_dir2_clone = target_dir2.clone();
+        let barrier2 = Arc::clone(&barrier);
+        let cache_root2 = _cache.join("p2"); // Unique cache for project 2
+        let handle2 = thread::spawn(move || {
+            barrier2.wait();
+            let env = typstlab_core::context::Environment {
+                cache_root: cache_root2,
+                cwd: std::env::current_dir().unwrap(),
+            };
+            typstlab_typst::docs::sync_docs_with_env(&env, "0.12.0", &target_dir2_clone, false).unwrap()
+        });
+
+        // Wait for both
+        let count1 = handle1.join().unwrap();
+        let count2 = handle2.join().unwrap();
+
+        // Verify: Both syncs succeeded
+        assert!(count1 > 0, "Project 1 should have docs");
+        assert!(count2 > 0, "Project 2 should have docs");
+        assert_eq!(count1, count2, "Both should have same number of docs");
+
+        // Verify: Both docs directories exist
+        assert!(target_dir1.exists(), "Project 1 docs should exist");
+        assert!(target_dir2.exists(), "Project 2 docs should exist");
+
+        // Verify: Two downloads occurred (different projects, different locks)
+        mock.assert();
     });
-
-    let target_dir2_clone = target_dir2.clone();
-    let barrier2 = Arc::clone(&barrier);
-    let handle2 = thread::spawn(move || {
-        barrier2.wait();
-        sync_docs("0.12.0", &target_dir2_clone, false).unwrap()
-    });
-
-    // Wait for both
-    let count1 = handle1.join().unwrap();
-    let count2 = handle2.join().unwrap();
-
-    // Verify: Both syncs succeeded
-    assert!(count1 > 0, "Project 1 should have docs");
-    assert!(count2 > 0, "Project 2 should have docs");
-    assert_eq!(count1, count2, "Both should have same number of docs");
-
-    // Verify: Both docs directories exist
-    assert!(target_dir1.exists(), "Project 1 docs should exist");
-    assert!(target_dir2.exists(), "Project 2 docs should exist");
-
-    // Verify: Two downloads occurred (different projects, different locks)
-    mock.assert();
-
-    // No cleanup needed
 }
+

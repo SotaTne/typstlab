@@ -1,10 +1,10 @@
 //! Typst version command - show required and resolved versions
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use serde::Serialize;
 use typstlab_core::{
-    project::Project,
-    state::{ResolvedSource, State},
+    context::Context,
+    state::ResolvedSource,
 };
 
 #[derive(Debug, Serialize)]
@@ -17,36 +17,27 @@ struct VersionInfo {
 
 /// Execute `typstlab typst version` command
 pub fn execute_version(json: bool) -> Result<()> {
-    // Find project root
-    let project = Project::from_current_dir()?;
-    let root = &project.root;
+    let ctx = Context::builder().build()?;
+    execute_version_with_context(&ctx, json)
+}
 
-    // Get required version from config
-    let config = project.config();
+pub fn execute_version_with_context(ctx: &Context, json: bool) -> Result<()> {
+    let config = ctx.config.as_ref().ok_or_else(|| anyhow!("Not in a typstlab project"))?;
     let required_version = &config.typst.version;
-
-    // Try to load state to get resolved info
-    let state_path = root.join(".typstlab").join("state.json");
-    let state = if state_path.exists() {
-        State::load(&state_path).ok()
-    } else {
-        None
-    };
+    let state = ctx.state.as_ref();
 
     let version_info = VersionInfo {
         required_version: required_version.clone(),
         resolved_version: state
-            .as_ref()
             .and_then(|s| s.typst.as_ref())
             .map(|t| t.resolved_version.clone()),
-        resolved_source: state.as_ref().and_then(|s| s.typst.as_ref()).map(|t| {
+        resolved_source: state.and_then(|s| s.typst.as_ref()).map(|t| {
             match t.resolved_source {
                 ResolvedSource::Managed => "managed".to_string(),
                 ResolvedSource::System => "system".to_string(),
             }
         }),
         resolved_path: state
-            .as_ref()
             .and_then(|s| s.typst.as_ref())
             .map(|t| t.resolved_path.display().to_string()),
     };
@@ -76,14 +67,45 @@ pub fn execute_version(json: bool) -> Result<()> {
             if resolved_version != &version_info.required_version {
                 println!();
                 println!("⚠ Warning: Resolved version does not match required version");
-                println!("  Run `typstlab typst link --force` to refresh");
+                println!("  Run `typstlab setup` to refresh");
             }
         } else {
             println!();
             println!("Status: Not resolved");
-            println!("Run `typstlab typst link` to resolve Typst");
+            println!("Run `typstlab setup` to resolve Typst");
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use typstlab_testkit::temp_dir_in_workspace;
+    use typstlab_core::project::init_project;
+    use std::fs;
+
+    #[test]
+    fn test_execute_version_basic() {
+        let temp = temp_dir_in_workspace();
+        let project_dir = temp.path().to_path_buf();
+        init_project(&project_dir).unwrap();
+
+        // Update config with specific version
+        fs::write(project_dir.join("typstlab.toml"), r#"
+[project]
+name = "test-project"
+init_date = "2026-01-15"
+[typst]
+version = "0.12.0"
+"#).unwrap();
+
+        let ctx = Context::builder()
+            .project_root(project_dir)
+            .build()
+            .unwrap();
+
+        execute_version_with_context(&ctx, false).unwrap();
+    }
 }

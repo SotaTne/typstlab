@@ -54,11 +54,21 @@ pub use links::rewrite_docs_link;
 /// let count = docs::sync_docs("0.12.0", Path::new(".typstlab/kb/typst/docs"), false).unwrap();
 /// println!("Generated {} files", count);
 /// ```
+/// High-level API: Download and generate Typst documentation
 pub fn sync_docs(version: &str, target_dir: &Path, verbose: bool) -> Result<usize, DocsError> {
+    let env = typstlab_core::context::Environment::from_env();
+    sync_docs_with_env(&env, version, target_dir, verbose)
+}
+
+/// Download and generate Typst documentation using specific environment
+pub fn sync_docs_with_env(
+    env: &typstlab_core::context::Environment,
+    version: &str,
+    target_dir: &Path,
+    verbose: bool,
+) -> Result<usize, DocsError> {
     // 1. Get central cache directory
-    let cache_root = crate::resolve::managed_docs_cache_dir().map_err(|e| {
-        DocsError::LockError(format!("Failed to get docs cache directory: {}", e))
-    })?;
+    let cache_root = env.docs_cache_dir();
     let cache_dir = cache_root.join(version);
     let manifest_path = cache_dir.join("manifest.lock");
 

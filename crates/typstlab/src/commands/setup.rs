@@ -1,4 +1,4 @@
-use crate::context::Context;
+use typstlab_core::context::Context;
 use anyhow::Result;
 
 pub fn run(verbose: bool) -> Result<()> {
@@ -7,17 +7,17 @@ pub fn run(verbose: bool) -> Result<()> {
     }
 
     // Load context (this implicitly sets up the project structure if needed)
-    let ctx = Context::new(verbose)?;
+    let ctx = Context::builder().verbose(verbose).build()?;
 
     // Resolve and install Typst toolchain based on typstlab.toml
     let resolve_options = typstlab_typst::resolve::ResolveOptions {
-        required_version: ctx.config.typst.version.clone(),
-        project_root: ctx.project.root.clone(),
+        required_version: ctx.config.as_ref().expect("Config not found").typst.version.clone(),
+        project_root: ctx.project.as_ref().expect("Project not found").root.clone(),
         force_refresh: true, // "毎回installしなおします" に対応
     };
 
     if verbose {
-        println!("→ Resolving Typst v{}...", ctx.config.typst.version);
+        println!("→ Resolving Typst v{}...", ctx.config.as_ref().expect("Config not found").typst.version);
     }
 
     let result = typstlab_typst::resolve::resolve_typst(resolve_options)?;
@@ -34,9 +34,9 @@ pub fn run(verbose: bool) -> Result<()> {
             }
 
             // Create shim and update state (same as typst install)
-            crate::commands::typst::util::create_bin_shim(&ctx.project.root, &info.path)?;
+            crate::commands::typst::util::create_bin_shim(&ctx.project.as_ref().expect("Project not found").root, &info.path)?;
             crate::commands::typst::util::update_state(
-                &ctx.project.root,
+                &ctx.project.as_ref().expect("Project not found").root,
                 &info.path,
                 &info.version,
                 info.source.to_string(),
@@ -53,7 +53,7 @@ pub fn run(verbose: bool) -> Result<()> {
             if verbose {
                 println!("→ Syncing documentation...");
             }
-            let docs_target = ctx.project.root.join(".typstlab/kb/typst/docs");
+            let docs_target = ctx.project.as_ref().expect("Project not found").root.join(".typstlab/kb/typst/docs");
             typstlab_typst::docs::sync_docs(&info.version, &docs_target, verbose)?;
 
             if verbose {
