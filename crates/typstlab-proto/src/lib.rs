@@ -68,10 +68,12 @@ where
 }
 
 pub trait Artifact: Entity {
+    type Error: std::error::Error;
+
     fn root(&self) -> PathBuf;
     fn is_success(&self) -> bool;
     fn error(&self) -> Option<String>;
-    fn files(&self) -> Result<Vec<PathBuf>, String>;
+    fn files(&self) -> Result<Vec<PathBuf>, Self::Error>;
 }
 
 pub trait CliSpeaker<Event, Error, Output> {
@@ -89,5 +91,7 @@ pub trait McpSpeaker<Event, Error, Output> {
 }
 
 pub trait Validatable {
-    fn validate(&self) -> Result<(), String>;
+    type Error: std::error::Error;
+
+    fn validate(&self) -> Result<(), Self::Error>;
 }

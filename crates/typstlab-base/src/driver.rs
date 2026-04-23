@@ -24,13 +24,18 @@ pub enum TypstCommand {
 
 impl TypstCommand {
     /// そのコマンドを実行するために必要な最低限のバージョン条件
-    pub fn required_version(&self) -> VersionReq {
+    pub fn required_version(&self) -> Result<VersionReq> {
         match self {
-            TypstCommand::Compile { .. } => VersionReq::parse(">=0.1.0").unwrap(),
-            TypstCommand::Query { .. } => VersionReq::parse(">=0.5.0").unwrap(),
-            TypstCommand::Update => VersionReq::parse(">=0.11.0").unwrap(),
-            TypstCommand::Version => VersionReq::parse("*").unwrap(),
-            TypstCommand::Raw { require, .. } => require.clone(),
+            TypstCommand::Compile { .. } => VersionReq::parse(">=0.1.0")
+                .map_err(|error| anyhow!("invalid compile version requirement: {}", error)),
+            TypstCommand::Query { .. } => VersionReq::parse(">=0.5.0")
+                .map_err(|error| anyhow!("invalid query version requirement: {}", error)),
+            TypstCommand::Update => VersionReq::parse(">=0.11.0")
+                .map_err(|error| anyhow!("invalid update version requirement: {}", error)),
+            TypstCommand::Version => {
+                VersionReq::parse("*").map_err(|error| anyhow!("invalid version requirement: {}", error))
+            }
+            TypstCommand::Raw { require, .. } => Ok(require.clone()),
         }
     }
 
@@ -91,7 +96,7 @@ impl TypstDriver {
         // 1. バージョンガード (Version コマンド自体の場合はガードをスキップして無限再帰を防ぐ)
         if !matches!(command, TypstCommand::Version) {
             let current_v = self.get_version()?;
-            let required_req = command.required_version();
+            let required_req = command.required_version()?;
 
             if !required_req.matches(&current_v) {
                 return Err(anyhow!(
@@ -112,9 +117,10 @@ impl TypstDriver {
 
         let output = Command::new(&self.binary_path).args(args).output()?;
         let duration = start.elapsed().as_millis() as u64;
+        let exit_code = output.status.code().map_or(-1, |code| code);
 
         Ok(ExecutionResult {
-            exit_code: output.status.code().unwrap_or(-1),
+            exit_code,
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
             duration_ms: duration,
