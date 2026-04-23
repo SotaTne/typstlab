@@ -2837,6 +2837,7 @@ dependencies = [
  "clap",
  "colored 3.0.0",
  "dirs",
+ "tempfile",
  "thiserror 2.0.17",
  "typstlab-app",
  "typstlab-base",
