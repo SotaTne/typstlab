@@ -1,7 +1,7 @@
 use typstlab_proto::{Action, Entity, Collection};
-use crate::models::{Project, Paper, ManagedStore};
+use crate::models::{Project, ManagedStore};
 use crate::actions::resolve_typst::StoreError;
-use crate::actions::discovery::DiscoveryError;
+use crate::actions::discovery::{DiscoveryAction, DiscoveryError};
 use typstlab_base::driver::{TypstDriver, TypstCommand};
 use std::path::PathBuf;
 use thiserror::Error;
@@ -14,8 +14,8 @@ pub enum BuildError {
     ConfigLoadError(String),
     #[error("Environment failure: Resource resolution failed: {0:?}")]
     ResolutionError(Vec<StoreError>),
-    #[error("Discovery failure: Failed to list target papers: {0}")]
-    DiscoveryError(String),
+    #[error("Discovery failure: {0}")]
+    GeneralDiscoveryError(String),
     #[error("No targets: No papers found to build")]
     NoTargetsFound,
     #[error("Execution failure for '{paper_id}': {error}")]
@@ -30,21 +30,26 @@ pub enum BuildError {
 #[derive(Debug, Clone)]
 pub enum BuildEvent {
     ProjectLoaded { name: String },
+    DiscoveryStarted { inputs: Vec<String> },
     ResolvingTypst { version: String },
     DiscoveredTargets { count: usize },
     Starting { paper_id: String },
-    Finished { paper_id: String, output_path: PathBuf },
+    Finished { 
+        paper_id: String, 
+        output_path: PathBuf, 
+        duration_ms: u64 
+    },
 }
 
 pub struct BuildAction {
     pub project: Project,
     pub store: ManagedStore,
-    pub targets: Option<Vec<Paper>>,
+    pub inputs: Option<Vec<String>>,
 }
 
 impl BuildAction {
-    pub fn new(project: Project, store: ManagedStore, targets: Option<Vec<Paper>>) -> Self {
-        Self { project, store, targets }
+    pub fn new(project: Project, store: ManagedStore, inputs: Option<Vec<String>>) -> Self {
+        Self { project, store, inputs }
     }
 }
 
@@ -53,7 +58,7 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
     {
         let mut errors = Vec::new();
 
-        // 1. 環境の準備
+        // 1. 設定のロード
         let config = match self.project.load_config() {
             Ok(c) => c,
             Err(e) => return Err(vec![BuildError::ConfigLoadError(e.to_string())]),
@@ -63,14 +68,21 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
             name: config.project.name.clone() 
         });
 
-        // 2. ターゲットの確定
-        let targets: Vec<Paper> = if let Some(t) = &self.targets {
-            t.clone()
-        } else {
-            let scope = self.project.papers_scope();
-            match scope.list() {
+        // 2. ターゲットの特定
+        let targets = if let Some(inputs) = &self.inputs {
+            monitor(BuildEvent::DiscoveryStarted { inputs: inputs.clone() });
+            let discovery = DiscoveryAction {
+                scope: self.project.papers_scope(),
+                inputs: inputs.clone(),
+            };
+            match discovery.run(&mut |_| {}) {
                 Ok(t) => t,
-                Err(e) => return Err(vec![BuildError::DiscoveryError(e.to_string())]),
+                Err(e) => return Err(vec![BuildError::Discovery(e)]),
+            }
+        } else {
+            match self.project.papers_scope().list() {
+                Ok(t) => t,
+                Err(e) => return Err(vec![BuildError::GeneralDiscoveryError(e.to_string())]),
             }
         };
 
@@ -89,20 +101,37 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
         };
         let driver = TypstDriver::new(typst.path());
 
-        // 4. 各ターゲットのビルド実行
+        // 4. 成果物領土の準備
+        let artifact_scope = self.project.build_artifact_scope();
+
+        // 5. 各ターゲットのビルド実行
         for paper in targets {
             monitor(BuildEvent::Starting { paper_id: paper.id.clone() });
 
+            // 出力先の決定 (dist/paper_id/output_name.pdf)
+            let paper_dist_root = artifact_scope.paper_dist_path(&paper.id);
+            
+            // ディレクトリの作成を保証
+            if let Err(e) = std::fs::create_dir_all(&paper_dist_root) {
+                errors.push(BuildError::IoError(e));
+                continue;
+            }
+
+            // ベース名 + .pdf
+            let output_filename = format!("{}.pdf", paper.output_base_name());
+            let output_path = paper_dist_root.join(output_filename);
+
             let command = TypstCommand::Compile {
                 source: paper.main_typ_path(),
-                output: None,
+                output: Some(output_path.clone()),
             };
 
             match driver.execute(command) {
                 Ok(res) if res.exit_code == 0 => {
                     monitor(BuildEvent::Finished {
                         paper_id: paper.id.clone(),
-                        output_path: paper.path().join("main.pdf"),
+                        output_path,
+                        duration_ms: res.duration_ms,
                     });
                 }
                 Ok(res) => {

@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use typstlab_proto::Entity;
 use serde::{Deserialize, Serialize};
 
+/// paper.toml のスキーマ定義
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PaperConfig {
     pub paper: PaperInfo,
@@ -12,6 +13,9 @@ pub struct PaperInfo {
     pub title: String,
     #[serde(default = "default_entry_point")]
     pub entry_point: String,
+    /// 成果物のベース名
+    #[serde(default = "default_output_name")]
+    pub output_name: String,
 }
 
 impl Default for PaperConfig {
@@ -20,6 +24,7 @@ impl Default for PaperConfig {
             paper: PaperInfo {
                 title: "Untitled Paper".to_string(),
                 entry_point: default_entry_point(),
+                output_name: default_output_name(),
             },
         }
     }
@@ -27,6 +32,10 @@ impl Default for PaperConfig {
 
 fn default_entry_point() -> String {
     "main.typ".to_string()
+}
+
+fn default_output_name() -> String {
+    "main".to_string()
 }
 
 #[derive(Clone, Debug)]
@@ -53,6 +62,11 @@ impl Paper {
 
     pub fn config(&self) -> PaperConfig {
         self.load_config().unwrap_or_default()
+    }
+
+    /// 成果物のベース名を取得
+    pub fn output_base_name(&self) -> String {
+        self.config().paper.output_name
     }
 
     pub fn main_typ_path(&self) -> PathBuf {

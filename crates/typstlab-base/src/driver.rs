@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use semver::{Version, VersionReq};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 /// Typst の主要なコマンドを型定義
@@ -65,6 +65,7 @@ pub struct ExecutionResult {
     pub exit_code: i32,
     pub stdout: String,
     pub stderr: String,
+    pub duration_ms: u64,
 }
 
 impl TypstDriver {
@@ -75,7 +76,7 @@ impl TypstDriver {
     /// 現在のバイナリのバージョンを取得 (再帰を避けるため raw 実行を使用)
     pub fn get_version(&self) -> Result<Version> {
         let res = self.execute_raw(TypstCommand::Version.to_args())?;
-        
+
         let v_str = res
             .stdout
             .split_whitespace()
@@ -106,12 +107,17 @@ impl TypstDriver {
     }
 
     fn execute_raw(&self, args: Vec<String>) -> Result<ExecutionResult> {
+        use std::time::Instant;
+        let start = Instant::now();
+
         let output = Command::new(&self.binary_path).args(args).output()?;
+        let duration = start.elapsed().as_millis() as u64;
 
         Ok(ExecutionResult {
             exit_code: output.status.code().unwrap_or(-1),
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            duration_ms: duration,
         })
     }
 }

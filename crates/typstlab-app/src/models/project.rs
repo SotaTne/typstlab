@@ -1,4 +1,5 @@
 use crate::models::paper_scope::PaperScope;
+use crate::models::build_artifact_scope::BuildArtifactScope;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use typstlab_proto::Entity;
@@ -69,14 +70,14 @@ impl Project {
         self.load_config().map(|c| c.structure).unwrap_or_default()
     }
 
-    /// 成果物ディレクトリの絶対パス
-    pub fn dist_dir(&self) -> PathBuf {
-        self.root.join(&self.structure().dist_dir)
-    }
-
     /// プロジェクトの論文スコープ（領土）を取得
     pub fn papers_scope(&self) -> PaperScope {
         PaperScope::new(self.root.clone(), self.structure().papers_dir)
+    }
+
+    /// プロジェクトの成果物スコープを取得
+    pub fn build_artifact_scope(&self) -> BuildArtifactScope {
+        BuildArtifactScope::new(self.root.clone(), self.structure().dist_dir)
     }
 }
 

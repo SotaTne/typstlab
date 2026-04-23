@@ -9,6 +9,9 @@ impl McpSpeaker<BuildEvent, BuildError, ()> for McpBuildPresenter {
             BuildEvent::ProjectLoaded { name } => {
                 format!("Project loaded: {}", name)
             }
+            BuildEvent::DiscoveryStarted { inputs } => {
+                format!("Identifying targets for inputs: {:?}", inputs)
+            }
             BuildEvent::ResolvingTypst { version } => {
                 format!("Checking Typst version: {}", version)
             }
@@ -18,8 +21,8 @@ impl McpSpeaker<BuildEvent, BuildError, ()> for McpBuildPresenter {
             BuildEvent::Starting { paper_id } => {
                 format!("Starting build for paper: {}", paper_id)
             }
-            BuildEvent::Finished { paper_id, output_path } => {
-                format!("SUCCESS: Build for '{}' completed. Output: {}", paper_id, output_path.display())
+            BuildEvent::Finished { paper_id, output_path, duration_ms } => {
+                format!("SUCCESS: Build for '{}' completed in {}ms. Output: {}", paper_id, duration_ms, output_path.display())
             }
         }
     }

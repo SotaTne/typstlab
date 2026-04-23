@@ -5,7 +5,6 @@ use colored::Colorize;
 use thiserror::Error;
 use typstlab_app::{
     BootstrapAction, BootstrapEvent, BootstrapError, 
-    DiscoveryAction, DiscoveryError,
 };
 use typstlab_proto::{Action, CliSpeaker};
 
@@ -39,15 +38,14 @@ pub struct CliAction {
 #[derive(Debug)]
 pub enum CliEvent {
     Bootstrap(BootstrapEvent),
-    // 今後、他のグローバルイベントがあれば追加
+    // コマンド実行中のイベントは各コマンドのプレゼンターが直接受けるか、
+    // あるいはここでラップして RootPresenter に流す
 }
 
 #[derive(Error, Debug)]
 pub enum CliError {
     #[error("Initialization failed: {0}")]
     Bootstrap(#[from] BootstrapError),
-    #[error("Target discovery failed: {0:?}")]
-    Discovery(Vec<DiscoveryError>),
     #[error("Command failed: {0}")]
     Command(String),
     #[error("System error: {0}")]
@@ -69,24 +67,11 @@ impl Action<(), CliEvent, CliError> for CliAction {
         let ctx = bootstrap.run(&mut |e| monitor(CliEvent::Bootstrap(e)))
             .map_err(|errors| errors.into_iter().map(CliError::Bootstrap).collect::<Vec<_>>())?;
 
-        // 3. コマンドへの振り分け
+        // 3. コマンドへの振り分け (ロジックは各 Action 内へ)
         match &self.cli.command {
             Commands::Build { papers } => {
-                // ターゲットの特定 (DiscoveryAction を使用)
-                let targets = if !papers.is_empty() {
-                    let discovery = DiscoveryAction {
-                        scope: ctx.project.papers_scope(),
-                        inputs: papers.clone(),
-                    };
-                    // 特定に失敗してもエラーを集約して Speaker に渡す
-                    let resolved = discovery.run(&mut |_| {})
-                        .map_err(|errs| vec![CliError::Discovery(errs)])?;
-                    Some(resolved)
-                } else {
-                    None
-                };
-
-                commands::build::run(ctx, targets)
+                let inputs = if papers.is_empty() { None } else { Some(papers.clone()) };
+                commands::build::run(ctx, inputs)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
             }
         }
@@ -115,11 +100,6 @@ impl CliSpeaker<CliEvent, CliError, ()> for RootPresenter {
                             println!("{} Typst {} not found, preparing to download...", "📥".yellow(), version);
                         }
                     }
-                    BootstrapEvent::ResolvingDocs { version, event } => {
-                        if let ResolveEvent::CacheMiss = event {
-                            println!("{} Documentation for {} not found, syncing...", "📥".yellow(), version);
-                        }
-                    }
                     BootstrapEvent::Ready => {
                         println!("{} Environment initialized.", "✅".green());
                     }
@@ -130,17 +110,7 @@ impl CliSpeaker<CliEvent, CliError, ()> for RootPresenter {
     }
 
     fn render_error(&self, error: &CliError) {
-        match error {
-            CliError::Discovery(errs) => {
-                println!("\n{}", "Failed to resolve some targets:".red().bold());
-                for err in errs {
-                    eprintln!("  {} {}", "•".red(), err);
-                }
-            }
-            _ => {
-                eprintln!("\n{} {}", "💥 ERROR:".red().bold(), error);
-            }
-        }
+        eprintln!("\n{} {}", "💥 ERROR:".red().bold(), error);
     }
 
     fn render_result(&self, _output: &()) {
