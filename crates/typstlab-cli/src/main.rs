@@ -27,9 +27,9 @@ pub enum Commands {
     },
     /// Create a new project
     New {
-        /// Project name
-        name: String,
-        /// Optional path to create the project (defaults to name)
+        /// Project name (optional, defaults to current directory name)
+        name: Option<String>,
+        /// Optional path to create the project (defaults to .)
         path: Option<String>,
     },
 }
