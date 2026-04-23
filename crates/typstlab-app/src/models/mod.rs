@@ -10,7 +10,7 @@ pub mod typst;
 pub use build_artifact::BuildArtifact;
 pub use build_artifact_scope::BuildArtifactScope;
 pub use docs::Docs;
-pub use paper::Paper;
+pub use paper::{Paper, PaperConfig, PaperError, PaperHandle};
 pub use paper_scope::{CollectionError, PaperScope};
 pub use project::{Project, ProjectConfig, ProjectError, ProjectHandle};
 pub use store::ManagedStore;

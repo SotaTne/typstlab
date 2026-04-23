@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use typstlab_proto::Entity;
+use thiserror::Error;
+use typstlab_proto::{Entity, Loadable, Loaded};
 
 /// paper.toml のスキーマ定義
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -38,6 +39,14 @@ fn default_output_name() -> String {
     "main".to_string()
 }
 
+#[derive(Error, Debug)]
+pub enum PaperError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("TOML parse error: {0}")]
+    Parse(#[from] toml::de::Error),
+}
+
 #[derive(Clone, Debug)]
 pub struct Paper {
     pub id: String,
@@ -53,26 +62,6 @@ impl Paper {
     pub fn config_path(&self) -> PathBuf {
         self.absolute_path.join("paper.toml")
     }
-
-    pub fn load_config(&self) -> anyhow::Result<PaperConfig> {
-        let content = std::fs::read_to_string(self.config_path())?;
-        let config: PaperConfig = toml::from_str(&content)?;
-        Ok(config)
-    }
-
-    pub fn config(&self) -> PaperConfig {
-        self.load_config().unwrap_or_default()
-    }
-
-    /// 成果物のベース名を取得
-    pub fn output_base_name(&self) -> String {
-        self.config().paper.output_name
-    }
-
-    pub fn main_typ_path(&self) -> PathBuf {
-        let entry = self.config().paper.entry_point;
-        self.absolute_path.join(entry)
-    }
 }
 
 impl Entity for Paper {
@@ -81,10 +70,43 @@ impl Entity for Paper {
     }
 }
 
+impl Loadable for Paper {
+    type Config = PaperConfig;
+    type Error = PaperError;
+
+    fn load_from_disk(&self) -> Result<Self::Config, Self::Error> {
+        let content = std::fs::read_to_string(self.config_path())?;
+        let config: PaperConfig = toml::from_str(&content)?;
+        Ok(config)
+    }
+}
+
+pub trait PaperHandle {
+    fn output_base_name(&self) -> &str;
+    fn main_typ_path(&self) -> PathBuf;
+    fn paper_id(&self) -> &str;
+}
+
+impl PaperHandle for Loaded<Paper, PaperConfig> {
+    fn output_base_name(&self) -> &str {
+        &self.config.paper.output_name
+    }
+
+    fn main_typ_path(&self) -> PathBuf {
+        self.actual.absolute_path.join(&self.config.paper.entry_point)
+    }
+
+    fn paper_id(&self) -> &str {
+        &self.actual.id
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::PaperConfig;
+    use super::{Paper, PaperConfig, PaperError, PaperHandle};
     use std::path::PathBuf;
+    use tempfile::TempDir;
+    use typstlab_proto::Loadable;
 
     #[test]
     fn test_config_deserializes_entry_point_as_pathbuf() {
@@ -101,6 +123,57 @@ mod tests {
         assert_eq!(
             config.paper.entry_point,
             PathBuf::from("src").join("main.typ")
+        );
+    }
+
+    #[test]
+    fn test_load_fails_for_invalid_config_instead_of_falling_back_to_default() {
+        let temp = TempDir::new().unwrap();
+        let paper_root = temp.path().join("p01");
+        std::fs::create_dir_all(&paper_root).unwrap();
+        std::fs::write(paper_root.join("paper.toml"), "[paper]\ntitle = [").unwrap();
+
+        let paper = Paper {
+            id: "p01".to_string(),
+            absolute_path: paper_root,
+        };
+
+        let error = match paper.load() {
+            Ok(_) => panic!("expected invalid paper config to fail loading"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, PaperError::Parse(_)));
+    }
+
+    #[test]
+    fn test_loaded_paper_exposes_output_and_entry_paths() {
+        let temp = TempDir::new().unwrap();
+        let paper_root = temp.path().join("p01");
+        std::fs::create_dir_all(&paper_root).unwrap();
+        std::fs::write(
+            paper_root.join("paper.toml"),
+            r#"
+                [paper]
+                title = "Demo"
+                entry_point = "src/main.typ"
+                output_name = "camera-ready"
+            "#,
+        )
+        .unwrap();
+
+        let paper = Paper {
+            id: "p01".to_string(),
+            absolute_path: paper_root.clone(),
+        };
+
+        let loaded_paper = paper.load().unwrap();
+
+        assert_eq!(loaded_paper.paper_id(), "p01");
+        assert_eq!(loaded_paper.output_base_name(), "camera-ready");
+        assert_eq!(
+            loaded_paper.main_typ_path(),
+            paper_root.join("src").join("main.typ")
         );
     }
 }

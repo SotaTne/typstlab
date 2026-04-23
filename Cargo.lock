@@ -2809,6 +2809,7 @@ dependencies = [
  "colored 3.0.0",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.17",
  "toml",
  "typstlab-base",

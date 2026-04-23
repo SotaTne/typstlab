@@ -1,9 +1,12 @@
 use crate::actions::discovery::{DiscoveryAction, DiscoveryError};
 use crate::actions::resolve_typst::StoreError;
-use crate::models::{CollectionError, ManagedStore, Project, ProjectConfig, ProjectHandle};
+use crate::models::{
+    CollectionError, ManagedStore, PaperError, PaperHandle, Project, ProjectConfig,
+    ProjectHandle,
+};
 use thiserror::Error;
 use typstlab_base::driver::{TypstCommand, TypstDriver};
-use typstlab_proto::{Action, Collection, Entity, Loaded};
+use typstlab_proto::{Action, Collection, Entity, Loadable, Loaded};
 
 #[derive(Error, Debug)]
 pub enum BuildError {
@@ -17,6 +20,12 @@ pub enum BuildError {
     NoTargetsFound,
     #[error("Build failed for artifact: {0:?}")]
     PaperBuildError(crate::models::BuildArtifact),
+    #[error("Failed to load paper '{paper_id}': {source}")]
+    PaperLoadError {
+        paper_id: String,
+        #[source]
+        source: PaperError,
+    },
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -117,12 +126,26 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
 
         // 5. 各ターゲットのビルド実行
         for paper in targets {
+            let paper_id = paper.id.clone();
+            let loaded_paper = match paper.load() {
+                Ok(loaded_paper) => loaded_paper,
+                Err(source) => {
+                    errors.push(BuildError::PaperLoadError {
+                        paper_id,
+                        source,
+                    });
+                    continue;
+                }
+            };
+
             monitor(BuildEvent::Starting {
-                paper_id: paper.id.clone(),
+                paper_id: loaded_paper.paper_id().to_string(),
             });
 
             // 領土階層から成果物実体（Artifact）を生成
-            let mut artifact = artifact_scope.paper_scope(&paper.id).format_artifact("pdf");
+            let mut artifact = artifact_scope
+                .paper_scope(loaded_paper.paper_id())
+                .format_artifact("pdf");
 
             if let Err(e) = std::fs::create_dir_all(artifact.path()) {
                 errors.push(BuildError::IoError(e));
@@ -131,10 +154,10 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
 
             let output_path = artifact
                 .path()
-                .join(format!("{}.pdf", paper.output_base_name()));
+                .join(format!("{}.pdf", loaded_paper.output_base_name()));
 
             let command = TypstCommand::Compile {
-                source: paper.main_typ_path(),
+                source: loaded_paper.main_typ_path(),
                 output: Some(output_path),
             };
 
