@@ -1,13 +1,12 @@
-use typstlab_proto::Action;
-use crate::models::{Paper, PaperScope};
-use typstlab_proto::Collection;
+use typstlab_proto::{Action, Collection, Model};
 use thiserror::Error;
+use std::fmt::Debug;
 
 #[derive(Error, Debug)]
 pub enum DiscoveryError {
-    #[error("Paper not found for input: '{0}'")]
+    #[error("Entity not found for input: '{0}'")]
     NotFound(String),
-    #[error("Failed to resolve paper for input '{input}': {source}")]
+    #[error("Failed to resolve entity for input '{input}': {source}")]
     ResolveFailed {
         input: String,
         #[source]
@@ -15,24 +14,29 @@ pub enum DiscoveryError {
     },
 }
 
-/// 曖昧な入力から実体を特定するアクション
-pub struct DiscoveryAction {
-    pub scope: PaperScope,
+/// 曖昧な入力から実体(Model)を特定するアクション
+pub struct DiscoveryAction<S> 
+{
+    pub scope: S,
     pub inputs: Vec<String>,
 }
 
-impl Action<Vec<Paper>, (), (), DiscoveryError> for DiscoveryAction {
+impl<T, S> Action<Vec<T>, (), (), DiscoveryError> for DiscoveryAction<S> 
+where 
+    T: Model + Debug,
+    S: Collection<T, crate::models::CollectionError>
+{
     fn run(
         self,
         _monitor: &mut dyn FnMut(()),
         _warning: &mut dyn FnMut(()),
-    ) -> Result<Vec<Paper>, Vec<DiscoveryError>> {
-        let mut papers = Vec::new();
+    ) -> Result<Vec<T>, Vec<DiscoveryError>> {
+        let mut results = Vec::new();
         let mut errors = Vec::new();
 
         for input in &self.inputs {
             match self.scope.resolve(input) {
-                Ok(Some(paper)) => papers.push(paper),
+                Ok(Some(item)) => results.push(item),
                 Ok(None) => errors.push(DiscoveryError::NotFound(input.clone())),
                 Err(source) => errors.push(DiscoveryError::ResolveFailed {
                     input: input.clone(),
@@ -42,7 +46,7 @@ impl Action<Vec<Paper>, (), (), DiscoveryError> for DiscoveryAction {
         }
 
         if errors.is_empty() {
-            Ok(papers)
+            Ok(results)
         } else {
             Err(errors)
         }

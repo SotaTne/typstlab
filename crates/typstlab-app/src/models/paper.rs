@@ -1,7 +1,55 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
-use typstlab_proto::{Entity, Loadable, Loaded, PAPER_SETTING_FILE};
+use typstlab_proto::{Creatable, Loadable, Loaded, PAPER_SETTING_FILE};
+
+// ... (PaperConfig, PaperInfo 等は既存のまま)
+
+pub struct PaperCreationArgs {
+    pub title: String,
+}
+
+impl Creatable for Paper {
+    type Args = PaperCreationArgs;
+    type Config = PaperConfig;
+    type Error = PaperError;
+
+    fn initialize(self, args: Self::Args) -> Result<Loaded<Self, Self::Config>, Self::Error> {
+        Ok(Loaded {
+            actual: self,
+            config: PaperConfig {
+                paper: PaperInfo {
+                    title: args.title,
+                    entry_point: default_entry_point(),
+                    output_name: default_output_name(),
+                },
+            },
+        })
+    }
+
+    fn persist(loaded: &Loaded<Self, Self::Config>) -> Result<(), Self::Error> {
+        let toml_content = toml::to_string_pretty(&loaded.config)
+            .map_err(PaperError::Serialize)?;
+
+        if !loaded.actual.absolute_path.exists() {
+
+            std::fs::create_dir_all(&loaded.actual.absolute_path)?;
+        }
+
+        std::fs::write(loaded.actual.config_path(), toml_content)?;
+
+        // デフォルトの main.typ が存在しない場合は作成
+        let main_typ = loaded.main_typ_path();
+        if !main_typ.exists() {
+            if let Some(parent) = main_typ.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(main_typ, "= Untitled Paper\n\nStart writing here.")?;
+        }
+
+        Ok(())
+    }
+}
 
 /// paper.toml のスキーマ定義
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -45,12 +93,22 @@ pub enum PaperError {
     Io(#[from] std::io::Error),
     #[error("TOML parse error: {0}")]
     Parse(#[from] toml::de::Error),
+    #[error("TOML serialize error: {0}")]
+    Serialize(#[from] toml::ser::Error),
 }
 
 #[derive(Clone, Debug)]
 pub struct Paper {
     pub id: String,
     pub absolute_path: PathBuf,
+}
+
+typstlab_proto::impl_entity! {
+    Paper {
+        fn path(&self) -> PathBuf {
+            self.absolute_path.clone()
+        }
+    }
 }
 
 impl Paper {
@@ -61,12 +119,6 @@ impl Paper {
 
     pub fn config_path(&self) -> PathBuf {
         self.absolute_path.join(PAPER_SETTING_FILE)
-    }
-}
-
-impl Entity for Paper {
-    fn path(&self) -> PathBuf {
-        self.absolute_path.clone()
     }
 }
 
@@ -93,7 +145,9 @@ impl PaperHandle for Loaded<Paper, PaperConfig> {
     }
 
     fn main_typ_path(&self) -> PathBuf {
-        self.actual.absolute_path.join(&self.config.paper.entry_point)
+        self.actual
+            .absolute_path
+            .join(&self.config.paper.entry_point)
     }
 
     fn paper_id(&self) -> &str {

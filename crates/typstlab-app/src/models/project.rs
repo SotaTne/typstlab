@@ -74,6 +74,8 @@ pub struct StructureConfig {
     pub papers_dir: PathBuf,
     #[serde(default = "default_dist_dir")]
     pub dist_dir: PathBuf,
+    #[serde(default = "default_templates_dir")]
+    pub templates_dir: PathBuf,
 }
 
 impl Default for StructureConfig {
@@ -81,6 +83,7 @@ impl Default for StructureConfig {
         Self {
             papers_dir: default_papers_dir(),
             dist_dir: default_dist_dir(),
+            templates_dir: default_templates_dir(),
         }
     }
 }
@@ -91,9 +94,20 @@ fn default_papers_dir() -> PathBuf {
 fn default_dist_dir() -> PathBuf {
     PathBuf::from("dist")
 }
+fn default_templates_dir() -> PathBuf {
+    PathBuf::from("templates")
+}
 
 pub struct Project {
     pub root: PathBuf,
+}
+
+typstlab_proto::impl_entity! {
+    Project {
+        fn path(&self) -> PathBuf {
+            self.root.clone()
+        }
+    }
 }
 
 impl Project {
@@ -103,12 +117,6 @@ impl Project {
 
     pub fn config_path(&self) -> PathBuf {
         self.root.join(PROJECT_SETTING_FILE)
-    }
-}
-
-impl Entity for Project {
-    fn path(&self) -> PathBuf {
-        self.root.clone()
     }
 }
 
@@ -163,6 +171,7 @@ impl Creatable for Project {
 
 pub trait ProjectHandle {
     fn papers_scope(&self) -> PaperScope;
+    fn templates_scope(&self) -> crate::models::template_scope::TemplateScope;
     fn build_artifact_scope(&self) -> BuildArtifactScope;
     fn name(&self) -> &str;
     fn typst_version(&self) -> &str;
@@ -173,6 +182,13 @@ impl ProjectHandle for Loaded<Project, ProjectConfig> {
         PaperScope::new(
             self.actual.root.clone(),
             self.config.structure.papers_dir.clone(),
+        )
+    }
+
+    fn templates_scope(&self) -> crate::models::template_scope::TemplateScope {
+        crate::models::template_scope::TemplateScope::new(
+            self.actual.root.clone(),
+            self.config.structure.templates_dir.clone(),
         )
     }
 
@@ -212,6 +228,7 @@ mod tests {
                 structure: StructureConfig {
                     papers_dir: PathBuf::from("content").join("papers"),
                     dist_dir: PathBuf::from("out").join("dist"),
+                    templates_dir: PathBuf::from("assets").join("templates"),
                 },
             },
         }

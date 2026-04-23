@@ -13,6 +13,10 @@ pub enum TypstCommand {
         source: PathBuf,
         selector: String,
     },
+    Init {
+        template: String,
+        output: Option<PathBuf>,
+    },
     Update,
     Version,
     /// 生の引数を直接渡す実行（バージョンガード付き）
@@ -30,6 +34,8 @@ impl TypstCommand {
                 .map_err(|error| anyhow!("invalid compile version requirement: {}", error)),
             TypstCommand::Query { .. } => VersionReq::parse(">=0.5.0")
                 .map_err(|error| anyhow!("invalid query version requirement: {}", error)),
+            TypstCommand::Init { .. } => VersionReq::parse(">=0.11.0")
+                .map_err(|error| anyhow!("invalid init version requirement: {}", error)),
             TypstCommand::Update => VersionReq::parse(">=0.11.0")
                 .map_err(|error| anyhow!("invalid update version requirement: {}", error)),
             TypstCommand::Version => {
@@ -54,6 +60,13 @@ impl TypstCommand {
                     source.to_string_lossy().to_string(),
                     selector.clone(),
                 ]
+            }
+            TypstCommand::Init { template, output } => {
+                let mut args = vec!["init".to_string(), template.clone()];
+                if let Some(out) = output {
+                    args.push(out.to_string_lossy().to_string());
+                }
+                args
             }
             TypstCommand::Update => vec!["update".to_string()],
             TypstCommand::Version => vec!["--version".to_string()],

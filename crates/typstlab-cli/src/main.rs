@@ -33,6 +33,28 @@ pub enum Commands {
         /// Optional path to create the project (defaults to .)
         path: Option<String>,
     },
+    /// Generate a new paper or template
+    Gen {
+        #[command(subcommand)]
+        subcommand: GenCommands,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum GenCommands {
+    /// Create a new paper
+    Paper {
+        /// Paper ID (directory name)
+        id: String,
+        /// Optional template name or Typst package
+        #[arg(short, long)]
+        template: Option<String>,
+    },
+    /// Create a new template
+    Template {
+        /// Template ID (directory name)
+        id: String,
+    },
 }
 
 pub struct CliAction {
@@ -50,8 +72,13 @@ pub enum CliError {
     Bootstrap(#[from] BootstrapError),
     #[error("Command failed: {0}")]
     Command(String),
-    #[error("Project root not found from '{start}': no {config_file} found in current or parent directories")]
-    ProjectRootNotFound { start: PathBuf, config_file: &'static str },
+    #[error(
+        "Project root not found from '{start}': no {config_file} found in current or parent directories"
+    )]
+    ProjectRootNotFound {
+        start: PathBuf,
+        config_file: &'static str,
+    },
     #[error("System error: {0}")]
     System(String),
 }
@@ -80,6 +107,22 @@ impl Action<(), CliEvent, (), CliError> for CliAction {
                 };
                 commands::build::run(ctx, inputs)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
+            }
+
+            Commands::Gen { subcommand } => {
+                let ctx = bootstrap_context(&mut |e| monitor(CliEvent::Bootstrap(e)))
+                    .map_err(|error| vec![error])?;
+
+                match subcommand {
+                    GenCommands::Paper { id, template } => {
+                        commands::gen_paper::run(ctx, id.clone(), template.clone())
+                            .map_err(|e| vec![CliError::Command(e.to_string())])?;
+                    }
+                    GenCommands::Template { id } => {
+                        commands::gen_template::run(ctx, id.clone())
+                            .map_err(|e| vec![CliError::Command(e.to_string())])?;
+                    }
+                }
             }
         }
 

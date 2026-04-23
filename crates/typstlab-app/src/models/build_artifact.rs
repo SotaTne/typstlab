@@ -1,18 +1,20 @@
 use std::path::PathBuf;
-use typstlab_proto::{Artifact, Entity};
+use typstlab_proto::Artifact;
 
 /// ビルドの結果として生まれた事実を表す実体（証備）
 #[derive(Debug, Clone)]
 pub struct BuildArtifact {
-    pub root_name: PathBuf,    // 論理的なルート名 ("p01" や "p01/png")
+    pub root_name: PathBuf,     // 論理的なルート名 ("p01" や "p01/png")
     pub absolute_path: PathBuf, // 実際の絶対パス
     pub success: bool,
     pub error_message: Option<String>,
 }
 
-impl Entity for BuildArtifact {
-    fn path(&self) -> PathBuf {
-        self.absolute_path.clone()
+typstlab_proto::impl_entity! {
+    BuildArtifact {
+        fn path(&self) -> PathBuf {
+            self.absolute_path.clone()
+        }
     }
 }
 

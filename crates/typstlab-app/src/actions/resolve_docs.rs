@@ -1,10 +1,9 @@
 use crate::actions::resolve_typst::{ResolveEvent, StoreError};
-use crate::models::Docs;
-use std::path::PathBuf;
+use crate::models::{Docs, ManagedStore};
 use typstlab_proto::Action;
 
 pub struct ResolveDocsAction {
-    pub store_root: PathBuf,
+    pub store: ManagedStore,
     pub version: String,
 }
 
@@ -16,15 +15,12 @@ impl Action<Docs, ResolveEvent, (), StoreError> for ResolveDocsAction {
     ) -> Result<Docs, Vec<StoreError>> {
         monitor(ResolveEvent::CheckingCache);
 
-        let docs_path = self.store_root.join("docs").join(&self.version);
+        let docs_path = self.store.root.join("docs").join(&self.version);
 
         if docs_path.exists() {
             monitor(ResolveEvent::CacheHit);
             monitor(ResolveEvent::Completed);
-            return Ok(Docs {
-                version: self.version.clone(),
-                project_root: PathBuf::new(),
-            });
+            return Ok(Docs { path: docs_path });
         }
 
         monitor(ResolveEvent::CacheMiss);

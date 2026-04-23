@@ -2,6 +2,8 @@ pub mod bootstrap;
 pub mod build;
 pub mod create;
 pub mod discovery;
+pub mod gen_paper;
+pub mod gen_template;
 pub mod load;
 pub mod resolve_docs;
 pub mod resolve_typst;

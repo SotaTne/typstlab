@@ -1,10 +1,16 @@
-use std::path::PathBuf;
-use typstlab_proto::Entity;
 use crate::actions::resolve_typst::ResolveTypstAction;
-use crate::actions::resolve_docs::ResolveDocsAction;
+use std::path::PathBuf;
 
 pub struct ManagedStore {
     pub root: PathBuf,
+}
+
+typstlab_proto::impl_entity! {
+    ManagedStore {
+        fn path(&self) -> PathBuf {
+            self.root.clone()
+        }
+    }
 }
 
 impl ManagedStore {
@@ -12,7 +18,6 @@ impl ManagedStore {
         Self { root }
     }
 
-    /// Typst 解決用のアクションを生成
     pub fn typst_resolver(&self, version: &str) -> ResolveTypstAction {
         ResolveTypstAction {
             store_root: self.root.clone(),
@@ -20,17 +25,34 @@ impl ManagedStore {
         }
     }
 
-    /// Docs 解決用のアクションを生成
-    pub fn docs_resolver(&self, version: &str) -> ResolveDocsAction {
-        ResolveDocsAction {
-            store_root: self.root.clone(),
+    pub fn docs_resolver(&self, version: &str) -> crate::actions::resolve_docs::ResolveDocsAction {
+        crate::actions::resolve_docs::ResolveDocsAction {
+            store: self.clone(),
             version: version.to_string(),
+        }
+    }
+
+    pub fn typst_path(&self, version: &str) -> PathBuf {
+        self.root.join("typst").join(version)
+    }
+
+    pub fn typst_binary_path(&self, version: &str) -> PathBuf {
+        let base = self.typst_path(version);
+        #[cfg(windows)]
+        {
+            base.join("typst.exe")
+        }
+        #[cfg(not(windows))]
+        {
+            base.join("typst")
         }
     }
 }
 
-impl Entity for ManagedStore {
-    fn path(&self) -> PathBuf {
-        self.root.clone()
+impl Clone for ManagedStore {
+    fn clone(&self) -> Self {
+        Self {
+            root: self.root.clone(),
+        }
     }
 }

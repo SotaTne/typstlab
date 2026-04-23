@@ -1,10 +1,18 @@
+use crate::models::BuildArtifact;
 use std::path::PathBuf;
 use typstlab_proto::Entity;
 
-/// プロジェクト全体の成果物領土 (例: dist/)
 pub struct BuildArtifactScope {
     pub project_root: PathBuf,
     pub relative_path: PathBuf,
+}
+
+typstlab_proto::impl_entity! {
+    BuildArtifactScope {
+        fn path(&self) -> PathBuf {
+            self.project_root.join(&self.relative_path)
+        }
+    }
 }
 
 impl BuildArtifactScope {
@@ -15,30 +23,29 @@ impl BuildArtifactScope {
         }
     }
 
-    /// 特定の論文用の領土（区画）を取得
     pub fn paper_scope(&self, paper_id: &str) -> PaperArtifactScope {
         PaperArtifactScope {
-            root: self.path().join(paper_id),
             paper_id: paper_id.to_string(),
+            root: self.path().join(paper_id),
         }
     }
 }
 
-impl Entity for BuildArtifactScope {
-    fn path(&self) -> PathBuf {
-        self.project_root.join(&self.relative_path)
+pub struct PaperArtifactScope {
+    pub paper_id: String,
+    pub root: PathBuf,
+}
+
+typstlab_proto::impl_entity! {
+    PaperArtifactScope {
+        fn path(&self) -> PathBuf {
+            self.root.clone()
+        }
     }
 }
 
-/// 論文単位の成果物領土 (例: dist/p01/)
-pub struct PaperArtifactScope {
-    pub root: PathBuf,
-    pub paper_id: String,
-}
-
 impl PaperArtifactScope {
-    /// 特定の形式（pdf, png等）の最終的な実体（Artifact）を取得
-    pub fn format_artifact(&self, format: &str) -> crate::models::build_artifact::BuildArtifact {
+    pub fn format_artifact(&self, format: &str) -> BuildArtifact {
         let (root_name, absolute_path) = if format == "pdf" {
             // pdf なら領土ルート直下 (例: p01/)
             (PathBuf::from(&self.paper_id), self.root.clone())
@@ -50,18 +57,12 @@ impl PaperArtifactScope {
             )
         };
 
-        crate::models::build_artifact::BuildArtifact {
+        BuildArtifact {
             root_name,
             absolute_path,
             success: false,
             error_message: None,
         }
-    }
-}
-
-impl Entity for PaperArtifactScope {
-    fn path(&self) -> PathBuf {
-        self.root.clone()
     }
 }
 
@@ -74,8 +75,7 @@ mod tests {
     #[test]
     fn test_path_supports_nested_relative_path() {
         let root = PathBuf::from("/project-root");
-        let scope =
-            BuildArtifactScope::new(root.clone(), PathBuf::from("target").join("artifacts"));
+        let scope = BuildArtifactScope::new(root.clone(), PathBuf::from("target").join("artifacts"));
 
         assert_eq!(scope.path(), root.join("target").join("artifacts"));
     }

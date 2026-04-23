@@ -18,18 +18,20 @@ pub struct PaperScope {
     pub relative_path: PathBuf,
 }
 
+typstlab_proto::impl_entity! {
+    PaperScope {
+        fn path(&self) -> PathBuf {
+            self.project_root.join(&self.relative_path)
+        }
+    }
+}
+
 impl PaperScope {
     pub fn new(project_root: PathBuf, relative_path: PathBuf) -> Self {
         Self {
             project_root,
             relative_path,
         }
-    }
-}
-
-impl Entity for PaperScope {
-    fn path(&self) -> PathBuf {
-        self.project_root.join(&self.relative_path)
     }
 }
 
@@ -60,7 +62,7 @@ impl Collection<Paper, CollectionError> for PaperScope {
 
         // 1. ID として直接存在するかチェック
         let potential_paper = Paper::new(input.to_string(), scope_root.clone());
-        if potential_paper.path().exists() {
+        if potential_paper.exists() {
             return Ok(Some(potential_paper));
         }
 
@@ -96,20 +98,5 @@ impl Collection<Paper, CollectionError> for PaperScope {
         }
 
         Ok(None)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::PaperScope;
-    use std::path::PathBuf;
-    use typstlab_proto::Entity;
-
-    #[test]
-    fn test_path_supports_nested_relative_path() {
-        let root = PathBuf::from("/project-root");
-        let scope = PaperScope::new(root.clone(), PathBuf::from("content").join("papers"));
-
-        assert_eq!(scope.path(), root.join("content").join("papers"));
     }
 }

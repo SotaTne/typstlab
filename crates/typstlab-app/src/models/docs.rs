@@ -1,19 +1,19 @@
 use std::path::PathBuf;
-use typstlab_proto::Entity;
 
 pub struct Docs {
-    pub project_root: PathBuf,
-    pub version: String,
+    pub path: PathBuf,
 }
 
-impl Docs {
-    pub fn new(project_root: PathBuf, version: String) -> Self {
-        Self { project_root, version }
+typstlab_proto::impl_entity! {
+    Docs {
+        fn path(&self) -> PathBuf {
+            self.path.clone()
+        }
     }
 }
 
-impl Entity for Docs {
-    fn path(&self) -> PathBuf {
-        self.project_root.join(".typstlab/kb/typst/docs")
+impl Docs {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
     }
 }
