@@ -4,12 +4,15 @@ use typstlab_proto::Entity;
 /// プロジェクト全体の成果物領土 (例: dist/)
 pub struct BuildArtifactScope {
     pub project_root: PathBuf,
-    pub relative_path: String,
+    pub relative_path: PathBuf,
 }
 
 impl BuildArtifactScope {
-    pub fn new(project_root: PathBuf, relative_path: String) -> Self {
-        Self { project_root, relative_path }
+    pub fn new(project_root: PathBuf, relative_path: PathBuf) -> Self {
+        Self {
+            project_root,
+            relative_path,
+        }
     }
 
     /// 特定の論文用の領土（区画）を取得
@@ -41,7 +44,10 @@ impl PaperArtifactScope {
             (PathBuf::from(&self.paper_id), self.root.clone())
         } else {
             // それ以外ならサブディレクトリ (例: p01/png/)
-            (PathBuf::from(&self.paper_id).join(format), self.root.join(format))
+            (
+                PathBuf::from(&self.paper_id).join(format),
+                self.root.join(format),
+            )
         };
 
         crate::models::build_artifact::BuildArtifact {
@@ -56,5 +62,21 @@ impl PaperArtifactScope {
 impl Entity for PaperArtifactScope {
     fn path(&self) -> PathBuf {
         self.root.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BuildArtifactScope;
+    use std::path::PathBuf;
+    use typstlab_proto::Entity;
+
+    #[test]
+    fn test_path_supports_nested_relative_path() {
+        let root = PathBuf::from("/project-root");
+        let scope =
+            BuildArtifactScope::new(root.clone(), PathBuf::from("target").join("artifacts"));
+
+        assert_eq!(scope.path(), root.join("target").join("artifacts"));
     }
 }

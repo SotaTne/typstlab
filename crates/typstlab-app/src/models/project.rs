@@ -1,9 +1,9 @@
-use crate::models::paper_scope::PaperScope;
 use crate::models::build_artifact_scope::BuildArtifactScope;
+use crate::models::paper_scope::PaperScope;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use typstlab_proto::{Entity, Creatable, Loadable};
 use thiserror::Error;
+use typstlab_proto::{Creatable, Entity, Loadable};
 
 #[derive(Error, Debug)]
 pub enum ProjectError {
@@ -51,9 +51,11 @@ impl Default for ProjectInfo {
     }
 }
 
-fn default_project_name() -> String { "unnamed-project".to_string() }
-fn default_init_date() -> String { 
-    chrono::Utc::now().format("%Y-%m-%d").to_string() 
+fn default_project_name() -> String {
+    "unnamed-project".to_string()
+}
+fn default_init_date() -> String {
+    chrono::Utc::now().format("%Y-%m-%d").to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -64,18 +66,22 @@ pub struct TypstInfo {
 
 impl Default for TypstInfo {
     fn default() -> Self {
-        Self { version: default_typst_version() }
+        Self {
+            version: default_typst_version(),
+        }
     }
 }
 
-fn default_typst_version() -> String { "0.12.0".to_string() }
+fn default_typst_version() -> String {
+    "0.14.2".to_string()
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StructureConfig {
     #[serde(default = "default_papers_dir")]
-    pub papers_dir: String,
+    pub papers_dir: PathBuf,
     #[serde(default = "default_dist_dir")]
-    pub dist_dir: String,
+    pub dist_dir: PathBuf,
 }
 
 impl Default for StructureConfig {
@@ -87,8 +93,12 @@ impl Default for StructureConfig {
     }
 }
 
-fn default_papers_dir() -> String { "papers".to_string() }
-fn default_dist_dir() -> String { "dist".to_string() }
+fn default_papers_dir() -> PathBuf {
+    PathBuf::from("papers")
+}
+fn default_dist_dir() -> PathBuf {
+    PathBuf::from("dist")
+}
 
 pub struct Project {
     pub root: PathBuf,
@@ -105,14 +115,18 @@ impl Project {
     }
 
     pub fn papers_scope(&self) -> PaperScope {
-        let papers_dir = self.config.as_ref()
+        let papers_dir = self
+            .config
+            .as_ref()
             .map(|c| c.structure.papers_dir.clone())
             .unwrap_or_else(default_papers_dir);
         PaperScope::new(self.root.clone(), papers_dir)
     }
 
     pub fn build_artifact_scope(&self) -> BuildArtifactScope {
-        let dist_dir = self.config.as_ref()
+        let dist_dir = self
+            .config
+            .as_ref()
             .map(|c| c.structure.dist_dir.clone())
             .unwrap_or_else(default_dist_dir);
         BuildArtifactScope::new(self.root.clone(), dist_dir)
@@ -159,7 +173,9 @@ impl Creatable for Project {
     }
 
     fn persist(&self) -> Result<(), String> {
-        let config = self.config.as_ref()
+        let config = self
+            .config
+            .as_ref()
             .ok_or_else(|| "Project not initialized. Call initialize() first.".to_string())?;
 
         let toml_content = toml::to_string_pretty(&config)
@@ -176,5 +192,85 @@ impl Creatable for Project {
         let _ = std::fs::create_dir_all(self.papers_scope().path());
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Project, ProjectConfig, ProjectInfo, StructureConfig, TypstInfo};
+    use std::path::PathBuf;
+    use typstlab_proto::Entity;
+
+    #[test]
+    fn test_papers_scope_uses_pathbuf_internally() {
+        let root = PathBuf::from("/project-root");
+        let mut project = Project::new(root.clone());
+        project.config = Some(ProjectConfig {
+            project: ProjectInfo {
+                name: "demo".to_string(),
+                init_date: "2026-04-23".to_string(),
+            },
+            typst: TypstInfo {
+                version: "0.14.2".to_string(),
+            },
+            structure: StructureConfig {
+                papers_dir: PathBuf::from("content").join("papers"),
+                dist_dir: PathBuf::from("out").join("dist"),
+            },
+        });
+
+        let scope = project.papers_scope();
+
+        assert_eq!(scope.relative_path, PathBuf::from("content").join("papers"));
+        assert_eq!(scope.path(), root.join("content").join("papers"));
+    }
+
+    #[test]
+    fn test_build_artifact_scope_uses_pathbuf_internally() {
+        let root = PathBuf::from("/project-root");
+        let mut project = Project::new(root.clone());
+        project.config = Some(ProjectConfig {
+            project: ProjectInfo {
+                name: "demo".to_string(),
+                init_date: "2026-04-23".to_string(),
+            },
+            typst: TypstInfo {
+                version: "0.14.2".to_string(),
+            },
+            structure: StructureConfig {
+                papers_dir: PathBuf::from("content").join("papers"),
+                dist_dir: PathBuf::from("out").join("dist"),
+            },
+        });
+
+        let scope = project.build_artifact_scope();
+
+        assert_eq!(scope.relative_path, PathBuf::from("out").join("dist"));
+        assert_eq!(scope.path(), root.join("out").join("dist"));
+    }
+
+    #[test]
+    fn test_config_deserializes_structure_paths_as_pathbuf() {
+        let config: ProjectConfig = toml::from_str(
+            r#"
+                [project]
+                name = "demo"
+                init_date = "2026-04-23"
+
+                [typst]
+                version = "0.14.2"
+
+                [structure]
+                papers_dir = "content/papers"
+                dist_dir = "out/dist"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.structure.papers_dir,
+            PathBuf::from("content").join("papers")
+        );
+        assert_eq!(config.structure.dist_dir, PathBuf::from("out").join("dist"));
     }
 }

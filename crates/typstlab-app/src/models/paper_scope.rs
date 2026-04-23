@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
-use typstlab_proto::{Entity, Collection};
 use crate::models::Paper;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
+use typstlab_proto::{Collection, Entity};
 
 #[derive(Error, Debug)]
 pub enum CollectionError {
@@ -15,12 +15,15 @@ pub enum CollectionError {
 
 pub struct PaperScope {
     pub project_root: PathBuf,
-    pub relative_path: String,
+    pub relative_path: PathBuf,
 }
 
 impl PaperScope {
-    pub fn new(project_root: PathBuf, relative_path: String) -> Self {
-        Self { project_root, relative_path }
+    pub fn new(project_root: PathBuf, relative_path: PathBuf) -> Self {
+        Self {
+            project_root,
+            relative_path,
+        }
     }
 }
 
@@ -52,7 +55,7 @@ impl Collection<Paper, CollectionError> for PaperScope {
     fn resolve(&self, input: &str) -> Option<Paper> {
         let input_path = Path::new(input);
         let scope_root = self.path();
-        
+
         // 1. ID として直接存在するかチェック
         let potential_paper = Paper::new(input.to_string(), scope_root.clone());
         if potential_paper.path().exists() {
@@ -77,5 +80,20 @@ impl Collection<Paper, CollectionError> for PaperScope {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PaperScope;
+    use std::path::PathBuf;
+    use typstlab_proto::Entity;
+
+    #[test]
+    fn test_path_supports_nested_relative_path() {
+        let root = PathBuf::from("/project-root");
+        let scope = PaperScope::new(root.clone(), PathBuf::from("content").join("papers"));
+
+        assert_eq!(scope.path(), root.join("content").join("papers"));
     }
 }
