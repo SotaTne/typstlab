@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use typstlab_proto::{Entity, Artifact};
 
-/// ビルドの結果として生まれた事実を表す実体（証拠）
+/// ビルドの結果として生まれた事実を表す実体（証備）
+#[derive(Debug, Clone)]
 pub struct BuildArtifact {
     pub root_name: PathBuf,    // 論理的なルート名 ("p01" や "p01/png")
     pub absolute_path: PathBuf, // 実際の絶対パス

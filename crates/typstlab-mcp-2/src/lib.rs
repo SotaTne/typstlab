@@ -1,5 +1,5 @@
 use typstlab_app::actions::build::{BuildEvent, BuildError};
-use typstlab_proto::McpSpeaker;
+use typstlab_proto::{McpSpeaker, Artifact};
 
 pub struct McpBuildPresenter;
 
@@ -21,16 +21,20 @@ impl McpSpeaker<BuildEvent, BuildError, ()> for McpBuildPresenter {
             BuildEvent::Starting { paper_id } => {
                 format!("Starting build for paper: {}", paper_id)
             }
-            BuildEvent::Finished { paper_id, output_path, duration_ms } => {
-                format!("SUCCESS: Build for '{}' completed in {}ms. Output: {}", paper_id, duration_ms, output_path.display())
+            BuildEvent::Finished { artifact, duration_ms } => {
+                format!("SUCCESS: Artifact created at '{}' in {}ms.", artifact.root().display(), duration_ms)
             }
         }
     }
 
     fn render_error(&self, error: &BuildError) -> String {
         match error {
-            BuildError::PaperBuildError { paper_id, error } => {
-                format!("ERROR in paper '{}':\n{}", paper_id, error)
+            BuildError::PaperBuildError(artifact) => {
+                format!(
+                    "ERROR in artifact '{}':\n{}", 
+                    artifact.root().display(), 
+                    artifact.error().unwrap_or_else(|| "Unknown error".to_string())
+                )
             }
             _ => {
                 format!("SYSTEM ERROR: {}", error)

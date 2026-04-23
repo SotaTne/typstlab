@@ -1,5 +1,5 @@
-use typstlab_proto::{Action, Entity, Collection};
-use crate::models::{Project, ManagedStore};
+use typstlab_proto::{Action, Entity, Collection, Artifact};
+use crate::models::{Project, Paper, ManagedStore, BuildArtifact};
 use crate::actions::resolve_typst::StoreError;
 use crate::actions::discovery::{DiscoveryAction, DiscoveryError};
 use typstlab_base::driver::{TypstDriver, TypstCommand};
@@ -18,11 +18,8 @@ pub enum BuildError {
     GeneralDiscoveryError(String),
     #[error("No targets: No papers found to build")]
     NoTargetsFound,
-    #[error("Execution failure for '{paper_id}': {error}")]
-    PaperBuildError {
-        paper_id: String,
-        error: String,
-    },
+    #[error("Build failed for artifact: {0:?}")]
+    PaperBuildError(BuildArtifact),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -35,8 +32,7 @@ pub enum BuildEvent {
     DiscoveredTargets { count: usize },
     Starting { paper_id: String },
     Finished { 
-        paper_id: String, 
-        output_path: PathBuf, 
+        artifact: BuildArtifact, 
         duration_ms: u64 
     },
 }
@@ -69,7 +65,7 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
         });
 
         // 2. ターゲットの特定
-        let targets = if let Some(inputs) = &self.inputs {
+        let targets: Vec<Paper> = if let Some(inputs) = &self.inputs {
             monitor(BuildEvent::DiscoveryStarted { inputs: inputs.clone() });
             let discovery = DiscoveryAction {
                 scope: self.project.papers_scope(),
@@ -108,43 +104,38 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
         for paper in targets {
             monitor(BuildEvent::Starting { paper_id: paper.id.clone() });
 
-            // 出力先の決定 (dist/paper_id/output_name.pdf)
-            let paper_dist_root = artifact_scope.paper_dist_path(&paper.id);
+            // 領土階層から成果物実体（Artifact）を生成
+            let mut artifact = artifact_scope.paper_scope(&paper.id).format_artifact("pdf");
             
-            // ディレクトリの作成を保証
-            if let Err(e) = std::fs::create_dir_all(&paper_dist_root) {
+            if let Err(e) = std::fs::create_dir_all(artifact.path()) {
                 errors.push(BuildError::IoError(e));
                 continue;
             }
 
-            // ベース名 + .pdf
-            let output_filename = format!("{}.pdf", paper.output_base_name());
-            let output_path = paper_dist_root.join(output_filename);
+            let output_path = artifact.path().join(format!("{}.pdf", paper.output_base_name()));
 
             let command = TypstCommand::Compile {
                 source: paper.main_typ_path(),
-                output: Some(output_path.clone()),
+                output: Some(output_path),
             };
 
             match driver.execute(command) {
                 Ok(res) if res.exit_code == 0 => {
+                    artifact.success = true;
                     monitor(BuildEvent::Finished {
-                        paper_id: paper.id.clone(),
-                        output_path,
+                        artifact,
                         duration_ms: res.duration_ms,
                     });
                 }
                 Ok(res) => {
-                    errors.push(BuildError::PaperBuildError {
-                        paper_id: paper.id.clone(),
-                        error: res.stderr,
-                    });
+                    artifact.success = false;
+                    artifact.error_message = Some(res.stderr);
+                    errors.push(BuildError::PaperBuildError(artifact));
                 }
                 Err(e) => {
-                    errors.push(BuildError::PaperBuildError {
-                        paper_id: paper.id.clone(),
-                        error: e.to_string(),
-                    });
+                    artifact.success = false;
+                    artifact.error_message = Some(e.to_string());
+                    errors.push(BuildError::PaperBuildError(artifact));
                 }
             }
         }
