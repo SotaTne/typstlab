@@ -1,7 +1,7 @@
-use crate::models::{Paper, PaperScope};
-use thiserror::Error;
 use typstlab_proto::Action;
+use crate::models::{Paper, PaperScope};
 use typstlab_proto::Collection;
+use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
 pub enum DiscoveryError {
@@ -16,7 +16,7 @@ pub struct DiscoveryAction {
 }
 
 impl Action<Vec<Paper>, (), DiscoveryError> for DiscoveryAction {
-    fn run(&self, _: &mut dyn FnMut(())) -> Result<Vec<Paper>, Vec<DiscoveryError>> {
+    fn run(self, _monitor: &mut dyn FnMut(())) -> Result<Vec<Paper>, Vec<DiscoveryError>> {
         let mut papers = Vec::new();
         let mut errors = Vec::new();
 

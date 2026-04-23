@@ -26,7 +26,7 @@ pub struct ResolveTypstAction {
 }
 
 impl Action<Typst, ResolveEvent, StoreError> for ResolveTypstAction {
-    fn run(&self, monitor: &mut dyn FnMut(ResolveEvent)) -> Result<Typst, Vec<StoreError>> {
+    fn run(self, monitor: &mut dyn FnMut(ResolveEvent)) -> Result<Typst, Vec<StoreError>> {
         monitor(ResolveEvent::CheckingCache);
 
         #[cfg(not(windows))]
@@ -51,7 +51,6 @@ impl Action<Typst, ResolveEvent, StoreError> for ResolveTypstAction {
         }
 
         monitor(ResolveEvent::CacheMiss);
-        // 今後はここでダウンロードアクションなどを呼び出す
 
         Err(vec![StoreError::NotFound(self.version.clone())])
     }

@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use thiserror::Error;
 use typstlab_app::{
-    BootstrapAction, BootstrapEvent, BootstrapError, 
+    BootstrapAction, BootstrapEvent, BootstrapError, LoadEvent,
 };
 use typstlab_proto::{Action, CliSpeaker};
 
@@ -25,11 +25,14 @@ pub enum Commands {
         /// Optional paper IDs or paths to build (if omitted, builds all)
         papers: Vec<String>,
     },
+    /// Create a new project
+    New {
+        /// Project name
+        name: String,
+        /// Optional path to create the project (defaults to name)
+        path: Option<String>,
+    },
 }
-
-// ============================================================================
-// CLI 全体を一つの Action として実体化
-// ============================================================================
 
 pub struct CliAction {
     pub cli: Cli,
@@ -38,8 +41,6 @@ pub struct CliAction {
 #[derive(Debug)]
 pub enum CliEvent {
     Bootstrap(BootstrapEvent),
-    // コマンド実行中のイベントは各コマンドのプレゼンターが直接受けるか、
-    // あるいはここでラップして RootPresenter に流す
 }
 
 #[derive(Error, Debug)]
@@ -53,23 +54,26 @@ pub enum CliError {
 }
 
 impl Action<(), CliEvent, CliError> for CliAction {
-    fn run(&self, monitor: &mut dyn FnMut(CliEvent)) -> Result<(), Vec<CliError>> {
-        // 1. 環境情報の取得
-        let project_root = std::env::current_dir()
-            .map_err(|e| vec![CliError::System(format!("Could not identify current directory: {}", e))])?;
-            
-        let cache_root = dirs::cache_dir()
-            .ok_or_else(|| vec![CliError::System("Could not find cache directory".to_string())])?
-            .join("typstlab");
-
-        // 2. Bootstrap 実行
-        let bootstrap = BootstrapAction { project_root, cache_root };
-        let ctx = bootstrap.run(&mut |e| monitor(CliEvent::Bootstrap(e)))
-            .map_err(|errors| errors.into_iter().map(CliError::Bootstrap).collect::<Vec<_>>())?;
-
-        // 3. コマンドへの振り分け (ロジックは各 Action 内へ)
+    fn run(self, monitor: &mut dyn FnMut(CliEvent)) -> Result<(), Vec<CliError>> {
         match &self.cli.command {
+            Commands::New { name, path } => {
+                commands::new::run(name.clone(), path.clone())
+                    .map_err(|e| vec![CliError::Command(e.to_string())])?;
+                return Ok(());
+            }
+            
             Commands::Build { papers } => {
+                let project_root = std::env::current_dir()
+                    .map_err(|e| vec![CliError::System(format!("Could not identify current directory: {}", e))])?;
+                    
+                let cache_root = dirs::cache_dir()
+                    .ok_or_else(|| vec![CliError::System("Could not find cache directory".to_string())])?
+                    .join("typstlab");
+
+                let bootstrap = BootstrapAction { project_root, cache_root };
+                let ctx = bootstrap.run(&mut |e| monitor(CliEvent::Bootstrap(e)))
+                    .map_err(|errors| errors.into_iter().map(CliError::Bootstrap).collect::<Vec<_>>())?;
+
                 let inputs = if papers.is_empty() { None } else { Some(papers.clone()) };
                 commands::build::run(ctx, inputs)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
@@ -80,10 +84,6 @@ impl Action<(), CliEvent, CliError> for CliAction {
     }
 }
 
-// ============================================================================
-// CLI 全体の語り手 (Root Presenter)
-// ============================================================================
-
 struct RootPresenter;
 
 impl CliSpeaker<CliEvent, CliError, ()> for RootPresenter {
@@ -92,16 +92,24 @@ impl CliSpeaker<CliEvent, CliError, ()> for RootPresenter {
             CliEvent::Bootstrap(e) => {
                 use typstlab_app::ResolveEvent;
                 match e {
+                    BootstrapEvent::ProjectLoading(le) => {
+                        if let LoadEvent::Started = le {
+                            println!("{} Loading project configuration...", "⏳".cyan());
+                        }
+                    }
                     BootstrapEvent::ProjectReady { name } => {
                         println!("{} Project: {}", "📁".blue(), name.bold());
                     }
                     BootstrapEvent::ResolvingTypst { version, event } => {
-                        if let ResolveEvent::CacheMiss = event {
-                            println!("{} Typst {} not found, preparing to download...", "📥".yellow(), version);
+                        match event {
+                            ResolveEvent::CacheMiss => {
+                                println!("{} Typst {} not found, preparing to download...", "📥".yellow(), version);
+                            }
+                            _ => {}
                         }
                     }
                     BootstrapEvent::Ready => {
-                        println!("{} Environment initialized.", "✅".green());
+                        println!("{} Environment ready.", "✅".green());
                     }
                     _ => {}
                 }
@@ -113,9 +121,7 @@ impl CliSpeaker<CliEvent, CliError, ()> for RootPresenter {
         eprintln!("\n{} {}", "💥 ERROR:".red().bold(), error);
     }
 
-    fn render_result(&self, _output: &()) {
-        println!("\n{}", "Process completed successfully!".green().bold());
-    }
+    fn render_result(&self, _output: &()) {}
 }
 
 fn main() {
