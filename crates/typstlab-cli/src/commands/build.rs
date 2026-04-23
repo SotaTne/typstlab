@@ -1,11 +1,11 @@
 use anyhow::{Result, anyhow};
 use colored::Colorize;
-use typstlab_app::{BuildAction, BuildEvent, BuildError, AppContext};
-use typstlab_proto::{Action, CliSpeaker, Artifact, Entity};
+use typstlab_app::{AppContext, BuildAction, BuildError, BuildEvent};
+use typstlab_proto::{Action, Artifact, CliSpeaker, Entity};
 
 /// build コマンドのエントリポイント
 pub fn run(ctx: AppContext, inputs: Option<Vec<String>>) -> Result<()> {
-    let action = BuildAction::new(ctx.project, ctx.store, inputs);
+    let action = BuildAction::new(ctx.loaded_project, ctx.store, inputs);
     let presenter = BuildPresenter;
 
     match action.run(&mut |event| presenter.render_event(event)) {
@@ -38,10 +38,13 @@ impl CliSpeaker<BuildEvent, BuildError, ()> for BuildPresenter {
             BuildEvent::Starting { paper_id } => {
                 println!("{} Building {}...", "🔨".cyan(), paper_id.bold());
             }
-            BuildEvent::Finished { artifact, duration_ms } => {
+            BuildEvent::Finished {
+                artifact,
+                duration_ms,
+            } => {
                 println!(
-                    "{} {} built successfully! ({}) -> {}", 
-                    "✨".green(), 
+                    "{} {} built successfully! ({}) -> {}",
+                    "✨".green(),
                     artifact.root().display().to_string().bold(),
                     format!("{}ms", duration_ms).dimmed(),
                     artifact.path().display().to_string().dimmed()
@@ -61,18 +64,20 @@ impl CliSpeaker<BuildEvent, BuildError, ()> for BuildPresenter {
             }
             BuildError::PaperBuildError(artifact) => {
                 eprintln!(
-                    "{} {} failed:", 
-                    "❌".red(), 
+                    "{} {} failed:",
+                    "❌".red(),
                     artifact.root().display().to_string().bold()
                 );
                 // Typst の生のエラー出力をインデント付きで結合して表示
-                let raw_error = artifact.error().unwrap_or_else(|| "Unknown error".to_string());
+                let raw_error = artifact
+                    .error()
+                    .unwrap_or_else(|| "Unknown error".to_string());
                 let indented_error = raw_error
                     .lines()
                     .map(|line| format!("   {}", line))
                     .collect::<Vec<_>>()
                     .join("\n");
-                
+
                 eprintln!("{}\n", indented_error);
             }
             _ => {

@@ -1,10 +1,10 @@
-use typstlab_proto::{Action, Creatable};
 use thiserror::Error;
+use typstlab_proto::{Action, Creatable, Loaded};
 
 #[derive(Error, Debug)]
 pub enum CreateError {
     #[error("Creation failed: {0}")]
-    ExecutionError(String),
+    ExecutionError(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// 実体の誕生中に発生するイベント
@@ -21,21 +21,29 @@ pub struct CreateAction<T: Creatable> {
     pub args: T::Args,
 }
 
-impl<T: Creatable> Action<T, CreateEvent, CreateError> for CreateAction<T> {
-    fn run(mut self, monitor: &mut dyn FnMut(CreateEvent)) -> Result<T, Vec<CreateError>> {
+impl<T> Action<Loaded<T, T::Config>, CreateEvent, CreateError> for CreateAction<T>
+where
+    T: Creatable,
+    T::Error: Send + Sync + 'static,
+{
+    fn run(
+        self,
+        monitor: &mut dyn FnMut(CreateEvent),
+    ) -> Result<Loaded<T, T::Config>, Vec<CreateError>> {
         monitor(CreateEvent::Initializing);
-        
-        // 1. 引数を注入して初期化
-        self.target.initialize(self.args);
+
+        let loaded = self
+            .target
+            .initialize(self.args)
+            .map_err(|e| vec![CreateError::ExecutionError(Box::new(e))])?;
 
         monitor(CreateEvent::Persisting);
 
         // 2. ファイルシステムへ固定
-        self.target.persist()
-            .map_err(|e| vec![CreateError::ExecutionError(e)])?;
+        T::persist(&loaded).map_err(|e| vec![CreateError::ExecutionError(Box::new(e))])?;
 
         monitor(CreateEvent::Completed);
 
-        Ok(self.target)
+        Ok(loaded)
     }
 }

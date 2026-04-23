@@ -3,9 +3,7 @@ mod commands;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use thiserror::Error;
-use typstlab_app::{
-    BootstrapAction, BootstrapEvent, BootstrapError, LoadEvent,
-};
+use typstlab_app::{BootstrapAction, BootstrapError, BootstrapEvent, LoadEvent};
 use typstlab_proto::{Action, CliSpeaker};
 
 #[derive(Parser, Clone)]
@@ -61,20 +59,41 @@ impl Action<(), CliEvent, CliError> for CliAction {
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
                 return Ok(());
             }
-            
+
             Commands::Build { papers } => {
-                let project_root = std::env::current_dir()
-                    .map_err(|e| vec![CliError::System(format!("Could not identify current directory: {}", e))])?;
-                    
+                let project_root = std::env::current_dir().map_err(|e| {
+                    vec![CliError::System(format!(
+                        "Could not identify current directory: {}",
+                        e
+                    ))]
+                })?;
+
                 let cache_root = dirs::cache_dir()
-                    .ok_or_else(|| vec![CliError::System("Could not find cache directory".to_string())])?
+                    .ok_or_else(|| {
+                        vec![CliError::System(
+                            "Could not find cache directory".to_string(),
+                        )]
+                    })?
                     .join("typstlab");
 
-                let bootstrap = BootstrapAction { project_root, cache_root };
-                let ctx = bootstrap.run(&mut |e| monitor(CliEvent::Bootstrap(e)))
-                    .map_err(|errors| errors.into_iter().map(CliError::Bootstrap).collect::<Vec<_>>())?;
+                let bootstrap = BootstrapAction {
+                    project_root,
+                    cache_root,
+                };
+                let ctx = bootstrap
+                    .run(&mut |e| monitor(CliEvent::Bootstrap(e)))
+                    .map_err(|errors| {
+                        errors
+                            .into_iter()
+                            .map(CliError::Bootstrap)
+                            .collect::<Vec<_>>()
+                    })?;
 
-                let inputs = if papers.is_empty() { None } else { Some(papers.clone()) };
+                let inputs = if papers.is_empty() {
+                    None
+                } else {
+                    Some(papers.clone())
+                };
                 commands::build::run(ctx, inputs)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
             }
@@ -92,21 +111,21 @@ impl CliSpeaker<CliEvent, CliError, ()> for RootPresenter {
             CliEvent::Bootstrap(e) => {
                 use typstlab_app::ResolveEvent;
                 match e {
-                    BootstrapEvent::ProjectLoading(le) => {
-                        if let LoadEvent::Started = le {
-                            println!("{} Loading project configuration...", "⏳".cyan());
-                        }
+                    BootstrapEvent::ProjectLoading(LoadEvent::Started) => {
+                        println!("{} Loading project configuration...", "⏳".cyan());
                     }
                     BootstrapEvent::ProjectReady { name } => {
                         println!("{} Project: {}", "📁".blue(), name.bold());
                     }
-                    BootstrapEvent::ResolvingTypst { version, event } => {
-                        match event {
-                            ResolveEvent::CacheMiss => {
-                                println!("{} Typst {} not found, preparing to download...", "📥".yellow(), version);
-                            }
-                            _ => {}
-                        }
+                    BootstrapEvent::ResolvingTypst {
+                        version,
+                        event: ResolveEvent::CacheMiss,
+                    } => {
+                        println!(
+                            "{} Typst {} not found, preparing to download...",
+                            "📥".yellow(),
+                            version
+                        );
                     }
                     BootstrapEvent::Ready => {
                         println!("{} Environment ready.", "✅".green());

@@ -1,5 +1,10 @@
 use std::path::PathBuf;
 
+pub struct Loaded<Actual, Config> {
+    pub actual: Actual,
+    pub config: Config,
+}
+
 /// 実体（Model）が備えるべき物理法則
 pub trait Entity {
     fn path(&self) -> PathBuf;
@@ -8,29 +13,40 @@ pub trait Entity {
     }
 }
 
+impl<Actual, Config> Entity for Loaded<Actual, Config>
+where
+    Actual: Entity,
+{
+    fn path(&self) -> PathBuf {
+        self.actual.path()
+    }
+}
+
 /// 実体が新しく作成可能であることを示すプロトコル
-pub trait Creatable: Entity {
+pub trait Creatable: Entity + Sized {
     type Args;
-    fn initialize(&mut self, args: Self::Args);
-    fn persist(&self) -> Result<(), String>;
+    type Config;
+    type Error: std::error::Error;
+
+    fn initialize(self, args: Self::Args) -> Result<Loaded<Self, Self::Config>, Self::Error>;
+    fn persist(loaded: &Loaded<Self, Self::Config>) -> Result<(), Self::Error>;
 }
 
 /// 実体がファイルシステムから自身の状態をロード可能であることを示すプロトコル
-pub trait Loadable: Entity {
+pub trait Loadable: Entity + Sized {
     type Config;
     type Error: std::error::Error;
 
     /// 物理ファイルから設定データを読み出す
     fn load_from_disk(&self) -> Result<Self::Config, Self::Error>;
 
-    /// 読み出したデータを自分自身の状態に反映する
-    fn apply_config(&mut self, config: Self::Config);
-
-    /// 物理ファイルの状態を自分自身に同期する
-    fn reload(&mut self) -> Result<(), Self::Error> {
+    /// 物理ファイルの状態を自身と設定の組に昇格する
+    fn load(self) -> Result<Loaded<Self, Self::Config>, Self::Error> {
         let config = self.load_from_disk()?;
-        self.apply_config(config);
-        Ok(())
+        Ok(Loaded {
+            actual: self,
+            config,
+        })
     }
 }
 

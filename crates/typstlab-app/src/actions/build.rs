@@ -1,20 +1,18 @@
 use crate::actions::discovery::{DiscoveryAction, DiscoveryError};
 use crate::actions::resolve_typst::StoreError;
-use crate::models::{ManagedStore, Project};
+use crate::models::{CollectionError, ManagedStore, Project, ProjectConfig, ProjectHandle};
 use thiserror::Error;
 use typstlab_base::driver::{TypstCommand, TypstDriver};
-use typstlab_proto::{Action, Collection, Entity, Loadable};
+use typstlab_proto::{Action, Collection, Entity, Loaded};
 
 #[derive(Error, Debug)]
 pub enum BuildError {
     #[error("Discovery failure: {0:?}")]
     Discovery(Vec<DiscoveryError>),
-    #[error("Environment failure: Failed to load project config: {0}")]
-    ConfigLoadError(String),
     #[error("Environment failure: Resource resolution failed: {0:?}")]
     ResolutionError(Vec<StoreError>),
     #[error("Discovery failure: {0}")]
-    GeneralDiscoveryError(String),
+    GeneralDiscoveryError(#[from] CollectionError),
     #[error("No targets: No papers found to build")]
     NoTargetsFound,
     #[error("Build failed for artifact: {0:?}")]
@@ -47,15 +45,19 @@ pub enum BuildEvent {
 }
 
 pub struct BuildAction {
-    pub project: Project,
+    pub loaded_project: Loaded<Project, ProjectConfig>,
     pub store: ManagedStore,
     pub inputs: Option<Vec<String>>,
 }
 
 impl BuildAction {
-    pub fn new(project: Project, store: ManagedStore, inputs: Option<Vec<String>>) -> Self {
+    pub fn new(
+        loaded_project: Loaded<Project, ProjectConfig>,
+        store: ManagedStore,
+        inputs: Option<Vec<String>>,
+    ) -> Self {
         Self {
-            project,
+            loaded_project,
             store,
             inputs,
         }
@@ -63,18 +65,11 @@ impl BuildAction {
 }
 
 impl Action<(), BuildEvent, BuildError> for BuildAction {
-    fn run(mut self, monitor: &mut dyn FnMut(BuildEvent)) -> Result<(), Vec<BuildError>> {
+    fn run(self, monitor: &mut dyn FnMut(BuildEvent)) -> Result<(), Vec<BuildError>> {
         let mut errors = Vec::new();
 
-        // 1. 設定のロード
-        if let Err(e) = self.project.reload() {
-            return Err(vec![BuildError::ConfigLoadError(e.to_string())]);
-        }
-
-        let config = self.project.config.as_ref().unwrap();
-
         monitor(BuildEvent::ProjectLoaded {
-            name: config.project.name.clone(),
+            name: self.loaded_project.name().to_string(),
         });
 
         // 2. ターゲットの特定
@@ -83,7 +78,7 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
                 inputs: inputs.clone(),
             });
             let discovery = DiscoveryAction {
-                scope: self.project.papers_scope(),
+                scope: self.loaded_project.papers_scope(),
                 inputs: inputs.clone(),
             };
             match discovery.run(&mut |_| {}) {
@@ -91,9 +86,9 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
                 Err(e) => return Err(vec![BuildError::Discovery(e)]),
             }
         } else {
-            match self.project.papers_scope().list() {
+            match self.loaded_project.papers_scope().list() {
                 Ok(t) => t,
-                Err(e) => return Err(vec![BuildError::GeneralDiscoveryError(e.to_string())]),
+                Err(e) => return Err(vec![BuildError::GeneralDiscoveryError(e)]),
             }
         };
 
@@ -106,7 +101,7 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
         });
 
         // 3. Typst 解決
-        let version = config.typst.version.clone();
+        let version = self.loaded_project.typst_version().to_string();
         monitor(BuildEvent::ResolvingTypst {
             version: version.clone(),
         });
@@ -118,7 +113,7 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
         let driver = TypstDriver::new(typst.path());
 
         // 4. 成果物領土の準備
-        let artifact_scope = self.project.build_artifact_scope();
+        let artifact_scope = self.loaded_project.build_artifact_scope();
 
         // 5. 各ターゲットのビルド実行
         for paper in targets {

@@ -1,5 +1,5 @@
-use typstlab_proto::{Action, Loadable};
 use std::fmt::Debug;
+use typstlab_proto::{Action, Loadable, Loaded};
 
 /// 実体のロード（復元）中に発生するイベント
 #[derive(Debug, Clone)]
@@ -14,18 +14,20 @@ pub struct LoadAction<T: Loadable> {
     pub target: T,
 }
 
-impl<T: Loadable> Action<T, LoadEvent, T::Error> for LoadAction<T> {
-    fn run(mut self, monitor: &mut dyn FnMut(LoadEvent)) -> Result<T, Vec<T::Error>> {
+impl<T: Loadable> Action<Loaded<T, T::Config>, LoadEvent, T::Error> for LoadAction<T> {
+    fn run(
+        self,
+        monitor: &mut dyn FnMut(LoadEvent),
+    ) -> Result<Loaded<T, T::Config>, Vec<T::Error>> {
         monitor(LoadEvent::Started);
-        
-        // Loadable プロトコルの reload (load_from_disk + apply_config) を実行
-        self.target.reload().map_err(|e| vec![e])?;
+
+        let loaded = self.target.load().map_err(|e| vec![e])?;
 
         monitor(LoadEvent::Validating);
         // ここで将来的に Validatable トレイトと連携させることも可能
-        
+
         monitor(LoadEvent::Completed);
 
-        Ok(self.target)
+        Ok(loaded)
     }
 }

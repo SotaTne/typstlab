@@ -1,5 +1,5 @@
 use crate::models::Paper;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 use typstlab_proto::{Collection, Entity};
 
@@ -43,10 +43,12 @@ impl Collection<Paper, CollectionError> for PaperScope {
         let mut papers = Vec::new();
         for entry in std::fs::read_dir(&root)? {
             let entry = entry?;
-            if entry.path().is_dir() {
-                if let Some(id) = entry.file_name().to_str() {
-                    papers.push(Paper::new(id.to_string(), root.clone()));
-                }
+            if !entry.path().is_dir() {
+                continue;
+            }
+
+            if let Some(id) = entry.file_name().to_str() {
+                papers.push(Paper::new(id.to_string(), root.clone()));
             }
         }
         Ok(papers)
@@ -63,20 +65,24 @@ impl Collection<Paper, CollectionError> for PaperScope {
         }
 
         // 2. パスとして解決を試みる
-        let abs_input = if input_path.is_absolute() {
+        let has_absolute_or_rooted_component = matches!(
+            input_path.components().next(),
+            Some(Component::RootDir | Component::Prefix(_))
+        );
+
+        let abs_input = if has_absolute_or_rooted_component {
             input_path.to_path_buf()
         } else {
             self.project_root.join(input_path)
         };
 
-        if let Ok(full_input) = std::fs::canonicalize(&abs_input) {
-            if let Ok(full_root) = std::fs::canonicalize(&scope_root) {
-                if full_input.starts_with(&full_root) {
-                    let relative = full_input.strip_prefix(&full_root).ok()?;
-                    let id = relative.components().next()?.as_os_str().to_str()?;
-                    return Some(Paper::new(id.to_string(), scope_root));
-                }
-            }
+        let full_input = std::fs::canonicalize(&abs_input).ok()?;
+        let full_root = std::fs::canonicalize(&scope_root).ok()?;
+
+        if full_input.starts_with(&full_root) {
+            let relative = full_input.strip_prefix(&full_root).ok()?;
+            let id = relative.components().next()?.as_os_str().to_str()?;
+            return Some(Paper::new(id.to_string(), scope_root));
         }
 
         None
