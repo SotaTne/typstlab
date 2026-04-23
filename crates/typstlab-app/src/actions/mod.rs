@@ -7,7 +7,7 @@ pub mod resolve_docs;
 pub mod resolve_typst;
 
 pub use bootstrap::{AppContext, BootstrapAction, BootstrapError, BootstrapEvent};
-pub use build::{BuildAction, BuildError, BuildEvent};
+pub use build::{BuildAction, BuildError, BuildEvent, BuildWarning};
 pub use create::{CreateAction, CreateError, CreateEvent};
 pub use discovery::{DiscoveryAction, DiscoveryError};
 pub use resolve_docs::ResolveDocsAction;

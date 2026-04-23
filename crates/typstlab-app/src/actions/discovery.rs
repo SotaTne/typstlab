@@ -21,8 +21,12 @@ pub struct DiscoveryAction {
     pub inputs: Vec<String>,
 }
 
-impl Action<Vec<Paper>, (), DiscoveryError> for DiscoveryAction {
-    fn run(self, _monitor: &mut dyn FnMut(())) -> Result<Vec<Paper>, Vec<DiscoveryError>> {
+impl Action<Vec<Paper>, (), (), DiscoveryError> for DiscoveryAction {
+    fn run(
+        self,
+        _monitor: &mut dyn FnMut(()),
+        _warning: &mut dyn FnMut(()),
+    ) -> Result<Vec<Paper>, Vec<DiscoveryError>> {
         let mut papers = Vec::new();
         let mut errors = Vec::new();
 

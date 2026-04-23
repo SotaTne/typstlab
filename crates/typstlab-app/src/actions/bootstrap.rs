@@ -52,10 +52,11 @@ pub struct BootstrapAction {
     pub cache_root: PathBuf,
 }
 
-impl Action<AppContext, BootstrapEvent, BootstrapError> for BootstrapAction {
+impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction {
     fn run(
         self,
         monitor: &mut dyn FnMut(BootstrapEvent),
+        _warning: &mut dyn FnMut(()),
     ) -> Result<AppContext, Vec<BootstrapError>> {
         // 1. プロジェクトのロード (LoadAction を使用)
         monitor(BootstrapEvent::IdentifyingProject {
@@ -67,9 +68,12 @@ impl Action<AppContext, BootstrapEvent, BootstrapError> for BootstrapAction {
             target: project_model,
         };
         let loaded_project: Loaded<Project, ProjectConfig> = load_action
-            .run(&mut |e| {
-                monitor(BootstrapEvent::ProjectLoading(e));
-            })
+            .run(
+                &mut |e| {
+                    monitor(BootstrapEvent::ProjectLoading(e));
+                },
+                &mut |_| {},
+            )
             .map_err(|errs| {
                 errs.into_iter()
                     .map(BootstrapError::ProjectLoadError)
@@ -90,23 +94,29 @@ impl Action<AppContext, BootstrapEvent, BootstrapError> for BootstrapAction {
         let version = loaded_project.typst_version().to_string();
         let typst_resolver = store.typst_resolver(&version);
         let typst = typst_resolver
-            .run(&mut |e| {
-                monitor(BootstrapEvent::ResolvingTypst {
-                    version: version.clone(),
-                    event: e,
-                });
-            })
+            .run(
+                &mut |e| {
+                    monitor(BootstrapEvent::ResolvingTypst {
+                        version: version.clone(),
+                        event: e,
+                    });
+                },
+                &mut |_| {},
+            )
             .map_err(|errs| vec![BootstrapError::ResolutionError(errs)])?;
 
         // 4. Docs 解決
         let docs_resolver = store.docs_resolver(&version);
         let docs = docs_resolver
-            .run(&mut |e| {
-                monitor(BootstrapEvent::ResolvingDocs {
-                    version: version.clone(),
-                    event: e,
-                });
-            })
+            .run(
+                &mut |e| {
+                    monitor(BootstrapEvent::ResolvingDocs {
+                        version: version.clone(),
+                        event: e,
+                    });
+                },
+                &mut |_| {},
+            )
             .map_err(|errs| vec![BootstrapError::ResolutionError(errs)])?;
 
         monitor(BootstrapEvent::Ready);

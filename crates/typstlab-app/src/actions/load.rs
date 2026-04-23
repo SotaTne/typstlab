@@ -14,10 +14,11 @@ pub struct LoadAction<T: Loadable> {
     pub target: T,
 }
 
-impl<T: Loadable> Action<Loaded<T, T::Config>, LoadEvent, T::Error> for LoadAction<T> {
+impl<T: Loadable> Action<Loaded<T, T::Config>, LoadEvent, (), T::Error> for LoadAction<T> {
     fn run(
         self,
         monitor: &mut dyn FnMut(LoadEvent),
+        _warning: &mut dyn FnMut(()),
     ) -> Result<Loaded<T, T::Config>, Vec<T::Error>> {
         monitor(LoadEvent::Started);
 

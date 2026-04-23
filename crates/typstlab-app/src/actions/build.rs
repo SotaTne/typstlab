@@ -1,8 +1,7 @@
 use crate::actions::discovery::{DiscoveryAction, DiscoveryError};
 use crate::actions::resolve_typst::StoreError;
 use crate::models::{
-    CollectionError, ManagedStore, PaperError, PaperHandle, Project, ProjectConfig,
-    ProjectHandle,
+    CollectionError, ManagedStore, PaperError, PaperHandle, Project, ProjectConfig, ProjectHandle,
 };
 use thiserror::Error;
 use typstlab_base::driver::{TypstCommand, TypstDriver};
@@ -16,8 +15,6 @@ pub enum BuildError {
     ResolutionError(Vec<StoreError>),
     #[error("Discovery failure: {0}")]
     GeneralDiscoveryError(#[from] CollectionError),
-    #[error("No targets: No papers found to build")]
-    NoTargetsFound,
     #[error("Build failed for artifact: {0:?}")]
     PaperBuildError(crate::models::BuildArtifact),
     #[error("Failed to load paper '{paper_id}': {source}")]
@@ -28,6 +25,11 @@ pub enum BuildError {
     },
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuildWarning {
+    NoTargetsFound,
 }
 
 #[derive(Debug, Clone)]
@@ -73,8 +75,12 @@ impl BuildAction {
     }
 }
 
-impl Action<(), BuildEvent, BuildError> for BuildAction {
-    fn run(self, monitor: &mut dyn FnMut(BuildEvent)) -> Result<(), Vec<BuildError>> {
+impl Action<(), BuildEvent, BuildWarning, BuildError> for BuildAction {
+    fn run(
+        self,
+        monitor: &mut dyn FnMut(BuildEvent),
+        warning: &mut dyn FnMut(BuildWarning),
+    ) -> Result<(), Vec<BuildError>> {
         let mut errors = Vec::new();
 
         monitor(BuildEvent::ProjectLoaded {
@@ -90,7 +96,7 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
                 scope: self.loaded_project.papers_scope(),
                 inputs: inputs.clone(),
             };
-            match discovery.run(&mut |_| {}) {
+            match discovery.run(&mut |_| {}, &mut |_| {}) {
                 Ok(t) => t,
                 Err(e) => return Err(vec![BuildError::Discovery(e)]),
             }
@@ -102,7 +108,8 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
         };
 
         if targets.is_empty() {
-            return Err(vec![BuildError::NoTargetsFound]);
+            warning(BuildWarning::NoTargetsFound);
+            return Ok(());
         }
 
         monitor(BuildEvent::DiscoveredTargets {
@@ -115,7 +122,7 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
             version: version.clone(),
         });
         let resolver = self.store.typst_resolver(&version);
-        let typst = match resolver.run(&mut |_| {}) {
+        let typst = match resolver.run(&mut |_| {}, &mut |_| {}) {
             Ok(t) => t,
             Err(e) => return Err(vec![BuildError::ResolutionError(e)]),
         };
@@ -130,10 +137,7 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
             let loaded_paper = match paper.load() {
                 Ok(loaded_paper) => loaded_paper,
                 Err(source) => {
-                    errors.push(BuildError::PaperLoadError {
-                        paper_id,
-                        source,
-                    });
+                    errors.push(BuildError::PaperLoadError { paper_id, source });
                     continue;
                 }
             };
@@ -187,5 +191,50 @@ impl Action<(), BuildEvent, BuildError> for BuildAction {
         } else {
             Err(errors)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BuildAction, BuildWarning};
+    use crate::models::project::{ProjectInfo, StructureConfig, TypstInfo};
+    use crate::models::{ManagedStore, Project, ProjectConfig};
+    use std::fs;
+    use tempfile::TempDir;
+    use typstlab_proto::{Action, Loaded};
+
+    fn loaded_project(root: &std::path::Path) -> Loaded<Project, ProjectConfig> {
+        Loaded {
+            actual: Project::new(root.to_path_buf()),
+            config: ProjectConfig {
+                project: ProjectInfo {
+                    name: "demo".to_string(),
+                    init_date: "2026-04-23".to_string(),
+                },
+                typst: TypstInfo {
+                    version: "0.14.2".to_string(),
+                },
+                structure: StructureConfig::default(),
+            },
+        }
+    }
+
+    #[test]
+    fn test_no_targets_emits_warning_and_succeeds() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("papers")).unwrap();
+        fs::create_dir_all(temp.path().join("dist")).unwrap();
+
+        let project = loaded_project(temp.path());
+        let store_root = temp.path().join("store");
+        fs::create_dir_all(&store_root).unwrap();
+
+        let action = BuildAction::new(project, ManagedStore::new(store_root), None);
+        let mut warnings = Vec::new();
+
+        let result = action.run(&mut |_| {}, &mut |warning| warnings.push(warning));
+
+        assert!(result.is_ok());
+        assert_eq!(warnings, vec![BuildWarning::NoTargetsFound]);
     }
 }

@@ -1,9 +1,9 @@
-use typstlab_app::actions::build::{BuildEvent, BuildError};
+use typstlab_app::actions::build::{BuildError, BuildEvent, BuildWarning};
 use typstlab_proto::{McpSpeaker, Artifact};
 
 pub struct McpBuildPresenter;
 
-impl McpSpeaker<BuildEvent, BuildError, ()> for McpBuildPresenter {
+impl McpSpeaker<BuildEvent, BuildWarning, BuildError, ()> for McpBuildPresenter {
     fn render_event(&self, event: BuildEvent) -> String {
         match event {
             BuildEvent::ProjectLoaded { name } => {
@@ -24,6 +24,12 @@ impl McpSpeaker<BuildEvent, BuildError, ()> for McpBuildPresenter {
             BuildEvent::Finished { artifact, duration_ms } => {
                 format!("SUCCESS: Artifact created at '{}' in {}ms.", artifact.root().display(), duration_ms)
             }
+        }
+    }
+
+    fn render_warning(&self, warning: BuildWarning) -> String {
+        match warning {
+            BuildWarning::NoTargetsFound => "WARNING: No papers found to build.".to_string(),
         }
     }
 

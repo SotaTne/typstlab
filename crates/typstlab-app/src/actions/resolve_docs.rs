@@ -8,8 +8,12 @@ pub struct ResolveDocsAction {
     pub version: String,
 }
 
-impl Action<Docs, ResolveEvent, StoreError> for ResolveDocsAction {
-    fn run(self, monitor: &mut dyn FnMut(ResolveEvent)) -> Result<Docs, Vec<StoreError>> {
+impl Action<Docs, ResolveEvent, (), StoreError> for ResolveDocsAction {
+    fn run(
+        self,
+        monitor: &mut dyn FnMut(ResolveEvent),
+        _warning: &mut dyn FnMut(()),
+    ) -> Result<Docs, Vec<StoreError>> {
         monitor(ResolveEvent::CheckingCache);
 
         let docs_path = self.store_root.join("docs").join(&self.version);

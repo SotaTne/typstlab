@@ -47,7 +47,7 @@ pub fn bootstrap_context(
     };
 
     bootstrap
-        .run(monitor)
+        .run(monitor, &mut |_| {})
         .map_err(collapse_bootstrap_errors)
 }
 

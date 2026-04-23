@@ -1,10 +1,23 @@
 use anyhow::{Result, anyhow};
 use colored::Colorize;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 use typstlab_app::{
     CreateAction, CreateError, CreateEvent, Project, ProjectConfig, ProjectCreationArgs,
 };
-use typstlab_proto::{Action, CliSpeaker, Entity, Loaded};
+use typstlab_proto::{Action, CliSpeaker, Entity, Loaded, PROJECT_SETTING_FILE};
+
+#[derive(Debug, Clone)]
+pub enum NewWarning {
+    ExistingProjectSettings { path: PathBuf },
+}
+
+fn detect_new_warning(target_path: &Path) -> Result<Option<NewWarning>> {
+    let config_path = target_path.join(PROJECT_SETTING_FILE);
+    match config_path.try_exists()? {
+        true => Ok(Some(NewWarning::ExistingProjectSettings { path: config_path })),
+        false => Ok(None),
+    }
+}
 
 /// new コマンドのエントリポイント
 pub fn run(name: Option<String>, path: Option<String>) -> Result<()> {
@@ -44,6 +57,8 @@ pub fn run(name: Option<String>, path: Option<String>) -> Result<()> {
             .to_string()
     };
 
+    let warning = detect_new_warning(&target_path)?;
+
     // 3. 実体とアクションの生成
     let project = Project::new(target_path);
     let args = ProjectCreationArgs { name: project_name };
@@ -53,8 +68,12 @@ pub fn run(name: Option<String>, path: Option<String>) -> Result<()> {
     };
     let presenter = NewPresenter;
 
+    if let Some(warning) = warning {
+        presenter.render_warning(warning);
+    }
+
     // 4. 実行
-    match action.run(&mut |e| presenter.render_event(e)) {
+    match action.run(&mut |e| presenter.render_event(e), &mut |_| {}) {
         Ok(loaded_project) => {
             // パス移動や . を解決した「綺麗な絶対パス」を持つ実体を再生成して結果を表示
             let clean_root = std::fs::canonicalize(loaded_project.path())
@@ -79,7 +98,9 @@ pub fn run(name: Option<String>, path: Option<String>) -> Result<()> {
 
 struct NewPresenter;
 
-impl CliSpeaker<CreateEvent, CreateError, Loaded<Project, ProjectConfig>> for NewPresenter {
+impl CliSpeaker<CreateEvent, NewWarning, CreateError, Loaded<Project, ProjectConfig>>
+    for NewPresenter
+{
     fn render_event(&self, event: CreateEvent) {
         match event {
             CreateEvent::Initializing => {
@@ -90,6 +111,18 @@ impl CliSpeaker<CreateEvent, CreateError, Loaded<Project, ProjectConfig>> for Ne
             }
             CreateEvent::Completed => {
                 println!("{} Done!", "✨".green());
+            }
+        }
+    }
+
+    fn render_warning(&self, warning: NewWarning) {
+        match warning {
+            NewWarning::ExistingProjectSettings { path } => {
+                eprintln!(
+                    "{} Existing project setting file will be reused or overwritten: {}",
+                    "⚠".yellow().bold(),
+                    path.display()
+                );
             }
         }
     }
@@ -108,5 +141,37 @@ impl CliSpeaker<CreateEvent, CreateError, Loaded<Project, ProjectConfig>> for Ne
         println!("\nNext steps:");
         println!("  1. cd {}", loaded_project.path().display());
         println!("  2. typstlab build");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NewWarning, detect_new_warning};
+    use tempfile::TempDir;
+    use typstlab_proto::PROJECT_SETTING_FILE;
+
+    #[test]
+    fn test_detect_new_warning_returns_none_when_project_setting_missing() {
+        let temp = TempDir::new().unwrap();
+
+        let warning = detect_new_warning(temp.path()).unwrap();
+
+        assert!(warning.is_none());
+    }
+
+    #[test]
+    fn test_detect_new_warning_returns_existing_project_settings_warning() {
+        let temp = TempDir::new().unwrap();
+        let config_path = temp.path().join(PROJECT_SETTING_FILE);
+        std::fs::write(&config_path, "").unwrap();
+
+        let warning = detect_new_warning(temp.path()).unwrap();
+
+        match warning {
+            Some(NewWarning::ExistingProjectSettings { path }) => {
+                assert_eq!(path, config_path);
+            }
+            None => panic!("expected warning"),
+        }
     }
 }

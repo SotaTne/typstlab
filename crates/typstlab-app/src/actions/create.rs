@@ -21,7 +21,7 @@ pub struct CreateAction<T: Creatable> {
     pub args: T::Args,
 }
 
-impl<T> Action<Loaded<T, T::Config>, CreateEvent, CreateError> for CreateAction<T>
+impl<T> Action<Loaded<T, T::Config>, CreateEvent, (), CreateError> for CreateAction<T>
 where
     T: Creatable,
     T::Error: Send + Sync + 'static,
@@ -29,6 +29,7 @@ where
     fn run(
         self,
         monitor: &mut dyn FnMut(CreateEvent),
+        _warning: &mut dyn FnMut(()),
     ) -> Result<Loaded<T, T::Config>, Vec<CreateError>> {
         monitor(CreateEvent::Initializing);
 

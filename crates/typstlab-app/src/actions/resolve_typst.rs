@@ -25,8 +25,12 @@ pub struct ResolveTypstAction {
     pub version: String,
 }
 
-impl Action<Typst, ResolveEvent, StoreError> for ResolveTypstAction {
-    fn run(self, monitor: &mut dyn FnMut(ResolveEvent)) -> Result<Typst, Vec<StoreError>> {
+impl Action<Typst, ResolveEvent, (), StoreError> for ResolveTypstAction {
+    fn run(
+        self,
+        monitor: &mut dyn FnMut(ResolveEvent),
+        _warning: &mut dyn FnMut(()),
+    ) -> Result<Typst, Vec<StoreError>> {
         monitor(ResolveEvent::CheckingCache);
 
         #[cfg(not(windows))]

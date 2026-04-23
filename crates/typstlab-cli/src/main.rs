@@ -56,8 +56,12 @@ pub enum CliError {
     System(String),
 }
 
-impl Action<(), CliEvent, CliError> for CliAction {
-    fn run(self, monitor: &mut dyn FnMut(CliEvent)) -> Result<(), Vec<CliError>> {
+impl Action<(), CliEvent, (), CliError> for CliAction {
+    fn run(
+        self,
+        monitor: &mut dyn FnMut(CliEvent),
+        _warning: &mut dyn FnMut(()),
+    ) -> Result<(), Vec<CliError>> {
         match &self.cli.command {
             Commands::New { name, path } => {
                 commands::new::run(name.clone(), path.clone())
@@ -85,7 +89,7 @@ impl Action<(), CliEvent, CliError> for CliAction {
 
 struct RootPresenter;
 
-impl CliSpeaker<CliEvent, CliError, ()> for RootPresenter {
+impl CliSpeaker<CliEvent, (), CliError, ()> for RootPresenter {
     fn render_event(&self, event: CliEvent) {
         match event {
             CliEvent::Bootstrap(e) => {
@@ -116,6 +120,8 @@ impl CliSpeaker<CliEvent, CliError, ()> for RootPresenter {
         }
     }
 
+    fn render_warning(&self, _warning: ()) {}
+
     fn render_error(&self, error: &CliError) {
         eprintln!("\n{} {}", "💥 ERROR:".red().bold(), error);
     }
@@ -128,7 +134,7 @@ fn main() {
     let presenter = RootPresenter;
     let action = CliAction { cli };
 
-    match action.run(&mut |e| presenter.render_event(e)) {
+    match action.run(&mut |e| presenter.render_event(e), &mut |_| {}) {
         Ok(out) => presenter.render_result(&out),
         Err(errors) => {
             for err in errors {

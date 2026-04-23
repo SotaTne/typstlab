@@ -54,11 +54,15 @@ pub trait Loadable: Entity + Sized {
 }
 
 /// アクション（動き）のプロトコル
-pub trait Action<Output, Event, Error>
+pub trait Action<Output, Event, Warning, Error>
 where
     Error: std::error::Error,
 {
-    fn run(self, monitor: &mut dyn FnMut(Event)) -> Result<Output, Vec<Error>>;
+    fn run(
+        self,
+        monitor: &mut dyn FnMut(Event),
+        warning: &mut dyn FnMut(Warning),
+    ) -> Result<Output, Vec<Error>>;
 }
 
 pub trait Collection<T, Error>: Entity
@@ -79,16 +83,18 @@ pub trait Artifact: Entity {
     fn files(&self) -> Result<Vec<PathBuf>, Self::Error>;
 }
 
-pub trait CliSpeaker<Event, Error, Output> {
+pub trait CliSpeaker<Event, Warning, Error, Output> {
     fn render_event(&self, event: Event);
+    fn render_warning(&self, warning: Warning);
     fn render_error(&self, error: &Error);
     fn render_result(&self, output: &Output);
 }
 
 /// AIエージェント向けの Speaker
 /// メソッドが String を返すことで、AI へのレスポンスとしてそのまま利用できる
-pub trait McpSpeaker<Event, Error, Output> {
+pub trait McpSpeaker<Event, Warning, Error, Output> {
     fn render_event(&self, event: Event) -> String;
+    fn render_warning(&self, warning: Warning) -> String;
     fn render_error(&self, error: &Error) -> String;
     fn render_result(&self, output: &Output) -> String;
 }
