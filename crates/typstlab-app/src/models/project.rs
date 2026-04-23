@@ -3,7 +3,7 @@ use crate::models::paper_scope::PaperScope;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
-use typstlab_proto::{Creatable, Entity, Loadable, Loaded};
+use typstlab_proto::{Creatable, Entity, Loadable, Loaded, PROJECT_SETTING_FILE};
 
 #[derive(Error, Debug)]
 pub enum ProjectError {
@@ -102,7 +102,7 @@ impl Project {
     }
 
     pub fn config_path(&self) -> PathBuf {
-        self.root.join("typstlab.toml")
+        self.root.join(PROJECT_SETTING_FILE)
     }
 }
 

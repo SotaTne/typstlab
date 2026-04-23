@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+pub const PROJECT_SETTING_FILE: &str = "typstlab.toml";
+pub const PAPER_SETTING_FILE: &str = "paper.toml";
+
 pub struct Loaded<Actual, Config> {
     pub actual: Actual,
     pub config: Config,

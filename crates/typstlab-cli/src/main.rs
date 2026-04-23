@@ -1,10 +1,13 @@
 mod commands;
+mod utils;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use std::path::PathBuf;
 use thiserror::Error;
-use typstlab_app::{BootstrapAction, BootstrapError, BootstrapEvent, LoadEvent};
+use typstlab_app::{BootstrapError, BootstrapEvent, LoadEvent};
 use typstlab_proto::{Action, CliSpeaker};
+use utils::bootstrap_context;
 
 #[derive(Parser, Clone)]
 #[command(author, version, about, long_about = None)]
@@ -47,6 +50,8 @@ pub enum CliError {
     Bootstrap(#[from] BootstrapError),
     #[error("Command failed: {0}")]
     Command(String),
+    #[error("Project root not found from '{start}': no {config_file} found in current or parent directories")]
+    ProjectRootNotFound { start: PathBuf, config_file: &'static str },
     #[error("System error: {0}")]
     System(String),
 }
@@ -61,33 +66,8 @@ impl Action<(), CliEvent, CliError> for CliAction {
             }
 
             Commands::Build { papers } => {
-                let project_root = std::env::current_dir().map_err(|e| {
-                    vec![CliError::System(format!(
-                        "Could not identify current directory: {}",
-                        e
-                    ))]
-                })?;
-
-                let cache_root = dirs::cache_dir()
-                    .ok_or_else(|| {
-                        vec![CliError::System(
-                            "Could not find cache directory".to_string(),
-                        )]
-                    })?
-                    .join("typstlab");
-
-                let bootstrap = BootstrapAction {
-                    project_root,
-                    cache_root,
-                };
-                let ctx = bootstrap
-                    .run(&mut |e| monitor(CliEvent::Bootstrap(e)))
-                    .map_err(|errors| {
-                        errors
-                            .into_iter()
-                            .map(CliError::Bootstrap)
-                            .collect::<Vec<_>>()
-                    })?;
+                let ctx = bootstrap_context(&mut |e| monitor(CliEvent::Bootstrap(e)))
+                    .map_err(|error| vec![error])?;
 
                 let inputs = if papers.is_empty() {
                     None

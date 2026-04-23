@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
-use typstlab_proto::{Entity, Loadable, Loaded};
+use typstlab_proto::{Entity, Loadable, Loaded, PAPER_SETTING_FILE};
 
 /// paper.toml のスキーマ定義
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -60,7 +60,7 @@ impl Paper {
     }
 
     pub fn config_path(&self) -> PathBuf {
-        self.absolute_path.join("paper.toml")
+        self.absolute_path.join(PAPER_SETTING_FILE)
     }
 }
 
