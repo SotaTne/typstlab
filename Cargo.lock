@@ -2801,6 +2801,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "typstlab-app"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "colored 3.0.0",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "toml",
+ "typstlab-base",
+ "typstlab-proto",
+]
+
+[[package]]
+name = "typstlab-base"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "colored 3.0.0",
+ "fs2",
+ "semver",
+ "serde",
+ "serde_json",
+ "typstlab-proto",
+]
+
+[[package]]
+name = "typstlab-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "colored 3.0.0",
+ "dirs",
+ "thiserror 2.0.17",
+ "typstlab-app",
+ "typstlab-base",
+ "typstlab-proto",
+]
+
+[[package]]
 name = "typstlab-core"
 version = "0.1.0"
 dependencies = [
@@ -2853,6 +2894,21 @@ dependencies = [
  "typstlab-typst",
  "walkdir",
 ]
+
+[[package]]
+name = "typstlab-mcp-2"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "typstlab-app",
+ "typstlab-base",
+ "typstlab-proto",
+]
+
+[[package]]
+name = "typstlab-proto"
+version = "0.1.0"
 
 [[package]]
 name = "typstlab-testkit"

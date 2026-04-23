@@ -1,0 +1,8 @@
+[package]
+name = "typstlab-proto"
+version = "0.1.0"
+edition = "2024"
+
+
+[dependencies]
+# 依存ゼロを維持

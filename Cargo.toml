@@ -2,12 +2,16 @@
 members = [
   "crates/typstlab",
   "crates/typstlab-core",
-  "crates/typstlab-mcp",
+  "crates/typstlab-proto",
+  "crates/typstlab-base",
+  "crates/typstlab-app",
+  "crates/typstlab-cli",
+  "crates/typstlab-mcp-2",
   "crates/typstlab-testkit",
+
   "crates/typstlab-typst",
   "e2e",
 ]
-
 resolver = "2"
 
 [workspace.dependencies]
