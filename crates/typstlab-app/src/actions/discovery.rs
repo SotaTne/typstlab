@@ -3,10 +3,16 @@ use crate::models::{Paper, PaperScope};
 use typstlab_proto::Collection;
 use thiserror::Error;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum DiscoveryError {
     #[error("Paper not found for input: '{0}'")]
     NotFound(String),
+    #[error("Failed to resolve paper for input '{input}': {source}")]
+    ResolveFailed {
+        input: String,
+        #[source]
+        source: crate::models::CollectionError,
+    },
 }
 
 /// 曖昧な入力から実体を特定するアクション
@@ -21,10 +27,13 @@ impl Action<Vec<Paper>, (), DiscoveryError> for DiscoveryAction {
         let mut errors = Vec::new();
 
         for input in &self.inputs {
-            if let Some(paper) = self.scope.resolve(input) {
-                papers.push(paper);
-            } else {
-                errors.push(DiscoveryError::NotFound(input.clone()));
+            match self.scope.resolve(input) {
+                Ok(Some(paper)) => papers.push(paper),
+                Ok(None) => errors.push(DiscoveryError::NotFound(input.clone())),
+                Err(source) => errors.push(DiscoveryError::ResolveFailed {
+                    input: input.clone(),
+                    source,
+                }),
             }
         }
 

@@ -30,10 +30,14 @@ impl McpSpeaker<BuildEvent, BuildError, ()> for McpBuildPresenter {
     fn render_error(&self, error: &BuildError) -> String {
         match error {
             BuildError::PaperBuildError(artifact) => {
+                let artifact_error = artifact.error();
+                let error_message = artifact_error
+                    .as_deref()
+                    .unwrap_or("artifact reported no error message");
                 format!(
                     "ERROR in artifact '{}':\n{}", 
                     artifact.root().display(), 
-                    artifact.error().unwrap_or_else(|| "Unknown error".to_string())
+                    error_message
                 )
             }
             _ => {

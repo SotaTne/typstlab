@@ -68,10 +68,10 @@ impl CliSpeaker<BuildEvent, BuildError, ()> for BuildPresenter {
                     "❌".red(),
                     artifact.root().display().to_string().bold()
                 );
-                // Typst の生のエラー出力をインデント付きで結合して表示
-                let raw_error = artifact
-                    .error()
-                    .unwrap_or_else(|| "Unknown error".to_string());
+                let artifact_error = artifact.error();
+                let raw_error = artifact_error
+                    .as_deref()
+                    .unwrap_or("artifact reported no error message");
                 let indented_error = raw_error
                     .lines()
                     .map(|line| format!("   {}", line))

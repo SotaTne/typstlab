@@ -54,14 +54,14 @@ impl Collection<Paper, CollectionError> for PaperScope {
         Ok(papers)
     }
 
-    fn resolve(&self, input: &str) -> Option<Paper> {
+    fn resolve(&self, input: &str) -> Result<Option<Paper>, CollectionError> {
         let input_path = Path::new(input);
         let scope_root = self.path();
 
         // 1. ID として直接存在するかチェック
         let potential_paper = Paper::new(input.to_string(), scope_root.clone());
         if potential_paper.path().exists() {
-            return Some(potential_paper);
+            return Ok(Some(potential_paper));
         }
 
         // 2. パスとして解決を試みる
@@ -76,16 +76,26 @@ impl Collection<Paper, CollectionError> for PaperScope {
             self.project_root.join(input_path)
         };
 
-        let full_input = std::fs::canonicalize(&abs_input).ok()?;
-        let full_root = std::fs::canonicalize(&scope_root).ok()?;
+        let full_input = match std::fs::canonicalize(&abs_input) {
+            Ok(full_input) => full_input,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(CollectionError::Io(error)),
+        };
+        let full_root = std::fs::canonicalize(&scope_root)?;
 
         if full_input.starts_with(&full_root) {
-            let relative = full_input.strip_prefix(&full_root).ok()?;
-            let id = relative.components().next()?.as_os_str().to_str()?;
-            return Some(Paper::new(id.to_string(), scope_root));
+            let relative = full_input
+                .strip_prefix(&full_root)
+                .map_err(|_| CollectionError::OutsideScope(full_input.clone()))?;
+            let id = relative
+                .components()
+                .next()
+                .and_then(|component| component.as_os_str().to_str())
+                .ok_or_else(|| CollectionError::OutsideScope(full_input.clone()))?;
+            return Ok(Some(Paper::new(id.to_string(), scope_root)));
         }
 
-        None
+        Ok(None)
     }
 }
 

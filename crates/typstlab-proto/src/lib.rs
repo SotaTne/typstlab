@@ -64,7 +64,7 @@ where
     Error: std::error::Error + 'static,
 {
     fn list(&self) -> Result<Vec<T>, Error>;
-    fn resolve(&self, input: &str) -> Option<T>;
+    fn resolve(&self, input: &str) -> Result<Option<T>, Error>;
 }
 
 pub trait Artifact: Entity {
