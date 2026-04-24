@@ -1,9 +1,9 @@
 use crate::actions::resolve_typst::{ResolveEvent, StoreError};
-use crate::models::{Docs, ManagedStore};
-use typstlab_proto::Action;
+use crate::models::{Docs, DocsStore};
+use typstlab_proto::{Action, Collection};
 
 pub struct ResolveDocsAction {
-    pub store: ManagedStore,
+    pub store: DocsStore,
     pub version: String,
 }
 
@@ -15,19 +15,20 @@ impl Action<Docs, ResolveEvent, (), StoreError> for ResolveDocsAction {
     ) -> Result<Docs, Vec<StoreError>> {
         monitor(ResolveEvent::CheckingCache);
 
-        let docs_path = self.store.root.join("docs").join(&self.version);
-
-        if docs_path.exists() {
-            monitor(ResolveEvent::CacheHit);
-            monitor(ResolveEvent::Completed);
-            return Ok(Docs { path: docs_path });
+        match self.store.resolve(&self.version) {
+            Ok(Some(docs)) => {
+                monitor(ResolveEvent::CacheHit);
+                monitor(ResolveEvent::Completed);
+                Ok(docs)
+            }
+            Ok(None) => {
+                monitor(ResolveEvent::CacheMiss);
+                Err(vec![StoreError::NotFound(format!(
+                    "Docs for version {}",
+                    self.version
+                ))])
+            }
+            Err(e) => Err(vec![e]),
         }
-
-        monitor(ResolveEvent::CacheMiss);
-
-        Err(vec![StoreError::NotFound(format!(
-            "Docs for version {}",
-            self.version
-        ))])
     }
 }

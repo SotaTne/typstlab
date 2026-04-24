@@ -2822,11 +2822,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "colored 3.0.0",
+ "flate2",
  "fs2",
+ "reqwest",
  "semver",
  "serde",
  "serde_json",
+ "tar",
+ "tempfile",
  "typstlab-proto",
+ "zip 2.4.2",
 ]
 
 [[package]]

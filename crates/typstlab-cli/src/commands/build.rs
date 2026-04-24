@@ -5,7 +5,9 @@ use typstlab_proto::{Action, Artifact, CliSpeaker, Entity};
 
 /// build コマンドのエントリポイント
 pub fn run(ctx: AppContext, inputs: Option<Vec<String>>) -> Result<()> {
-    let action = BuildAction::new(ctx.loaded_project, ctx.store, inputs);
+    use typstlab_base::driver::TypstDriver;
+    let driver = TypstDriver::new(ctx.typst.path());
+    let action = BuildAction::new(ctx.loaded_project, driver, inputs);
     let presenter = BuildPresenter;
     let mut warning_seen = false;
 

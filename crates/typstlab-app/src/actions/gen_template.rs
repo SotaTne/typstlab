@@ -34,19 +34,18 @@ impl Action<(), GenTemplateEvent, (), GenTemplateError> for GenTemplateAction {
         let templates_dir = self.project.templates_scope().path();
         let target = Template::new(self.template_id.clone(), templates_dir);
 
-        let create_action = CreateAction { target, args: () };
+        let create_action = CreateAction {
+            target,
+            args: (),
+        };
 
         let loaded = create_action
-            .run(
-                &mut |e| monitor(GenTemplateEvent::CreatingTemplate(e)),
-                &mut |_| {},
-            )
+            .run(&mut |e| monitor(GenTemplateEvent::CreatingTemplate(e)), &mut |_| {})
             .map_err(|errors| vec![GenTemplateError::CreateFailed(errors)])?;
 
-        monitor(GenTemplateEvent::TemplateReady {
-            path: loaded.actual.path(),
-        });
+        monitor(GenTemplateEvent::TemplateReady { path: loaded.actual.path() });
 
         Ok(())
     }
 }
+

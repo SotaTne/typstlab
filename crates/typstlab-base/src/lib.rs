@@ -1,5 +1,5 @@
-pub mod persistence;
 pub mod driver;
+pub mod persistence;
 
-pub use persistence::AtomicFile;
 pub use driver::TypstDriver;
+pub use persistence::Persistence;

@@ -1,7 +1,7 @@
 use crate::actions::load::{LoadAction, LoadEvent};
 use crate::actions::resolve_typst::{ResolveEvent, StoreError};
 use crate::models::{
-    Docs, ManagedStore, Project, ProjectConfig, ProjectError, ProjectHandle, Typst,
+    Docs, DocsStore, Project, ProjectConfig, ProjectError, ProjectHandle, Typst, TypstStore,
 };
 use std::path::PathBuf;
 use thiserror::Error;
@@ -22,7 +22,7 @@ pub enum BootstrapEvent {
     IdentifyingProject {
         root: PathBuf,
     },
-    ProjectLoading(LoadEvent), // LoadAction のイベントを内包
+    ProjectLoading(LoadEvent),
     ProjectReady {
         name: String,
     },
@@ -42,7 +42,8 @@ pub enum BootstrapEvent {
 
 pub struct AppContext {
     pub loaded_project: Loaded<Project, ProjectConfig>,
-    pub store: ManagedStore,
+    pub typst_store: TypstStore,
+    pub docs_store: DocsStore,
     pub typst: Typst,
     pub docs: Docs,
 }
@@ -58,7 +59,7 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
         monitor: &mut dyn FnMut(BootstrapEvent),
         _warning: &mut dyn FnMut(()),
     ) -> Result<AppContext, Vec<BootstrapError>> {
-        // 1. プロジェクトのロード (LoadAction を使用)
+        // 1. プロジェクトのロード
         monitor(BootstrapEvent::IdentifyingProject {
             root: self.project_root.clone(),
         });
@@ -88,11 +89,15 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
         monitor(BootstrapEvent::PreparingStore {
             cache_root: self.cache_root.clone(),
         });
-        let store = ManagedStore::new(self.cache_root);
+        let typst_store = TypstStore::new(self.cache_root.join("typst"));
+        let docs_store = DocsStore::new(self.cache_root.join("docs"));
 
         // 3. Typst 解決
         let version = loaded_project.typst_version().to_string();
-        let typst_resolver = store.typst_resolver(&version);
+        let typst_resolver = crate::actions::resolve_typst::ResolveTypstAction {
+            store_root: typst_store.root.clone(),
+            version: version.clone(),
+        };
         let typst = typst_resolver
             .run(
                 &mut |e| {
@@ -106,7 +111,10 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
             .map_err(|errs| vec![BootstrapError::ResolutionError(errs)])?;
 
         // 4. Docs 解決
-        let docs_resolver = store.docs_resolver(&version);
+        let docs_resolver = crate::actions::resolve_docs::ResolveDocsAction {
+            store: docs_store.clone(),
+            version: version.clone(),
+        };
         let docs = docs_resolver
             .run(
                 &mut |e| {
@@ -123,7 +131,8 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
 
         Ok(AppContext {
             loaded_project,
-            store,
+            typst_store,
+            docs_store,
             typst,
             docs,
         })

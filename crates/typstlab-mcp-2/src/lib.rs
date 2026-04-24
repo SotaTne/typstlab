@@ -12,9 +12,6 @@ impl McpSpeaker<BuildEvent, BuildWarning, BuildError, ()> for McpBuildPresenter 
             BuildEvent::DiscoveryStarted { inputs } => {
                 format!("Identifying targets for inputs: {:?}", inputs)
             }
-            BuildEvent::ResolvingTypst { version } => {
-                format!("Checking Typst version: {}", version)
-            }
             BuildEvent::DiscoveredTargets { count } => {
                 format!("Discovered {} papers to build.", count)
             }

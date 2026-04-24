@@ -1,7 +1,6 @@
 use crate::actions::discovery::{DiscoveryAction, DiscoveryError};
-use crate::actions::resolve_typst::StoreError;
 use crate::models::{
-    CollectionError, ManagedStore, PaperError, PaperHandle, Project, ProjectConfig, ProjectHandle,
+    CollectionError, PaperError, PaperHandle, Project, ProjectConfig, ProjectHandle,
 };
 use thiserror::Error;
 use typstlab_base::driver::{TypstCommand, TypstDriver};
@@ -11,8 +10,6 @@ use typstlab_proto::{Action, Collection, Entity, Loadable, Loaded};
 pub enum BuildError {
     #[error("Discovery failure: {0:?}")]
     Discovery(Vec<DiscoveryError>),
-    #[error("Environment failure: Resource resolution failed: {0:?}")]
-    ResolutionError(Vec<StoreError>),
     #[error("Discovery failure: {0}")]
     GeneralDiscoveryError(#[from] CollectionError),
     #[error("Build failed for artifact: {0:?}")]
@@ -40,9 +37,6 @@ pub enum BuildEvent {
     DiscoveryStarted {
         inputs: Vec<String>,
     },
-    ResolvingTypst {
-        version: String,
-    },
     DiscoveredTargets {
         count: usize,
     },
@@ -57,19 +51,19 @@ pub enum BuildEvent {
 
 pub struct BuildAction {
     pub loaded_project: Loaded<Project, ProjectConfig>,
-    pub store: ManagedStore,
+    pub typst_driver: TypstDriver,
     pub inputs: Option<Vec<String>>,
 }
 
 impl BuildAction {
     pub fn new(
         loaded_project: Loaded<Project, ProjectConfig>,
-        store: ManagedStore,
+        typst_driver: TypstDriver,
         inputs: Option<Vec<String>>,
     ) -> Self {
         Self {
             loaded_project,
-            store,
+            typst_driver,
             inputs,
         }
     }
@@ -116,18 +110,6 @@ impl Action<(), BuildEvent, BuildWarning, BuildError> for BuildAction {
             count: targets.len(),
         });
 
-        // 3. Typst 解決
-        let version = self.loaded_project.typst_version().to_string();
-        monitor(BuildEvent::ResolvingTypst {
-            version: version.clone(),
-        });
-        let resolver = self.store.typst_resolver(&version);
-        let typst = match resolver.run(&mut |_| {}, &mut |_| {}) {
-            Ok(t) => t,
-            Err(e) => return Err(vec![BuildError::ResolutionError(e)]),
-        };
-        let driver = TypstDriver::new(typst.path());
-
         // 4. 成果物領土の準備
         let artifact_scope = self.loaded_project.build_artifact_scope();
 
@@ -165,7 +147,7 @@ impl Action<(), BuildEvent, BuildWarning, BuildError> for BuildAction {
                 output: Some(output_path),
             };
 
-            match driver.execute(command) {
+            match self.typst_driver.execute(command) {
                 Ok(res) if res.exit_code == 0 => {
                     artifact.success = true;
                     monitor(BuildEvent::Finished {
@@ -198,9 +180,11 @@ impl Action<(), BuildEvent, BuildWarning, BuildError> for BuildAction {
 mod tests {
     use super::{BuildAction, BuildWarning};
     use crate::models::project::{ProjectInfo, StructureConfig, TypstInfo};
-    use crate::models::{ManagedStore, Project, ProjectConfig};
+    use crate::models::{Project, ProjectConfig};
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::TempDir;
+    use typstlab_base::driver::TypstDriver;
     use typstlab_proto::{Action, Loaded};
 
     fn loaded_project(root: &std::path::Path) -> Loaded<Project, ProjectConfig> {
@@ -226,10 +210,9 @@ mod tests {
         fs::create_dir_all(temp.path().join("dist")).unwrap();
 
         let project = loaded_project(temp.path());
-        let store_root = temp.path().join("store");
-        fs::create_dir_all(&store_root).unwrap();
+        let driver = TypstDriver::new(PathBuf::from("typst"));
 
-        let action = BuildAction::new(project, ManagedStore::new(store_root), None);
+        let action = BuildAction::new(project, driver, None);
         let mut warnings = Vec::new();
 
         let result = action.run(&mut |_| {}, &mut |warning| warnings.push(warning));
