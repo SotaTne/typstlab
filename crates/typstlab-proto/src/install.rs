@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::fmt;
 
 /// インストール対象のソース形式
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +18,15 @@ pub enum Downloaded {
     Archive(PathBuf),
     /// 生データとしてストリームで提供される状態（Readerを保持）
     Raw(Box<dyn std::io::Read + Send>),
+}
+
+impl fmt::Debug for Downloaded {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Downloaded::Archive(path) => f.debug_tuple("Archive").field(path).finish(),
+            Downloaded::Raw(_) => f.debug_tuple("Raw").field(&"<stream>").finish(),
+        }
+    }
 }
 
 /// 外部リソースを物理的に取得して配置するプロトコル

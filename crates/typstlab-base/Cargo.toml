@@ -16,3 +16,5 @@ reqwest = { version = "0.12", features = ["blocking"] }
 flate2 = "1"
 tar = "0.4"
 zip = "2"
+thiserror = "2"
+xz2 = "0.1"

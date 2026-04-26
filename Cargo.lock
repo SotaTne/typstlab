@@ -2830,7 +2830,9 @@ dependencies = [
  "serde_json",
  "tar",
  "tempfile",
+ "thiserror 2.0.17",
  "typstlab-proto",
+ "xz2",
  "zip 2.4.2",
 ]
 
