@@ -1,10 +1,8 @@
-use std::io::Read;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
-use typstlab_proto::{Downloaded, Installer, SourceFormat};
 use crate::install::{InstallProvider, ProgressReader};
+use typstlab_proto::{Downloaded, Installer, SourceFormat};
 
 #[derive(Debug, Error)]
 pub enum DocsInstallError {
@@ -13,7 +11,7 @@ pub enum DocsInstallError {
 
     #[error("Unsupported format for DocsInstaller: {0:?}")]
     UnsupportedFormat(SourceFormat),
-    
+
     #[error("I/O error during raw data streaming: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -45,7 +43,9 @@ impl<P: InstallProvider> Installer for DocsInstaller<P> {
             return Err(DocsInstallError::UnsupportedFormat(format));
         }
 
-        let (reader, total_size) = self.provider.fetch(url)
+        let (reader, total_size) = self
+            .provider
+            .fetch(url)
             .map_err(|e| DocsInstallError::SourceAccessFailed(Box::new(e)))?;
 
         let progress_reader = ProgressReader::new(reader, total_size, on_progress);
@@ -71,7 +71,10 @@ mod tests {
         fn fetch(&self, _url: &str) -> Result<(Box<dyn Read + Send>, u64), Self::Error> {
             match &self.data {
                 Ok(bytes) => Ok((Box::new(Cursor::new(bytes.clone())), bytes.len() as u64)),
-                Err(e) => Err(DocsInstallError::Io(std::io::Error::new(e.kind(), e.to_string()))),
+                Err(e) => Err(DocsInstallError::Io(std::io::Error::new(
+                    e.kind(),
+                    e.to_string(),
+                ))),
             }
         }
     }
@@ -89,10 +92,12 @@ mod tests {
         let progress_history = Arc::new(Mutex::new(Vec::new()));
         let history_clone = progress_history.clone();
 
-        let downloaded = installer.install("url", SourceFormat::Raw, temp.path(), move |curr, total| {
-            let mut h = history_clone.lock().unwrap();
-            h.push((curr, total));
-        }).unwrap();
+        let downloaded = installer
+            .install("url", SourceFormat::Raw, temp.path(), move |curr, total| {
+                let mut h = history_clone.lock().unwrap();
+                h.push((curr, total));
+            })
+            .unwrap();
 
         if let Downloaded::Raw(mut reader) = downloaded {
             assert!(progress_history.lock().unwrap().is_empty());
@@ -101,7 +106,10 @@ mod tests {
             assert_eq!(progress_history.lock().unwrap().last().unwrap().0, 500);
             let mut remaining = Vec::new();
             reader.read_to_end(&mut remaining).unwrap();
-            assert_eq!(progress_history.lock().unwrap().last().unwrap().0, total_size);
+            assert_eq!(
+                progress_history.lock().unwrap().last().unwrap().0,
+                total_size
+            );
         } else {
             panic!("Expected Downloaded::Raw");
         }
@@ -109,12 +117,15 @@ mod tests {
 
     #[test]
     fn test_err_source_access_failed() {
-        let provider = MockProvider { 
-            data: Err(std::io::Error::new(std::io::ErrorKind::NotFound, "api offline")) 
+        let provider = MockProvider {
+            data: Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "api offline",
+            )),
         };
         let installer = DocsInstaller::new(provider);
         let temp = TempDir::new().unwrap();
-        let res = installer.install("url", SourceFormat::Raw, temp.path(), |_,_| {});
+        let res = installer.install("url", SourceFormat::Raw, temp.path(), |_, _| {});
         assert!(matches!(res, Err(DocsInstallError::SourceAccessFailed(_))));
     }
 
@@ -123,13 +134,22 @@ mod tests {
         let provider = MockProvider { data: Ok(vec![]) };
         let installer = DocsInstaller::new(provider);
         let temp = TempDir::new().unwrap();
-        let res = installer.install("url", SourceFormat::TarXz { strip_components: 0 }, temp.path(), |_,_| {});
+        let res = installer.install(
+            "url",
+            SourceFormat::TarXz {
+                strip_components: 0,
+            },
+            temp.path(),
+            |_, _| {},
+        );
         assert!(matches!(res, Err(DocsInstallError::UnsupportedFormat(_))));
     }
 
     #[test]
     fn test_err_io_propagation_mid_stream() {
-        struct FaultyReader { count: usize }
+        struct FaultyReader {
+            count: usize,
+        }
         impl Read for FaultyReader {
             fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
                 if self.count > 0 {
@@ -137,7 +157,10 @@ mod tests {
                     buf[0] = 0;
                     Ok(1)
                 } else {
-                    Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Stream Broken"))
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::BrokenPipe,
+                        "Stream Broken",
+                    ))
                 }
             }
         }
@@ -152,7 +175,9 @@ mod tests {
 
         let installer = DocsInstaller::new(FaultyProvider);
         let temp = TempDir::new().unwrap();
-        let downloaded = installer.install("url", SourceFormat::Raw, temp.path(), |_,_| {}).unwrap();
+        let downloaded = installer
+            .install("url", SourceFormat::Raw, temp.path(), |_, _| {})
+            .unwrap();
         if let Downloaded::Raw(mut reader) = downloaded {
             let mut buf = Vec::new();
             let res = reader.read_to_end(&mut buf);
