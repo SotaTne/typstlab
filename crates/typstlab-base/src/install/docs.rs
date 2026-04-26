@@ -58,6 +58,8 @@ impl<P: InstallProvider> Installer for DocsInstaller<P> {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::io::Read;
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
 
     // --- Mocks ---
