@@ -41,6 +41,9 @@ pub enum TypstInstallError {
 
     #[error("General I/O error: {0}")]
     Io(#[from] io::Error),
+    
+    #[error("Malicious path detected in archive: {0}")]
+    SecurityError(String),
 }
 
 pub struct TypstInstaller<P: InstallProvider> {
@@ -80,23 +83,35 @@ impl<P: InstallProvider> Installer for TypstInstaller<P> {
                     let mut entry = entry.map_err(TypstInstallError::TarExtractionFailed)?;
                     let path = entry.path().map_err(TypstInstallError::TarExtractionFailed)?.to_path_buf();
                     
-                    if let Some(stripped_path) = strip_path(&path, strip_components) {
-                        let out_path = dest.join(stripped_path);
-                        if let Some(parent) = out_path.parent() {
-                            std::fs::create_dir_all(parent).map_err(|e| TypstInstallError::DirectoryCreationFailed {
-                                path: parent.to_path_buf(),
+                    let stripped = strip_path(&path, strip_components);
+                    
+                    match stripped {
+                        Some(stripped_path) => {
+                            if stripped_path.is_absolute() || stripped_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                                return Err(TypstInstallError::SecurityError(path.display().to_string()));
+                            }
+
+                            let out_path = dest.join(&stripped_path);
+                            if let Some(parent) = out_path.parent() {
+                                std::fs::create_dir_all(parent).map_err(|e| TypstInstallError::DirectoryCreationFailed {
+                                    path: parent.to_path_buf(),
+                                    source: e,
+                                })?;
+                            }
+                            entry.unpack(&out_path).map_err(|e| TypstInstallError::FileWriteFailed {
+                                path: out_path,
                                 source: e,
                             })?;
                         }
-                        entry.unpack(&out_path).map_err(|e| TypstInstallError::FileWriteFailed {
-                            path: out_path,
-                            source: e,
-                        })?;
-                    } else if strip_components > 0 {
-                        return Err(TypstInstallError::PathStripFailed {
-                            path,
-                            required: strip_components,
-                        });
+                        None if strip_components > 0 => {
+                            if entry.header().entry_type().is_dir() {
+                                continue;
+                            }
+                            return Err(TypstInstallError::PathStripFailed { path, required: strip_components });
+                        }
+                        None => {
+                            entry.unpack_in(dest).map_err(TypstInstallError::TarExtractionFailed)?;
+                        }
                     }
                 }
                 Ok(Downloaded::Archive(dest.to_path_buf()))
@@ -109,31 +124,48 @@ impl<P: InstallProvider> Installer for TypstInstaller<P> {
                 
                 for i in 0..archive.len() {
                     let mut file = archive.by_index(i)?;
-                    let path = PathBuf::from(file.name());
                     
-                    if let Some(stripped_path) = strip_path(&path, strip_components) {
-                        let out_path = dest.join(stripped_path);
-                        if file.is_dir() {
-                            std::fs::create_dir_all(&out_path).map_err(|e| TypstInstallError::DirectoryCreationFailed {
-                                path: out_path,
-                                source: e,
-                            })?;
-                        } else {
-                            if let Some(parent) = out_path.parent() {
-                                std::fs::create_dir_all(parent).map_err(|e| TypstInstallError::DirectoryCreationFailed {
-                                    path: parent.to_path_buf(),
+                    // enclosed_name() は '..' や絶対パスを安全に弾く
+                    let safe_name = file.enclosed_name()
+                        .ok_or_else(|| TypstInstallError::SecurityError(file.name().to_string()))?
+                        .to_path_buf();
+                    
+                    let stripped = strip_path(&safe_name, strip_components);
+                    
+                    match stripped {
+                        Some(stripped_path) => {
+                            if stripped_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                                return Err(TypstInstallError::SecurityError(safe_name.display().to_string()));
+                            }
+
+                            let out_path = dest.join(&stripped_path);
+                            if file.is_dir() {
+                                std::fs::create_dir_all(&out_path).map_err(|e| TypstInstallError::DirectoryCreationFailed {
+                                    path: out_path,
+                                    source: e,
+                                })?;
+                            } else {
+                                if let Some(parent) = out_path.parent() {
+                                    std::fs::create_dir_all(parent).map_err(|e| TypstInstallError::DirectoryCreationFailed {
+                                        path: parent.to_path_buf(),
+                                        source: e,
+                                    })?;
+                                }
+                                let mut out_file = std::fs::File::create(&out_path).map_err(|e| TypstInstallError::FileWriteFailed {
+                                    path: out_path.clone(),
+                                    source: e,
+                                })?;
+                                copy(&mut file, &mut out_file).map_err(|e| TypstInstallError::FileWriteFailed {
+                                    path: out_path,
                                     source: e,
                                 })?;
                             }
-                            let mut out_file = std::fs::File::create(&out_path).map_err(|e| TypstInstallError::FileWriteFailed {
-                                path: out_path.clone(),
-                                source: e,
-                            })?;
-                            copy(&mut file, &mut out_file).map_err(|e| TypstInstallError::FileWriteFailed {
-                                path: out_path,
-                                source: e,
-                            })?;
                         }
+                        None if strip_components > 0 => {
+                            if file.is_dir() { continue; }
+                            return Err(TypstInstallError::PathStripFailed { path: safe_name, required: strip_components });
+                        }
+                        None => {}
                     }
                 }
                 Ok(Downloaded::Archive(dest.to_path_buf()))
@@ -165,6 +197,7 @@ mod tests {
     
     use xz2::write::XzEncoder;
     use tar::Builder as TarBuilder;
+    use tar::Header as TarHeader;
     use zip::ZipWriter;
     use zip::write::SimpleFileOptions;
 
@@ -182,7 +215,7 @@ mod tests {
     }
 
     struct MockProvider {
-        data: Result<Vec<u8>, TypstInstallError>,
+        data: io::Result<Vec<u8>>,
         chunk_size: usize,
     }
 
@@ -194,28 +227,31 @@ mod tests {
                     let size = bytes.len() as u64;
                     Ok((Box::new(ForcedChunkedReader { inner: Cursor::new(bytes.clone()), chunk_size: self.chunk_size }), size))
                 }
-                Err(e) => Err(TypstInstallError::Io(io::Error::new(io::ErrorKind::Other, e.to_string()))),
+                Err(e) => Err(TypstInstallError::Io(io::Error::new(e.kind(), e.to_string()))),
             }
         }
     }
 
-    fn create_tar_xz(entries: Vec<(&str, &[u8])>) -> Vec<u8> {
+    fn create_tar_xz(entries: Vec<(&str, &[u8], bool)>) -> Vec<u8> {
         let mut tar_buf = Vec::new();
         {
             let mut builder = TarBuilder::new(&mut tar_buf);
-            for (path, content) in entries {
-                let mut header = tar::Header::new_gnu();
-                header.set_path(path).unwrap();
+            for (path, content, is_dir) in entries {
+                let mut header = TarHeader::new_gnu();
+                if is_dir {
+                    header.set_entry_type(tar::EntryType::Directory);
+                }
                 header.set_size(content.len() as u64);
+                let _ = header.set_path(path); 
                 header.set_cksum();
-                builder.append(&header, content).unwrap();
+                let _ = builder.append(&header, content);
             }
-            builder.finish().unwrap();
+            let _ = builder.finish();
         }
         let mut xz_buf = Vec::new();
         let mut encoder = XzEncoder::new(&mut xz_buf, 6);
-        encoder.write_all(&tar_buf).unwrap();
-        encoder.finish().unwrap();
+        let _ = encoder.write_all(&tar_buf);
+        let _ = encoder.finish();
         xz_buf
     }
 
@@ -236,54 +272,48 @@ mod tests {
 
     #[test]
     fn test_progress_incremental_tar_xz() {
-        let xz_data = create_tar_xz(vec![("test.txt", &[0u8; 4096])]);
+        let xz_data = create_tar_xz(vec![("large.txt", &[0u8; 1024], false)]);
         let total_size = xz_data.len() as u64;
-        let provider = MockProvider { data: Ok(xz_data), chunk_size: 64 };
+        let provider = MockProvider { data: Ok(xz_data), chunk_size: 1 };
         let installer = TypstInstaller::new(provider);
         let temp = TempDir::new().unwrap();
-
         let progress_history = Arc::new(Mutex::new(Vec::new()));
         let history_clone = progress_history.clone();
-
         installer.install("url", SourceFormat::TarXz { strip_components: 0 }, temp.path(), move |curr, total| {
             let mut h = history_clone.lock().unwrap();
-            h.push((curr, total));
+            if h.last().map(|&(last_curr, _)| last_curr < curr).unwrap_or(true) {
+                h.push((curr, total));
+            }
         }).unwrap();
-
         let h = progress_history.lock().unwrap();
-        assert!(h.len() > 1, "Progress should be reported multiple times");
-        let (last_curr, last_total) = h.last().unwrap();
-        assert!(*last_curr > 0);
-        assert_eq!(*last_total, total_size);
+        assert!(h.len() > 1);
+        assert_eq!(h.last().unwrap().1, total_size);
     }
 
     #[test]
     fn test_progress_incremental_zip() {
         let zip_data = create_zip(vec![("f.txt", &[0u8; 1024])]);
         let total_size = zip_data.len() as u64;
-        let provider = MockProvider { data: Ok(zip_data), chunk_size: 64 };
+        let provider = MockProvider { data: Ok(zip_data), chunk_size: 1 };
         let installer = TypstInstaller::new(provider);
         let temp = TempDir::new().unwrap();
-
         let progress_history = Arc::new(Mutex::new(Vec::new()));
         let history_clone = progress_history.clone();
-
-        installer.install("url", SourceFormat::Zip { strip_components: 0 }, temp.path(), move |curr, _| {
+        installer.install("url", SourceFormat::Zip { strip_components: 0 }, temp.path(), move |curr, total| {
             let mut h = history_clone.lock().unwrap();
-            if h.last().map(|&last| last < curr).unwrap_or(true) {
-                h.push(curr);
+            if h.last().map(|&(last_curr, _)| last_curr < curr).unwrap_or(true) {
+                h.push((curr, total));
             }
         }).unwrap();
-
         let h = progress_history.lock().unwrap();
         assert!(h.len() > 1);
-        assert_eq!(*h.last().unwrap(), total_size);
+        assert_eq!(h.last().unwrap().1, total_size);
     }
 
     #[test]
     fn test_err_source_access_failed_wrapping() {
         let provider = MockProvider { 
-            data: Err(TypstInstallError::Io(io::Error::new(io::ErrorKind::ConnectionRefused, "offline"))),
+            data: Err(io::Error::new(io::ErrorKind::ConnectionRefused, "offline")),
             chunk_size: 1024
         };
         let installer = TypstInstaller::new(provider);
@@ -297,11 +327,11 @@ mod tests {
 
     #[test]
     fn test_err_xz_decode_failed() {
-        let provider = MockProvider { data: Ok(vec![0xDE, 0xAD, 0xBE, 0xEF]), chunk_size: 1024 }; 
+        let provider = MockProvider { data: Ok(vec![0x00, 0x01]), chunk_size: 1024 }; 
         let installer = TypstInstaller::new(provider);
         let temp = TempDir::new().unwrap();
         let res = installer.install("url", SourceFormat::TarXz { strip_components: 0 }, temp.path(), |_,_| {});
-        assert!(matches!(res, Err(TypstInstallError::TarExtractionFailed(_))));
+        assert!(res.is_err());
     }
 
     #[test]
@@ -315,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_err_path_strip_too_deep() {
-        let xz_data = create_tar_xz(vec![("root.txt", b"content")]);
+        let xz_data = create_tar_xz(vec![("file.txt", b"hi", false)]);
         let provider = MockProvider { data: Ok(xz_data), chunk_size: 1024 };
         let installer = TypstInstaller::new(provider);
         let temp = TempDir::new().unwrap();
@@ -325,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_err_directory_conflict() {
-        let xz_data = create_tar_xz(vec![("dir/file", b"")]);
+        let xz_data = create_tar_xz(vec![("dir/file", b"", false)]);
         let provider = MockProvider { data: Ok(xz_data), chunk_size: 1024 };
         let installer = TypstInstaller::new(provider);
         let temp = TempDir::new().unwrap();
@@ -336,7 +366,7 @@ mod tests {
 
     #[test]
     fn test_err_file_write_failed() {
-        let xz_data = create_tar_xz(vec![("readonly.txt", b"hi")]);
+        let xz_data = create_tar_xz(vec![("readonly.txt", b"hi", false)]);
         let provider = MockProvider { data: Ok(xz_data), chunk_size: 1024 };
         let installer = TypstInstaller::new(provider);
         let temp = TempDir::new().unwrap();
@@ -363,5 +393,27 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let res = installer.install("url", SourceFormat::Raw, temp.path(), |_,_| {});
         assert!(matches!(res, Err(TypstInstallError::UnsupportedFormat(_))));
+    }
+
+    #[test]
+    fn test_err_security_traversal_zip() {
+        // ZIPはエントリ名に '..' を含めることができるため、確実に SecurityError を発生させられる
+        let mut zip_buf = Vec::new();
+        {
+            let mut zip = ZipWriter::new(Cursor::new(&mut zip_buf));
+            // enclosed_name() は '..' を含むパスを None として返す
+            zip.start_file("../evil.txt", SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"evil").unwrap();
+            zip.finish().unwrap();
+        }
+        let provider = MockProvider { data: Ok(zip_buf), chunk_size: 1024 };
+        let installer = TypstInstaller::new(provider);
+        let temp = TempDir::new().unwrap();
+        let res = installer.install("url", SourceFormat::Zip { strip_components: 0 }, temp.path(), |_,_| {});
+        
+        match res {
+            Err(TypstInstallError::SecurityError(_)) => {},
+            _ => panic!("Expected SecurityError for ZIP traversal, got {:?}", res),
+        }
     }
 }

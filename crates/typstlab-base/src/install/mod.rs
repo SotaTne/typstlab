@@ -36,7 +36,6 @@ pub trait InstallProvider: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
     
     /// 指定されたURLからデータをストリームとして取得する。
-    /// 返り値: (読み取り用Reader, 全体のサイズ)
     fn fetch(&self, url: &str) -> Result<(Box<dyn Read + Send>, u64), Self::Error>;
 }
 
@@ -46,18 +45,12 @@ pub struct HttpProvider {
 }
 
 impl HttpProvider {
-    pub fn new() -> Self {
+    /// HttpProvider を作成。Client 構築失敗時はエラーを返す（panic しない）。
+    pub fn try_new() -> Result<Self, reqwest::Error> {
         let client = Client::builder()
             .user_agent("typstlab-installer")
-            .build()
-            .expect("Failed to build HTTP client");
-        Self { client }
-    }
-}
-
-impl Default for HttpProvider {
-    fn default() -> Self {
-        Self::new()
+            .build()?;
+        Ok(Self { client })
     }
 }
 
