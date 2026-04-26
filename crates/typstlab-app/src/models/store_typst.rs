@@ -3,7 +3,7 @@ use crate::models::Typst;
 use std::path::PathBuf;
 use tempfile::TempDir;
 use typstlab_base::persistence::Persistence;
-use typstlab_proto::{Collection, Model, Store};
+use typstlab_proto::{Collection, Store};
 
 /// Typst バイナリを管理する保管庫
 pub struct TypstStore {
@@ -54,7 +54,9 @@ impl Collection<Typst, StoreError> for TypstStore {
                 continue;
             }
             if let Some(version) = entry.file_name().to_str() {
-                if version.starts_with('.') { continue; } 
+                if version.starts_with('.') {
+                    continue;
+                }
                 let bin = self.binary_path(version);
                 if bin.exists() {
                     list.push(Typst::new(version.to_string(), bin));
@@ -86,13 +88,16 @@ impl Store<Typst, StoreError> for TypstStore {
     fn commit_staged(&self, id: &str, staging: Self::Staging) -> Result<Typst, StoreError> {
         let dest_path = self.typst_path(id);
         let staging_path = staging.path();
-        
+
         Persistence::commit_directory(staging_path, &dest_path)
             .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
-        
+
         let bin = self.binary_path(id);
         if !bin.exists() {
-            return Err(StoreError::NotFound(format!("Binary not found after commit for {}", id)));
+            return Err(StoreError::NotFound(format!(
+                "Binary not found after commit for {}",
+                id
+            )));
         }
 
         Ok(Typst::new(id.to_string(), bin))
@@ -125,7 +130,11 @@ mod tests {
         assert!(staging_path.exists());
 
         // 2. 作業場にバイナリを模したファイルを配置 (モデルから名前を取得)
-        let bin_filename = store.binary_path(version).file_name().unwrap().to_os_string();
+        let bin_filename = store
+            .binary_path(version)
+            .file_name()
+            .unwrap()
+            .to_os_string();
         std::fs::write(staging_path.join(bin_filename), b"dummy binary").unwrap();
 
         // 3. コミット実行
