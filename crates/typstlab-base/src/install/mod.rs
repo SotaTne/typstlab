@@ -1,5 +1,5 @@
-use std::io::{self, Read};
 use reqwest::blocking::{Client, Response};
+use std::io::{self, Read};
 
 /// 読み取り操作と連動して進捗を報告するラッパー
 pub struct ProgressReader<R: Read, F: FnMut(u64, u64) + Send + 'static> {
@@ -34,7 +34,7 @@ impl<R: Read, F: FnMut(u64, u64) + Send + 'static> Read for ProgressReader<R, F>
 /// 物理的なデータ供給（HTTPリクエスト等）を抽象化する内部トレイト
 pub trait InstallProvider: Send + Sync {
     type Error: std::error::Error + Send + Sync + 'static;
-    
+
     /// 指定されたURLからデータをストリームとして取得する。
     fn fetch(&self, url: &str) -> Result<(Box<dyn Read + Send>, u64), Self::Error>;
 }
@@ -47,9 +47,7 @@ pub struct HttpProvider {
 impl HttpProvider {
     /// HttpProvider を作成。Client 構築失敗時はエラーを返す（panic しない）。
     pub fn try_new() -> Result<Self, reqwest::Error> {
-        let client = Client::builder()
-            .user_agent("typstlab-installer")
-            .build()?;
+        let client = Client::builder().user_agent("typstlab-installer").build()?;
         Ok(Self { client })
     }
 }
@@ -64,8 +62,8 @@ impl InstallProvider for HttpProvider {
     }
 }
 
-pub mod typst;
 pub mod docs;
+pub mod typst;
 
-pub use typst::{TypstInstaller, TypstInstallError};
-pub use docs::{DocsInstaller, DocsInstallError};
+pub use docs::{DocsInstallError, DocsInstaller};
+pub use typst::{TypstInstallError, TypstInstaller};

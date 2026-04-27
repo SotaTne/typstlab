@@ -70,7 +70,7 @@ impl Store<Docs, StoreError> for DocsStore {
     fn create_staging_area(&self, id: &str) -> Result<Self::Staging, StoreError> {
         let prefix = format!("staging-docs-{}-", id);
         Persistence::create_temp_dir(self.staging_root(), &prefix)
-            .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))
+            .map_err(|e| StoreError::Io(std::io::Error::other(e)))
     }
 
     fn commit_staged(&self, id: &str, staging: Self::Staging) -> Result<Docs, StoreError> {
@@ -78,7 +78,7 @@ impl Store<Docs, StoreError> for DocsStore {
         let staging_path = staging.path();
 
         Persistence::commit_directory(staging_path, &dest_path)
-            .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
 
         Ok(Docs { path: dest_path })
     }

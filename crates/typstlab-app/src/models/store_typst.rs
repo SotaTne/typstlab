@@ -82,7 +82,7 @@ impl Store<Typst, StoreError> for TypstStore {
     fn create_staging_area(&self, id: &str) -> Result<Self::Staging, StoreError> {
         let prefix = format!("staging-{}-", id);
         Persistence::create_temp_dir(self.staging_root(), &prefix)
-            .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))
+            .map_err(|e| StoreError::Io(std::io::Error::other(e)))
     }
 
     fn commit_staged(&self, id: &str, staging: Self::Staging) -> Result<Typst, StoreError> {
@@ -90,7 +90,7 @@ impl Store<Typst, StoreError> for TypstStore {
         let staging_path = staging.path();
 
         Persistence::commit_directory(staging_path, &dest_path)
-            .map_err(|e| StoreError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+            .map_err(|e| StoreError::Io(std::io::Error::other(e)))?;
 
         let bin = self.binary_path(id);
         if !bin.exists() {

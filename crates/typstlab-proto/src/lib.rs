@@ -6,7 +6,7 @@ pub mod speaker;
 
 // 基本定義の再エクスポート
 pub use action::Action;
-pub use install::{Downloaded, Installer, SourceFormat};
+pub use install::{Installer, SourceFormat};
 pub use models::artifact::Artifact;
 pub use models::identity::{Entity, Model};
 pub use models::lifecycle::{Creatable, Loadable, Loaded};
