@@ -1,10 +1,14 @@
 use crate::actions::load::{LoadAction, LoadEvent};
+use crate::actions::resolve_docs::ResolveDocsAction;
 use crate::actions::resolve_typst::{ResolveEvent, StoreError};
 use crate::models::{
     Docs, DocsStore, Project, ProjectConfig, ProjectError, ProjectHandle, Typst, TypstStore,
 };
 use std::path::PathBuf;
 use thiserror::Error;
+use typstlab_base::install::{DocsInstaller, HttpProvider};
+use typstlab_base::link_resolver::{DocsLinkRequest, resolve_docs_link};
+use typstlab_base::version_resolver::resolve_versions_from_typst;
 use typstlab_proto::Action;
 use typstlab_proto::Loaded;
 
@@ -14,6 +18,10 @@ pub enum BootstrapError {
     ProjectLoadError(#[from] ProjectError),
     #[error("Asset resolution failed: {0:?}")]
     ResolutionError(Vec<StoreError>),
+    #[error("Docs resolution failed: {0}")]
+    DocsResolutionError(String),
+    #[error("Failed to initialize HTTP provider: {0}")]
+    DocsInstallInitError(String),
 }
 
 /// 起動プロセス中に発生するイベント
@@ -63,7 +71,8 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
         monitor(BootstrapEvent::IdentifyingProject {
             root: self.project_root.clone(),
         });
-        let project_model = Project::new(self.project_root);
+        let project_root = self.project_root.clone();
+        let project_model = Project::new(project_root.clone());
 
         let load_action = LoadAction {
             target: project_model,
@@ -111,9 +120,18 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
             .map_err(|errs| vec![BootstrapError::ResolutionError(errs)])?;
 
         // 4. Docs 解決
-        let docs_resolver = crate::actions::resolve_docs::ResolveDocsAction {
+        let versions = resolve_versions_from_typst(&version);
+        let docs_link = resolve_docs_link(DocsLinkRequest { versions });
+        let docs_installer = DocsInstaller::new(
+            HttpProvider::try_new()
+                .map_err(|error| vec![BootstrapError::DocsInstallInitError(error.to_string())])?,
+        );
+        let docs_resolver = ResolveDocsAction {
+            project_root,
             store: docs_store.clone(),
             version: version.clone(),
+            installer: docs_installer,
+            link: docs_link,
         };
         let docs = docs_resolver
             .run(
@@ -125,7 +143,14 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
                 },
                 &mut |_| {},
             )
-            .map_err(|errs| vec![BootstrapError::ResolutionError(errs)])?;
+            .map_err(|errs| {
+                vec![BootstrapError::DocsResolutionError(
+                    errs.into_iter()
+                        .map(|err| err.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )]
+            })?;
 
         monitor(BootstrapEvent::Ready);
 

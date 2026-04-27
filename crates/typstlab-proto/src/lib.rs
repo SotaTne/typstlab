@@ -17,3 +17,9 @@ pub use speaker::{CliSpeaker, McpSpeaker};
 // 定数
 pub const PROJECT_SETTING_FILE: &str = "typstlab.toml";
 pub const PAPER_SETTING_FILE: &str = "paper.toml";
+
+#[cfg(not(target_os = "windows"))]
+pub const TYPST_BINARY_NAME: &str = "typst";
+
+#[cfg(target_os = "windows")]
+pub const TYPST_BINARY_NAME: &str = "typst.exe";

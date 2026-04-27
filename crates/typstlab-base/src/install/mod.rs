@@ -65,5 +65,5 @@ impl InstallProvider for HttpProvider {
 pub mod docs;
 pub mod typst;
 
-pub use docs::{DocsInstallError, DocsInstaller};
+pub use docs::{DocsInstallError, DocsInstaller, RAW_DOCS_FILENAME};
 pub use typst::{TypstInstallError, TypstInstaller};

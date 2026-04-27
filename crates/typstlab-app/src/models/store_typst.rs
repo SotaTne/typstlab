@@ -3,7 +3,7 @@ use crate::models::Typst;
 use std::path::PathBuf;
 use tempfile::TempDir;
 use typstlab_base::persistence::Persistence;
-use typstlab_proto::{Collection, Store};
+use typstlab_proto::{Collection, Store, TYPST_BINARY_NAME};
 
 /// Typst バイナリを管理する保管庫
 pub struct TypstStore {
@@ -24,12 +24,7 @@ impl TypstStore {
     }
 
     pub fn binary_path(&self, version: &str) -> PathBuf {
-        let base = self.typst_path(version);
-        if cfg!(windows) {
-            base.join("typst.exe")
-        } else {
-            base.join("typst")
-        }
+        self.typst_path(version).join(TYPST_BINARY_NAME)
     }
 }
 
