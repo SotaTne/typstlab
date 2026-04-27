@@ -14,7 +14,9 @@ pub enum NewWarning {
 fn detect_new_warning(target_path: &Path) -> Result<Option<NewWarning>> {
     let config_path = target_path.join(PROJECT_SETTING_FILE);
     match config_path.try_exists()? {
-        true => Ok(Some(NewWarning::ExistingProjectSettings { path: config_path })),
+        true => Ok(Some(NewWarning::ExistingProjectSettings {
+            path: config_path,
+        })),
         false => Ok(None),
     }
 }

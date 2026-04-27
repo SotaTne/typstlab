@@ -2,20 +2,17 @@ use std::path::{Component, Path, PathBuf};
 
 /// パスが領土内（相対パス）かつ安全であることをクロスプラットフォームで検証する。
 /// 以下のいずれかに該当する場合は `false` を返す。
-/// 1. 絶対パス判定 (`is_absolute() == true`)
-/// 2. パスの開始が Unix 形式または Windows 形式のルート参照 (`/`, `\`, etc.) である。
-/// 3. パスの開始が Windows のドライブプレフィックス (`C:`, etc.) である。
-/// 4. 親ディレクトリへの移動 (`..`) コンポーネントを含む。
+/// 1. パスの開始が Unix 形式または Windows 形式のルート参照 (`/`, `\`, etc.) である。
+/// 2. パスの開始が Windows のドライブプレフィックス (`C:`, etc.) である。
+/// 3. 親ディレクトリへの移動 (`..`) コンポーネントを含む。
 pub fn is_path_safe(path: &Path) -> bool {
-    // 物理的な絶対パス判定
-    if path.is_absolute() {
-        return false;
-    }
-
     let path_str = path.to_string_lossy();
-    
+
     // 補助的な文字列スキャン (物理的な Component 分割の前にルート/プレフィックスを遮断)
-    if path_str.starts_with('/') || path_str.starts_with('\\') || has_windows_drive_prefix(&path_str) {
+    if path_str.starts_with('/')
+        || path_str.starts_with('\\')
+        || has_windows_drive_prefix(&path_str)
+    {
         return false;
     }
 
@@ -26,7 +23,7 @@ pub fn is_path_safe(path: &Path) -> bool {
             _ => {}
         }
     }
-    
+
     true
 }
 
@@ -60,11 +57,11 @@ mod tests {
         assert!(is_path_safe(Path::new("version..1.typ"))); // 合法
         assert!(is_path_safe(Path::new("dir/subdir/file.bin")));
         // 中間の ':' は Unix では合法
-        assert!(is_path_safe(Path::new("foo:bar.txt"))); 
+        assert!(is_path_safe(Path::new("foo:bar.txt")));
 
         // 異常系: 絶対パス
         assert!(!is_path_safe(Path::new("/etc/passwd")));
-        
+
         // 異常系: トラバーサル (..)
         assert!(!is_path_safe(Path::new("../secret.txt")));
         assert!(!is_path_safe(Path::new("a/../../b")));

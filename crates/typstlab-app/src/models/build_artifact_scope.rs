@@ -75,7 +75,8 @@ mod tests {
     #[test]
     fn test_path_supports_nested_relative_path() {
         let root = PathBuf::from("/project-root");
-        let scope = BuildArtifactScope::new(root.clone(), PathBuf::from("target").join("artifacts"));
+        let scope =
+            BuildArtifactScope::new(root.clone(), PathBuf::from("target").join("artifacts"));
 
         assert_eq!(scope.path(), root.join("target").join("artifacts"));
     }

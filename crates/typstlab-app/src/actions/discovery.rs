@@ -1,6 +1,6 @@
-use typstlab_proto::{Action, Collection, Model};
-use thiserror::Error;
 use std::fmt::Debug;
+use thiserror::Error;
+use typstlab_proto::{Action, Collection, Model};
 
 #[derive(Error, Debug)]
 pub enum DiscoveryError {
@@ -15,16 +15,15 @@ pub enum DiscoveryError {
 }
 
 /// 曖昧な入力から実体(Model)を特定するアクション
-pub struct DiscoveryAction<S> 
-{
+pub struct DiscoveryAction<S> {
     pub scope: S,
     pub inputs: Vec<String>,
 }
 
-impl<T, S> Action<Vec<T>, (), (), DiscoveryError> for DiscoveryAction<S> 
-where 
+impl<T, S> Action<Vec<T>, (), (), DiscoveryError> for DiscoveryAction<S>
+where
     T: Model + Debug,
-    S: Collection<T, crate::models::CollectionError>
+    S: Collection<T, crate::models::CollectionError>,
 {
     fn run(
         self,

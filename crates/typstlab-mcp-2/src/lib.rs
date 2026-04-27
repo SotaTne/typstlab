@@ -1,5 +1,5 @@
 use typstlab_app::actions::build::{BuildError, BuildEvent, BuildWarning};
-use typstlab_proto::{McpSpeaker, Artifact};
+use typstlab_proto::{Artifact, McpSpeaker};
 
 pub struct McpBuildPresenter;
 
@@ -18,8 +18,15 @@ impl McpSpeaker<BuildEvent, BuildWarning, BuildError, ()> for McpBuildPresenter 
             BuildEvent::Starting { paper_id } => {
                 format!("Starting build for paper: {}", paper_id)
             }
-            BuildEvent::Finished { artifact, duration_ms } => {
-                format!("SUCCESS: Artifact created at '{}' in {}ms.", artifact.root().display(), duration_ms)
+            BuildEvent::Finished {
+                artifact,
+                duration_ms,
+            } => {
+                format!(
+                    "SUCCESS: Artifact created at '{}' in {}ms.",
+                    artifact.root().display(),
+                    duration_ms
+                )
             }
         }
     }
@@ -38,8 +45,8 @@ impl McpSpeaker<BuildEvent, BuildWarning, BuildError, ()> for McpBuildPresenter 
                     .as_deref()
                     .unwrap_or("artifact reported no error message");
                 format!(
-                    "ERROR in artifact '{}':\n{}", 
-                    artifact.root().display(), 
+                    "ERROR in artifact '{}':\n{}",
+                    artifact.root().display(),
                     error_message
                 )
             }

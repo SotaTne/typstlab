@@ -33,8 +33,9 @@ pub fn find_project_root(start: &Path) -> Result<PathBuf, CliError> {
 pub fn bootstrap_context(
     monitor: &mut dyn FnMut(typstlab_app::BootstrapEvent),
 ) -> Result<AppContext, CliError> {
-    let current_dir = std::env::current_dir()
-        .map_err(|error| CliError::System(format!("Could not identify current directory: {}", error)))?;
+    let current_dir = std::env::current_dir().map_err(|error| {
+        CliError::System(format!("Could not identify current directory: {}", error))
+    })?;
     let project_root = find_project_root(&current_dir)?;
 
     let cache_root = dirs::cache_dir()
@@ -72,7 +73,7 @@ mod tests {
         let project_root = temp.path().join("workspace").join("demo");
         let nested_dir = project_root.join("papers").join("p01").join("src");
         std::fs::create_dir_all(&nested_dir).unwrap();
-        std::fs::write(project_root.join(PROJECT_SETTING_FILE), "{}",).unwrap();
+        std::fs::write(project_root.join(PROJECT_SETTING_FILE), "{}").unwrap();
 
         let detected_root = find_project_root(&nested_dir).unwrap();
 

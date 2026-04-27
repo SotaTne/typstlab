@@ -1,8 +1,8 @@
 pub mod driver;
-pub mod persistence;
 pub mod install;
 pub mod path;
+pub mod persistence;
 
-pub use driver::{TypstDriver, TypstCommand, ExecutionResult};
+pub use driver::{ExecutionResult, TypstCommand, TypstDriver};
+pub use install::{DocsInstallError, DocsInstaller, TypstInstallError, TypstInstaller};
 pub use persistence::Persistence;
-pub use install::{TypstInstaller, TypstInstallError, DocsInstaller, DocsInstallError};

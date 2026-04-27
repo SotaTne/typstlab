@@ -11,13 +11,10 @@ pub fn run(ctx: AppContext, inputs: Option<Vec<String>>) -> Result<()> {
     let presenter = BuildPresenter;
     let mut warning_seen = false;
 
-    match action.run(
-        &mut |event| presenter.render_event(event),
-        &mut |warning| {
-            warning_seen = true;
-            presenter.render_warning(warning);
-        },
-    ) {
+    match action.run(&mut |event| presenter.render_event(event), &mut |warning| {
+        warning_seen = true;
+        presenter.render_warning(warning);
+    }) {
         Ok(out) => {
             if !warning_seen {
                 presenter.render_result(&out);
@@ -68,10 +65,7 @@ impl CliSpeaker<BuildEvent, BuildWarning, BuildError, ()> for BuildPresenter {
     fn render_warning(&self, warning: BuildWarning) {
         match warning {
             BuildWarning::NoTargetsFound => {
-                eprintln!(
-                    "{} No papers found to build.",
-                    "⚠ WARNING:".yellow().bold()
-                );
+                eprintln!("{} No papers found to build.", "⚠ WARNING:".yellow().bold());
             }
         }
     }

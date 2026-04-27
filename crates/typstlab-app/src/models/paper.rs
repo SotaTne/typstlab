@@ -28,11 +28,9 @@ impl Creatable for Paper {
     }
 
     fn persist(loaded: &Loaded<Self, Self::Config>) -> Result<(), Self::Error> {
-        let toml_content = toml::to_string_pretty(&loaded.config)
-            .map_err(PaperError::Serialize)?;
+        let toml_content = toml::to_string_pretty(&loaded.config).map_err(PaperError::Serialize)?;
 
         if !loaded.actual.absolute_path.exists() {
-
             std::fs::create_dir_all(&loaded.actual.absolute_path)?;
         }
 

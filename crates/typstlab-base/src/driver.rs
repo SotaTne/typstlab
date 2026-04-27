@@ -38,9 +38,8 @@ impl TypstCommand {
                 .map_err(|error| anyhow!("invalid init version requirement: {}", error)),
             TypstCommand::Update => VersionReq::parse(">=0.11.0")
                 .map_err(|error| anyhow!("invalid update version requirement: {}", error)),
-            TypstCommand::Version => {
-                VersionReq::parse("*").map_err(|error| anyhow!("invalid version requirement: {}", error))
-            }
+            TypstCommand::Version => VersionReq::parse("*")
+                .map_err(|error| anyhow!("invalid version requirement: {}", error)),
             TypstCommand::Raw { require, .. } => Ok(require.clone()),
         }
     }
