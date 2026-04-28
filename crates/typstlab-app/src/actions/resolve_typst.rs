@@ -1,7 +1,7 @@
 use crate::models::Typst;
 use std::path::PathBuf;
 use thiserror::Error;
-use typstlab_proto::Action;
+use typstlab_proto::{Action, AppEvent, EventScope, TYPST_BINARY_NAME};
 
 #[derive(Error, Debug)]
 pub enum StoreError {
@@ -25,36 +25,35 @@ pub struct ResolveTypstAction {
     pub version: String,
 }
 
-impl Action<Typst, ResolveEvent, (), StoreError> for ResolveTypstAction {
+impl Action for ResolveTypstAction {
+    type Output = Typst;
+    type Event = ResolveEvent;
+    type Warning = ();
+    type Error = StoreError;
+
     fn run(
         self,
-        monitor: &mut dyn FnMut(ResolveEvent),
-        _warning: &mut dyn FnMut(()),
-    ) -> Result<Typst, Vec<StoreError>> {
-        monitor(ResolveEvent::CheckingCache);
+        monitor: &mut dyn FnMut(AppEvent<ResolveEvent>),
+        _warning: &mut dyn FnMut(Self::Warning),
+    ) -> Result<Self::Output, Vec<Self::Error>> {
+        let scope = EventScope::labeled("resolve_typst", self.version.clone());
+        monitor(AppEvent::verbose(
+            scope.clone(),
+            ResolveEvent::CheckingCache,
+        ));
 
-        #[cfg(not(windows))]
-        const BINARY_NAME: &str = "typst";
-
-        #[cfg(windows)]
-        const BINARY_NAME: &str = "typst.exe";
-
-        let binary_path = self
-            .store_root
-            .join("typst")
-            .join(&self.version)
-            .join(BINARY_NAME);
+        let binary_path = self.store_root.join(&self.version).join(TYPST_BINARY_NAME);
 
         if binary_path.exists() {
-            monitor(ResolveEvent::CacheHit);
-            monitor(ResolveEvent::Completed);
+            monitor(AppEvent::verbose(scope.clone(), ResolveEvent::CacheHit));
+            monitor(AppEvent::verbose(scope, ResolveEvent::Completed));
             return Ok(Typst {
                 version: self.version.clone(),
                 binary_path,
             });
         }
 
-        monitor(ResolveEvent::CacheMiss);
+        monitor(AppEvent::line(scope, ResolveEvent::CacheMiss));
 
         Err(vec![StoreError::NotFound(self.version.clone())])
     }

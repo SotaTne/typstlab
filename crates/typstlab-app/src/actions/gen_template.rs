@@ -2,7 +2,7 @@ use crate::actions::create::{CreateAction, CreateEvent};
 use crate::models::{CollectionError, Project, ProjectConfig, ProjectHandle, Template};
 use std::path::PathBuf;
 use thiserror::Error;
-use typstlab_proto::{Action, Entity, Loaded};
+use typstlab_proto::{Action, AppEvent, Entity, EventScope, Loaded};
 
 #[derive(Error, Debug)]
 pub enum GenTemplateError {
@@ -25,12 +25,18 @@ pub struct GenTemplateAction {
     pub template_id: String,
 }
 
-impl Action<(), GenTemplateEvent, (), GenTemplateError> for GenTemplateAction {
+impl Action for GenTemplateAction {
+    type Output = ();
+    type Event = GenTemplateEvent;
+    type Warning = ();
+    type Error = GenTemplateError;
+
     fn run(
         self,
-        monitor: &mut dyn FnMut(GenTemplateEvent),
-        _warning: &mut dyn FnMut(()),
-    ) -> Result<(), Vec<GenTemplateError>> {
+        monitor: &mut dyn FnMut(AppEvent<GenTemplateEvent>),
+        _warning: &mut dyn FnMut(Self::Warning),
+    ) -> Result<Self::Output, Vec<Self::Error>> {
+        let scope = EventScope::labeled("gen_template", self.template_id.clone());
         let templates_dir = self.project.templates_scope().path();
         let target = Template::new(self.template_id.clone(), templates_dir);
 
@@ -38,14 +44,17 @@ impl Action<(), GenTemplateEvent, (), GenTemplateError> for GenTemplateAction {
 
         let loaded = create_action
             .run(
-                &mut |e| monitor(GenTemplateEvent::CreatingTemplate(e)),
+                &mut |e| monitor(e.map_payload(GenTemplateEvent::CreatingTemplate)),
                 &mut |_| {},
             )
             .map_err(|errors| vec![GenTemplateError::CreateFailed(errors)])?;
 
-        monitor(GenTemplateEvent::TemplateReady {
-            path: loaded.actual.path(),
-        });
+        monitor(AppEvent::line(
+            scope,
+            GenTemplateEvent::TemplateReady {
+                path: loaded.actual.path(),
+            },
+        ));
 
         Ok(())
     }

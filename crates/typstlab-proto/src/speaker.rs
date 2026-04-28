@@ -1,14 +1,27 @@
-pub trait CliSpeaker<Event, Warning, Error, Output> {
-    fn render_event(&self, event: Event);
-    fn render_warning(&self, warning: Warning);
-    fn render_error(&self, error: &Error);
-    fn render_result(&self, output: &Output);
+use crate::AppEvent;
+use std::fmt::Debug;
+
+pub trait CliSpeaker {
+    type Event: Clone + Debug + 'static;
+    type Warning;
+    type Error;
+    type Output;
+
+    fn render_event(&self, event: AppEvent<Self::Event>);
+    fn render_warning(&self, warning: Self::Warning);
+    fn render_error(&self, error: &Self::Error);
+    fn render_result(&self, output: &Self::Output);
 }
 
 /// AIエージェント向けの Speaker
-pub trait McpSpeaker<Event, Warning, Error, Output> {
-    fn render_event(&self, event: Event) -> String;
-    fn render_warning(&self, warning: Warning) -> String;
-    fn render_error(&self, error: &Error) -> String;
-    fn render_result(&self, output: &Output) -> String;
+pub trait McpSpeaker {
+    type Event: Clone + Debug + 'static;
+    type Warning;
+    type Error;
+    type Output;
+
+    fn render_event(&self, event: AppEvent<Self::Event>) -> String;
+    fn render_warning(&self, warning: Self::Warning) -> String;
+    fn render_error(&self, error: &Self::Error) -> String;
+    fn render_result(&self, output: &Self::Output) -> String;
 }

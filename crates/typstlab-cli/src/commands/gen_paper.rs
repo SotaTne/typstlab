@@ -3,10 +3,10 @@ use colored::Colorize;
 use typstlab_app::AppContext;
 use typstlab_app::actions::gen_paper::{GenPaperAction, GenPaperError, GenPaperEvent};
 use typstlab_base::driver::TypstDriver;
-use typstlab_proto::{Action, CliSpeaker};
+use typstlab_proto::{Action, AppEvent, CliSpeaker};
 
 /// `gen paper` コマンドのエントリポイント
-pub fn run(ctx: AppContext, id: String, template: Option<String>) -> Result<()> {
+pub fn run(ctx: AppContext, id: String, template: Option<String>, verbose: bool) -> Result<()> {
     // 1. Typst ドライバーの解決 (Build と同様に Project のバージョンを使用)
     let typst = ctx.typst;
 
@@ -26,7 +26,9 @@ pub fn run(ctx: AppContext, id: String, template: Option<String>) -> Result<()> 
     // 3. 実行と実況
     match action.run(
         &mut |event| {
-            presenter.render_event(event); // 自身の実況
+            if event.visible_in_cli(verbose) {
+                presenter.render_event(event);
+            }
         },
         &mut |_| {}, // Warningはない
     ) {
@@ -49,9 +51,14 @@ struct GenPaperPresenter {
     target_id: String,
 }
 
-impl CliSpeaker<GenPaperEvent, (), GenPaperError, ()> for GenPaperPresenter {
-    fn render_event(&self, event: GenPaperEvent) {
-        match event {
+impl CliSpeaker for GenPaperPresenter {
+    type Event = GenPaperEvent;
+    type Warning = ();
+    type Error = GenPaperError;
+    type Output = ();
+
+    fn render_event(&self, event: AppEvent<GenPaperEvent>) {
+        match event.payload {
             GenPaperEvent::ResolvingTemplate { id } => {
                 println!("{} Resolving template '{}'...", "🔍".cyan(), id.bold());
             }

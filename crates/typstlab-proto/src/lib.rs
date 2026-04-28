@@ -1,4 +1,5 @@
 pub mod action;
+pub mod event;
 pub mod install;
 pub mod macros;
 pub mod models;
@@ -6,6 +7,7 @@ pub mod speaker;
 
 // 基本定義の再エクスポート
 pub use action::Action;
+pub use event::{AppEvent, EventAudience, EventLevel, EventPresentation, EventScope};
 pub use install::{Installer, SourceFormat};
 pub use models::artifact::Artifact;
 pub use models::identity::{Entity, Model};

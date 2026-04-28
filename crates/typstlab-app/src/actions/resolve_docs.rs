@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 use typstlab_base::link_resolver::ResolvedLink;
 use typstlab_base::project_docs::{ProjectDocs, sync_project_docs};
-use typstlab_proto::{Action, Collection, Installer, Store};
+use typstlab_proto::{Action, AppEvent, Collection, EventScope, Installer, Store};
 
 use crate::actions::download_docs::{DownloadDocsAction, DownloadDocsError, DownloadDocsEvent};
 use crate::actions::resolve_typst::{ResolveEvent, StoreError};
@@ -35,15 +35,20 @@ where
     pub link: ResolvedLink,
 }
 
-impl<I> Action<Docs, ResolveEvent, (), ResolveDocsError<I::Error>> for ResolveDocsAction<I>
+impl<I> Action for ResolveDocsAction<I>
 where
     I: Installer,
 {
+    type Output = Docs;
+    type Event = ResolveEvent;
+    type Warning = ();
+    type Error = ResolveDocsError<I::Error>;
+
     fn run(
         self,
-        monitor: &mut dyn FnMut(ResolveEvent),
-        _warning: &mut dyn FnMut(()),
-    ) -> Result<Docs, Vec<ResolveDocsError<I::Error>>> {
+        monitor: &mut dyn FnMut(AppEvent<ResolveEvent>),
+        _warning: &mut dyn FnMut(Self::Warning),
+    ) -> Result<Self::Output, Vec<Self::Error>> {
         self.run_inner(monitor).map_err(|error| vec![error])
     }
 }
@@ -54,18 +59,22 @@ where
 {
     fn run_inner(
         self,
-        monitor: &mut dyn FnMut(ResolveEvent),
+        monitor: &mut dyn FnMut(AppEvent<ResolveEvent>),
     ) -> Result<Docs, ResolveDocsError<I::Error>> {
-        monitor(ResolveEvent::CheckingCache);
+        let scope = EventScope::labeled("resolve_docs", self.version.clone());
+        monitor(AppEvent::verbose(
+            scope.clone(),
+            ResolveEvent::CheckingCache,
+        ));
 
         if let Some(docs) = self.store.resolve(&self.version)? {
-            monitor(ResolveEvent::CacheHit);
+            monitor(AppEvent::verbose(scope.clone(), ResolveEvent::CacheHit));
             let synced = sync_project_docs(&self.project_root, ProjectDocs::Typst, docs.path)?;
-            monitor(ResolveEvent::Completed);
+            monitor(AppEvent::verbose(scope, ResolveEvent::Completed));
             return Ok(Docs::new(synced));
         }
 
-        monitor(ResolveEvent::CacheMiss);
+        monitor(AppEvent::line(scope.clone(), ResolveEvent::CacheMiss));
 
         let download = DownloadDocsAction {
             installer: self.installer,
@@ -75,7 +84,7 @@ where
         };
         let staging = download
             .run(
-                &mut |event| match event {
+                &mut |event| match event.payload {
                     DownloadDocsEvent::Downloading { .. } => {}
                     DownloadDocsEvent::Transforming => {}
                 },
@@ -91,7 +100,7 @@ where
 
         let docs = self.store.commit_staged(&self.version, staging)?;
         let synced = sync_project_docs(&self.project_root, ProjectDocs::Typst, docs.path)?;
-        monitor(ResolveEvent::Completed);
+        monitor(AppEvent::verbose(scope, ResolveEvent::Completed));
         Ok(Docs::new(synced))
     }
 }

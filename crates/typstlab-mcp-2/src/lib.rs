@@ -1,11 +1,16 @@
 use typstlab_app::actions::build::{BuildError, BuildEvent, BuildWarning};
-use typstlab_proto::{Artifact, McpSpeaker};
+use typstlab_proto::{AppEvent, Artifact, McpSpeaker};
 
 pub struct McpBuildPresenter;
 
-impl McpSpeaker<BuildEvent, BuildWarning, BuildError, ()> for McpBuildPresenter {
-    fn render_event(&self, event: BuildEvent) -> String {
-        match event {
+impl McpSpeaker for McpBuildPresenter {
+    type Event = BuildEvent;
+    type Warning = BuildWarning;
+    type Error = BuildError;
+    type Output = ();
+
+    fn render_event(&self, event: AppEvent<BuildEvent>) -> String {
+        match event.payload {
             BuildEvent::ProjectLoaded { name } => {
                 format!("Project loaded: {}", name)
             }

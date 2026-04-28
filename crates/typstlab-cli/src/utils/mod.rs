@@ -1,7 +1,7 @@
 use crate::CliError;
 use std::path::{Path, PathBuf};
 use typstlab_app::{AppContext, BootstrapAction, BootstrapError};
-use typstlab_proto::{Action, PROJECT_SETTING_FILE};
+use typstlab_proto::{Action, AppEvent, PROJECT_SETTING_FILE};
 
 pub fn find_project_root(start: &Path) -> Result<PathBuf, CliError> {
     let mut current = start.to_path_buf();
@@ -31,7 +31,7 @@ pub fn find_project_root(start: &Path) -> Result<PathBuf, CliError> {
 }
 
 pub fn bootstrap_context(
-    monitor: &mut dyn FnMut(typstlab_app::BootstrapEvent),
+    monitor: &mut dyn FnMut(AppEvent<typstlab_app::BootstrapEvent>),
 ) -> Result<AppContext, CliError> {
     let current_dir = std::env::current_dir().map_err(|error| {
         CliError::System(format!("Could not identify current directory: {}", error))

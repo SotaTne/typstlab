@@ -6,7 +6,7 @@ use colored::Colorize;
 use std::path::PathBuf;
 use thiserror::Error;
 use typstlab_app::{BootstrapError, BootstrapEvent, LoadEvent};
-use typstlab_proto::{Action, CliSpeaker};
+use typstlab_proto::{Action, AppEvent, CliSpeaker};
 use utils::bootstrap_context;
 
 #[derive(Parser, Clone)]
@@ -61,7 +61,7 @@ pub struct CliAction {
     pub cli: Cli,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CliEvent {
     Bootstrap(BootstrapEvent),
 }
@@ -83,43 +83,57 @@ pub enum CliError {
     System(String),
 }
 
-impl Action<(), CliEvent, (), CliError> for CliAction {
+impl Action for CliAction {
+    type Output = ();
+    type Event = CliEvent;
+    type Warning = ();
+    type Error = CliError;
+
     fn run(
         self,
-        monitor: &mut dyn FnMut(CliEvent),
+        monitor: &mut dyn FnMut(AppEvent<CliEvent>),
         _warning: &mut dyn FnMut(()),
-    ) -> Result<(), Vec<CliError>> {
+    ) -> Result<Self::Output, Vec<Self::Error>> {
         match &self.cli.command {
             Commands::New { name, path } => {
-                commands::new::run(name.clone(), path.clone())
+                commands::new::run(name.clone(), path.clone(), self.cli.verbose)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
                 return Ok(());
             }
 
             Commands::Build { papers } => {
-                let ctx = bootstrap_context(&mut |e| monitor(CliEvent::Bootstrap(e)))
-                    .map_err(|error| vec![error])?;
+                let ctx = bootstrap_context(&mut |e| {
+                    monitor(e.map_payload(CliEvent::Bootstrap));
+                })
+                .map_err(|error| vec![error])?;
 
                 let inputs = if papers.is_empty() {
                     None
                 } else {
                     Some(papers.clone())
                 };
-                commands::build::run(ctx, inputs)
+                commands::build::run(ctx, inputs, self.cli.verbose)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
             }
 
             Commands::Gen { subcommand } => {
-                let ctx = bootstrap_context(&mut |e| monitor(CliEvent::Bootstrap(e)))
-                    .map_err(|error| vec![error])?;
+                let ctx = bootstrap_context(&mut |e| {
+                    monitor(e.map_payload(CliEvent::Bootstrap));
+                })
+                .map_err(|error| vec![error])?;
 
                 match subcommand {
                     GenCommands::Paper { id, template } => {
-                        commands::gen_paper::run(ctx, id.clone(), template.clone())
-                            .map_err(|e| vec![CliError::Command(e.to_string())])?;
+                        commands::gen_paper::run(
+                            ctx,
+                            id.clone(),
+                            template.clone(),
+                            self.cli.verbose,
+                        )
+                        .map_err(|e| vec![CliError::Command(e.to_string())])?;
                     }
                     GenCommands::Template { id } => {
-                        commands::gen_template::run(ctx, id.clone())
+                        commands::gen_template::run(ctx, id.clone(), self.cli.verbose)
                             .map_err(|e| vec![CliError::Command(e.to_string())])?;
                     }
                 }
@@ -132,9 +146,14 @@ impl Action<(), CliEvent, (), CliError> for CliAction {
 
 struct RootPresenter;
 
-impl CliSpeaker<CliEvent, (), CliError, ()> for RootPresenter {
-    fn render_event(&self, event: CliEvent) {
-        match event {
+impl CliSpeaker for RootPresenter {
+    type Event = CliEvent;
+    type Warning = ();
+    type Error = CliError;
+    type Output = ();
+
+    fn render_event(&self, event: AppEvent<CliEvent>) {
+        match event.payload {
             CliEvent::Bootstrap(e) => {
                 use typstlab_app::ResolveEvent;
                 match e {
@@ -174,10 +193,18 @@ impl CliSpeaker<CliEvent, (), CliError, ()> for RootPresenter {
 
 fn main() {
     let cli = Cli::parse();
+    let verbose = cli.verbose;
     let presenter = RootPresenter;
     let action = CliAction { cli };
 
-    match action.run(&mut |e| presenter.render_event(e), &mut |_| {}) {
+    match action.run(
+        &mut |event| {
+            if event.visible_in_cli(verbose) {
+                presenter.render_event(event);
+            }
+        },
+        &mut |_| {},
+    ) {
         Ok(out) => presenter.render_result(&out),
         Err(errors) => {
             for err in errors {

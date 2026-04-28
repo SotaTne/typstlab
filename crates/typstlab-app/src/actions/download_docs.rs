@@ -7,7 +7,7 @@ use thiserror::Error;
 use typstlab_base::RAW_DOCS_FILENAME;
 use typstlab_base::docs_parser::{self, DocsRenderError};
 use typstlab_base::link_resolver::ResolvedLink;
-use typstlab_proto::{Action, Installer, Store};
+use typstlab_proto::{Action, AppEvent, EventScope, Installer, Store};
 
 use crate::actions::resolve_typst::StoreError;
 use crate::models::{Docs, DocsStore};
@@ -51,22 +51,20 @@ where
     pub link: ResolvedLink,
 }
 
-impl<I>
-    Action<
-        <DocsStore as Store<Docs, StoreError>>::Staging,
-        DownloadDocsEvent,
-        (),
-        DownloadDocsError<I::Error>,
-    > for DownloadDocsAction<I>
+impl<I> Action for DownloadDocsAction<I>
 where
     I: Installer,
 {
+    type Output = <DocsStore as Store<Docs, StoreError>>::Staging;
+    type Event = DownloadDocsEvent;
+    type Warning = ();
+    type Error = DownloadDocsError<I::Error>;
+
     fn run(
         self,
-        monitor: &mut dyn FnMut(DownloadDocsEvent),
-        _warning: &mut dyn FnMut(()),
-    ) -> Result<<DocsStore as Store<Docs, StoreError>>::Staging, Vec<DownloadDocsError<I::Error>>>
-    {
+        monitor: &mut dyn FnMut(AppEvent<DownloadDocsEvent>),
+        _warning: &mut dyn FnMut(Self::Warning),
+    ) -> Result<Self::Output, Vec<Self::Error>> {
         self.run_inner(monitor).map_err(|error| vec![error])
     }
 }
@@ -77,8 +75,9 @@ where
 {
     fn run_inner(
         self,
-        monitor: &mut dyn FnMut(DownloadDocsEvent),
+        monitor: &mut dyn FnMut(AppEvent<DownloadDocsEvent>),
     ) -> Result<<DocsStore as Store<Docs, StoreError>>::Staging, DownloadDocsError<I::Error>> {
+        let scope = EventScope::labeled("download_docs", self.version.clone());
         let progress_events = Arc::new(Mutex::new(Vec::new()));
         let progress_writer = Arc::clone(&progress_events);
         let installation = self
@@ -91,7 +90,7 @@ where
             .map_err(DownloadDocsError::Install)?;
         if let Ok(events) = progress_events.lock() {
             for event in events.iter().cloned() {
-                monitor(event);
+                monitor(AppEvent::verbose_cli_progress(scope.clone(), event));
             }
         }
 
@@ -105,7 +104,7 @@ where
             source,
         })?;
 
-        monitor(DownloadDocsEvent::Transforming);
+        monitor(AppEvent::verbose(scope, DownloadDocsEvent::Transforming));
         let rendered = docs_parser::render_docs_from_reader(BufReader::new(raw))?;
         let staging = self
             .store
@@ -123,7 +122,7 @@ pub(crate) fn copy_dir_contents(from: &Path, to: &Path) -> std::io::Result<()> {
         let entry = entry?;
         let source = entry.path();
         let target = to.join(entry.file_name());
-        if source.is_dir() {
+        if entry.file_type()?.is_dir() {
             copy_dir_contents(&source, &target)?;
         } else {
             std::fs::copy(&source, &target)?;
@@ -136,6 +135,7 @@ pub(crate) fn copy_dir_contents(from: &Path, to: &Path) -> std::io::Result<()> {
 mod tests {
     use tempfile::TempDir;
     use typstlab_proto::{Collection, SourceFormat};
+    use typstlab_proto::{EventAudience, EventLevel, EventPresentation};
 
     use super::*;
 
@@ -221,10 +221,20 @@ mod tests {
         assert!(staging.path().join("index.md").exists());
         assert!(staging.path().join("tutorial").join("writing.md").exists());
         assert!(store.resolve("0.14.2").unwrap().is_none());
-        assert!(events.contains(&DownloadDocsEvent::Downloading {
-            current: docs_json().len() as u64,
-            total: docs_json().len() as u64,
+        assert!(events.iter().any(|event| {
+            event.payload
+                == (DownloadDocsEvent::Downloading {
+                    current: docs_json().len() as u64,
+                    total: docs_json().len() as u64,
+                })
+                && event.level == EventLevel::Verbose
+                && event.presentation == EventPresentation::Progress
+                && event.audience == EventAudience::CliOnly
         }));
-        assert!(events.contains(&DownloadDocsEvent::Transforming));
+        assert!(
+            events
+                .iter()
+                .any(|event| event.payload == DownloadDocsEvent::Transforming)
+        );
     }
 }

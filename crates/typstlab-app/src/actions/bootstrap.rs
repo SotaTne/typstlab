@@ -9,8 +9,8 @@ use thiserror::Error;
 use typstlab_base::install::{DocsInstaller, HttpProvider};
 use typstlab_base::link_resolver::{DocsLinkRequest, resolve_docs_link};
 use typstlab_base::version_resolver::resolve_versions_from_typst;
-use typstlab_proto::Action;
 use typstlab_proto::Loaded;
+use typstlab_proto::{Action, AppEvent, EventScope};
 
 #[derive(Error, Debug)]
 pub enum BootstrapError {
@@ -61,16 +61,25 @@ pub struct BootstrapAction {
     pub cache_root: PathBuf,
 }
 
-impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction {
+impl Action for BootstrapAction {
+    type Output = AppContext;
+    type Event = BootstrapEvent;
+    type Warning = ();
+    type Error = BootstrapError;
+
     fn run(
         self,
-        monitor: &mut dyn FnMut(BootstrapEvent),
+        monitor: &mut dyn FnMut(AppEvent<BootstrapEvent>),
         _warning: &mut dyn FnMut(()),
-    ) -> Result<AppContext, Vec<BootstrapError>> {
+    ) -> Result<Self::Output, Vec<Self::Error>> {
+        let scope = EventScope::new("bootstrap");
         // 1. プロジェクトのロード
-        monitor(BootstrapEvent::IdentifyingProject {
-            root: self.project_root.clone(),
-        });
+        monitor(AppEvent::verbose(
+            scope.clone(),
+            BootstrapEvent::IdentifyingProject {
+                root: self.project_root.clone(),
+            },
+        ));
         let project_root = self.project_root.clone();
         let project_model = Project::new(project_root.clone());
 
@@ -80,7 +89,7 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
         let loaded_project: Loaded<Project, ProjectConfig> = load_action
             .run(
                 &mut |e| {
-                    monitor(BootstrapEvent::ProjectLoading(e));
+                    monitor(e.map_payload(BootstrapEvent::ProjectLoading));
                 },
                 &mut |_| {},
             )
@@ -90,14 +99,20 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
                     .collect::<Vec<_>>()
             })?;
 
-        monitor(BootstrapEvent::ProjectReady {
-            name: loaded_project.name().to_string(),
-        });
+        monitor(AppEvent::line(
+            scope.clone(),
+            BootstrapEvent::ProjectReady {
+                name: loaded_project.name().to_string(),
+            },
+        ));
 
         // 2. ストアの準備
-        monitor(BootstrapEvent::PreparingStore {
-            cache_root: self.cache_root.clone(),
-        });
+        monitor(AppEvent::verbose(
+            scope.clone(),
+            BootstrapEvent::PreparingStore {
+                cache_root: self.cache_root.clone(),
+            },
+        ));
         let typst_store = TypstStore::new(self.cache_root.join("typst"));
         let docs_store = DocsStore::new(self.cache_root.join("docs"));
 
@@ -110,10 +125,10 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
         let typst = typst_resolver
             .run(
                 &mut |e| {
-                    monitor(BootstrapEvent::ResolvingTypst {
+                    monitor(e.map_payload(|event| BootstrapEvent::ResolvingTypst {
                         version: version.clone(),
-                        event: e,
-                    });
+                        event,
+                    }));
                 },
                 &mut |_| {},
             )
@@ -136,10 +151,10 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
         let docs = docs_resolver
             .run(
                 &mut |e| {
-                    monitor(BootstrapEvent::ResolvingDocs {
+                    monitor(e.map_payload(|event| BootstrapEvent::ResolvingDocs {
                         version: version.clone(),
-                        event: e,
-                    });
+                        event,
+                    }));
                 },
                 &mut |_| {},
             )
@@ -152,7 +167,7 @@ impl Action<AppContext, BootstrapEvent, (), BootstrapError> for BootstrapAction 
                 )]
             })?;
 
-        monitor(BootstrapEvent::Ready);
+        monitor(AppEvent::line(scope, BootstrapEvent::Ready));
 
         Ok(AppContext {
             loaded_project,

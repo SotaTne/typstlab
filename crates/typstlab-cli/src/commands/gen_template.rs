@@ -2,10 +2,10 @@ use anyhow::{Result, anyhow};
 use colored::Colorize;
 use typstlab_app::AppContext;
 use typstlab_app::actions::gen_template::{GenTemplateAction, GenTemplateError, GenTemplateEvent};
-use typstlab_proto::{Action, CliSpeaker};
+use typstlab_proto::{Action, AppEvent, CliSpeaker};
 
 /// `gen template` コマンドのエントリポイント
-pub fn run(ctx: AppContext, id: String) -> Result<()> {
+pub fn run(ctx: AppContext, id: String, verbose: bool) -> Result<()> {
     let action = GenTemplateAction {
         project: ctx.loaded_project,
         template_id: id.clone(),
@@ -13,7 +13,14 @@ pub fn run(ctx: AppContext, id: String) -> Result<()> {
 
     let presenter = GenTemplatePresenter { target_id: id };
 
-    match action.run(&mut |event| presenter.render_event(event), &mut |_| {}) {
+    match action.run(
+        &mut |event| {
+            if event.visible_in_cli(verbose) {
+                presenter.render_event(event);
+            }
+        },
+        &mut |_| {},
+    ) {
         Ok(_) => {
             presenter.render_result(&());
             Ok(())
@@ -33,9 +40,14 @@ struct GenTemplatePresenter {
     target_id: String,
 }
 
-impl CliSpeaker<GenTemplateEvent, (), GenTemplateError, ()> for GenTemplatePresenter {
-    fn render_event(&self, event: GenTemplateEvent) {
-        match event {
+impl CliSpeaker for GenTemplatePresenter {
+    type Event = GenTemplateEvent;
+    type Warning = ();
+    type Error = GenTemplateError;
+    type Output = ();
+
+    fn render_event(&self, event: AppEvent<GenTemplateEvent>) {
+        match event.payload {
             GenTemplateEvent::CreatingTemplate(_) => {
                 println!(
                     "{} Creating new local template '{}'...",

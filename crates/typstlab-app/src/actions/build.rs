@@ -4,7 +4,7 @@ use crate::models::{
 };
 use thiserror::Error;
 use typstlab_base::driver::{TypstCommand, TypstDriver};
-use typstlab_proto::{Action, Collection, Entity, Loadable, Loaded};
+use typstlab_proto::{Action, AppEvent, Collection, Entity, EventScope, Loadable, Loaded};
 
 #[derive(Error, Debug)]
 pub enum BuildError {
@@ -69,27 +69,37 @@ impl BuildAction {
     }
 }
 
-impl Action<(), BuildEvent, BuildWarning, BuildError> for BuildAction {
+impl Action for BuildAction {
+    type Output = ();
+    type Event = BuildEvent;
+    type Warning = BuildWarning;
+    type Error = BuildError;
+
     fn run(
         self,
-        monitor: &mut dyn FnMut(BuildEvent),
+        monitor: &mut dyn FnMut(AppEvent<BuildEvent>),
         warning: &mut dyn FnMut(BuildWarning),
-    ) -> Result<(), Vec<BuildError>> {
+    ) -> Result<Self::Output, Vec<Self::Error>> {
         let mut errors = Vec::new();
+        let scope = EventScope::new("build");
 
-        monitor(BuildEvent::ProjectLoaded {
-            name: self.loaded_project.name().to_string(),
-        });
+        monitor(AppEvent::verbose(
+            scope.clone(),
+            BuildEvent::ProjectLoaded {
+                name: self.loaded_project.name().to_string(),
+            },
+        ));
 
         // 2. ターゲットの特定
         let targets = if let Some(inputs) = &self.inputs {
-            monitor(BuildEvent::DiscoveryStarted {
-                inputs: inputs.clone(),
-            });
-            let discovery = DiscoveryAction {
-                scope: self.loaded_project.papers_scope(),
-                inputs: inputs.clone(),
-            };
+            monitor(AppEvent::verbose(
+                scope.clone(),
+                BuildEvent::DiscoveryStarted {
+                    inputs: inputs.clone(),
+                },
+            ));
+            let discovery =
+                DiscoveryAction::new(self.loaded_project.papers_scope(), inputs.clone());
             match discovery.run(&mut |_| {}, &mut |_| {}) {
                 Ok(t) => t,
                 Err(e) => return Err(vec![BuildError::Discovery(e)]),
@@ -106,9 +116,12 @@ impl Action<(), BuildEvent, BuildWarning, BuildError> for BuildAction {
             return Ok(());
         }
 
-        monitor(BuildEvent::DiscoveredTargets {
-            count: targets.len(),
-        });
+        monitor(AppEvent::line(
+            scope.clone(),
+            BuildEvent::DiscoveredTargets {
+                count: targets.len(),
+            },
+        ));
 
         // 4. 成果物領土の準備
         let artifact_scope = self.loaded_project.build_artifact_scope();
@@ -124,9 +137,12 @@ impl Action<(), BuildEvent, BuildWarning, BuildError> for BuildAction {
                 }
             };
 
-            monitor(BuildEvent::Starting {
-                paper_id: loaded_paper.paper_id().to_string(),
-            });
+            monitor(AppEvent::line(
+                scope.clone(),
+                BuildEvent::Starting {
+                    paper_id: loaded_paper.paper_id().to_string(),
+                },
+            ));
 
             // 領土階層から成果物実体（Artifact）を生成
             let mut artifact = artifact_scope
@@ -150,10 +166,13 @@ impl Action<(), BuildEvent, BuildWarning, BuildError> for BuildAction {
             match self.typst_driver.execute(command) {
                 Ok(res) if res.exit_code == 0 => {
                     artifact.success = true;
-                    monitor(BuildEvent::Finished {
-                        artifact,
-                        duration_ms: res.duration_ms,
-                    });
+                    monitor(AppEvent::line(
+                        scope.clone(),
+                        BuildEvent::Finished {
+                            artifact,
+                            duration_ms: res.duration_ms,
+                        },
+                    ));
                 }
                 Ok(res) => {
                     artifact.success = false;

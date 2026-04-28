@@ -1,20 +1,27 @@
 use anyhow::{Result, anyhow};
 use colored::Colorize;
 use typstlab_app::{AppContext, BuildAction, BuildError, BuildEvent, BuildWarning};
-use typstlab_proto::{Action, Artifact, CliSpeaker, Entity};
+use typstlab_proto::{Action, AppEvent, Artifact, CliSpeaker, Entity};
 
 /// build コマンドのエントリポイント
-pub fn run(ctx: AppContext, inputs: Option<Vec<String>>) -> Result<()> {
+pub fn run(ctx: AppContext, inputs: Option<Vec<String>>, verbose: bool) -> Result<()> {
     use typstlab_base::driver::TypstDriver;
     let driver = TypstDriver::new(ctx.typst.path());
     let action = BuildAction::new(ctx.loaded_project, driver, inputs);
     let presenter = BuildPresenter;
     let mut warning_seen = false;
 
-    match action.run(&mut |event| presenter.render_event(event), &mut |warning| {
-        warning_seen = true;
-        presenter.render_warning(warning);
-    }) {
+    match action.run(
+        &mut |event| {
+            if event.visible_in_cli(verbose) {
+                presenter.render_event(event);
+            }
+        },
+        &mut |warning| {
+            warning_seen = true;
+            presenter.render_warning(warning);
+        },
+    ) {
         Ok(out) => {
             if !warning_seen {
                 presenter.render_result(&out);
@@ -32,9 +39,14 @@ pub fn run(ctx: AppContext, inputs: Option<Vec<String>>) -> Result<()> {
 
 struct BuildPresenter;
 
-impl CliSpeaker<BuildEvent, BuildWarning, BuildError, ()> for BuildPresenter {
-    fn render_event(&self, event: BuildEvent) {
-        match event {
+impl CliSpeaker for BuildPresenter {
+    type Event = BuildEvent;
+    type Warning = BuildWarning;
+    type Error = BuildError;
+    type Output = ();
+
+    fn render_event(&self, event: AppEvent<BuildEvent>) {
+        match event.payload {
             BuildEvent::DiscoveredTargets { count } => {
                 println!("{} Found {} target(s) to build.", "📋".blue(), count);
             }

@@ -6,7 +6,7 @@ use crate::models::{
 use std::path::PathBuf;
 use thiserror::Error;
 use typstlab_base::driver::{TypstCommand, TypstDriver};
-use typstlab_proto::{Action, Entity, Loaded};
+use typstlab_proto::{Action, AppEvent, Entity, EventScope, Loaded};
 
 #[derive(Error, Debug)]
 pub enum GenPaperError {
@@ -43,32 +43,45 @@ pub struct GenPaperAction {
     pub typst_driver: TypstDriver,
 }
 
-impl Action<(), GenPaperEvent, (), GenPaperError> for GenPaperAction {
+impl Action for GenPaperAction {
+    type Output = ();
+    type Event = GenPaperEvent;
+    type Warning = ();
+    type Error = GenPaperError;
+
     fn run(
         self,
-        monitor: &mut dyn FnMut(GenPaperEvent),
-        _warning: &mut dyn FnMut(()),
-    ) -> Result<(), Vec<GenPaperError>> {
+        monitor: &mut dyn FnMut(AppEvent<GenPaperEvent>),
+        _warning: &mut dyn FnMut(Self::Warning),
+    ) -> Result<Self::Output, Vec<Self::Error>> {
+        let scope = EventScope::labeled("gen_paper", self.paper_id.clone());
         // 1. テンプレートの特定 (ローカルのみ)
         let local_template = if let Some(t_input) = &self.template_input {
-            monitor(GenPaperEvent::ResolvingTemplate {
-                id: t_input.clone(),
-            });
+            monitor(AppEvent::line(
+                scope.clone(),
+                GenPaperEvent::ResolvingTemplate {
+                    id: t_input.clone(),
+                },
+            ));
 
-            let discovery = DiscoveryAction {
-                scope: self.project.templates_scope(),
-                inputs: vec![t_input.clone()],
-            };
+            let discovery =
+                DiscoveryAction::new(self.project.templates_scope(), vec![t_input.clone()]);
 
             match discovery.run(&mut |_| {}, &mut |_| {}) {
                 Ok(templates) => {
                     let t = templates.into_iter().next();
                     if let Some(ref local) = t {
-                        monitor(GenPaperEvent::ResolvedLocal { path: local.path() });
+                        monitor(AppEvent::line(
+                            scope.clone(),
+                            GenPaperEvent::ResolvedLocal { path: local.path() },
+                        ));
                     } else {
-                        monitor(GenPaperEvent::FallbackToInit {
-                            template_input: t_input.clone(),
-                        });
+                        monitor(AppEvent::line(
+                            scope.clone(),
+                            GenPaperEvent::FallbackToInit {
+                                template_input: t_input.clone(),
+                            },
+                        ));
                     }
                     t
                 }
@@ -81,9 +94,12 @@ impl Action<(), GenPaperEvent, (), GenPaperError> for GenPaperAction {
                         return Err(vec![GenPaperError::Discovery(errs)]);
                     }
 
-                    monitor(GenPaperEvent::FallbackToInit {
-                        template_input: t_input.clone(),
-                    });
+                    monitor(AppEvent::line(
+                        scope.clone(),
+                        GenPaperEvent::FallbackToInit {
+                            template_input: t_input.clone(),
+                        },
+                    ));
                     None
                 }
             }
@@ -127,14 +143,17 @@ impl Action<(), GenPaperEvent, (), GenPaperError> for GenPaperAction {
 
         let loaded_paper = create_action
             .run(
-                &mut |e| monitor(GenPaperEvent::CreatingPaper(e)),
+                &mut |e| monitor(e.map_payload(GenPaperEvent::CreatingPaper)),
                 &mut |_| {},
             )
             .map_err(|errors| vec![GenPaperError::CreateFailed(errors)])?;
 
-        monitor(GenPaperEvent::PaperReady {
-            path: loaded_paper.actual.path(),
-        });
+        monitor(AppEvent::line(
+            scope,
+            GenPaperEvent::PaperReady {
+                path: loaded_paper.actual.path(),
+            },
+        ));
 
         Ok(())
     }

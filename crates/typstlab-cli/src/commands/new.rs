@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use typstlab_app::{
     CreateAction, CreateError, CreateEvent, Project, ProjectConfig, ProjectCreationArgs,
 };
-use typstlab_proto::{Action, CliSpeaker, Entity, Loaded, PROJECT_SETTING_FILE};
+use typstlab_proto::{Action, AppEvent, CliSpeaker, Entity, Loaded, PROJECT_SETTING_FILE};
 
 #[derive(Debug, Clone)]
 pub enum NewWarning {
@@ -22,7 +22,7 @@ fn detect_new_warning(target_path: &Path) -> Result<Option<NewWarning>> {
 }
 
 /// new コマンドのエントリポイント
-pub fn run(name: Option<String>, path: Option<String>) -> Result<()> {
+pub fn run(name: Option<String>, path: Option<String>, verbose: bool) -> Result<()> {
     let current_dir = std::env::current_dir()?;
 
     // 1. 作成場所の決定
@@ -75,7 +75,14 @@ pub fn run(name: Option<String>, path: Option<String>) -> Result<()> {
     }
 
     // 4. 実行
-    match action.run(&mut |e| presenter.render_event(e), &mut |_| {}) {
+    match action.run(
+        &mut |event| {
+            if event.visible_in_cli(verbose) {
+                presenter.render_event(event);
+            }
+        },
+        &mut |_| {},
+    ) {
         Ok(loaded_project) => {
             // パス移動や . を解決した「綺麗な絶対パス」を持つ実体を再生成して結果を表示
             let clean_root = std::fs::canonicalize(loaded_project.path())
@@ -100,11 +107,14 @@ pub fn run(name: Option<String>, path: Option<String>) -> Result<()> {
 
 struct NewPresenter;
 
-impl CliSpeaker<CreateEvent, NewWarning, CreateError, Loaded<Project, ProjectConfig>>
-    for NewPresenter
-{
-    fn render_event(&self, event: CreateEvent) {
-        match event {
+impl CliSpeaker for NewPresenter {
+    type Event = CreateEvent;
+    type Warning = NewWarning;
+    type Error = CreateError;
+    type Output = Loaded<Project, ProjectConfig>;
+
+    fn render_event(&self, event: AppEvent<CreateEvent>) {
+        match event.payload {
             CreateEvent::Initializing => {
                 println!("{} Initializing project structure...", "🐣".cyan());
             }
