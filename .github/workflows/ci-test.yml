@@ -10,8 +10,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: Test & Lint
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -27,20 +27,18 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: lint-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: fmt
-        run: cargo fmt --all -- --check
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: test
-        run: cargo test --workspace --all-targets
-
-  build-macos:
-    name: Build (macOS)
-    runs-on: macos-latest
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       - uses: actions/checkout@v5
 
@@ -55,5 +53,4 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: build
-        run: cargo build --workspace
+      - run: cargo test --workspace --all-targets
