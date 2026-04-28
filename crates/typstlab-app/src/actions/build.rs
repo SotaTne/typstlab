@@ -25,6 +25,15 @@ pub enum BuildError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DistObject {
+    pub paper_id: String,
+    pub pdf: Option<std::path::PathBuf>,
+    pub png: Option<Vec<std::path::PathBuf>>,
+    pub svg: Option<Vec<std::path::PathBuf>>,
+    pub html: Option<std::path::PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildWarning {
     NoTargetsFound,
 }
@@ -49,10 +58,49 @@ pub enum BuildEvent {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildFormat {
+    pub pdf: bool,
+    pub png: bool,
+    pub svg: bool,
+    pub html: bool,
+}
+
+impl Default for BuildFormat {
+    fn default() -> Self {
+        Self {
+            pdf: true,
+            png: false,
+            svg: false,
+            html: false,
+        }
+    }
+}
+
+impl BuildFormat {
+    pub fn active_formats(&self) -> Vec<&'static str> {
+        let mut formats = Vec::new();
+        if self.pdf {
+            formats.push("pdf");
+        }
+        if self.png {
+            formats.push("png");
+        }
+        if self.svg {
+            formats.push("svg");
+        }
+        if self.html {
+            formats.push("html");
+        }
+        formats
+    }
+}
+
 pub struct BuildAction {
     pub loaded_project: Loaded<Project, ProjectConfig>,
     pub typst_driver: TypstDriver,
     pub inputs: Option<Vec<String>>,
+    pub format: BuildFormat,
 }
 
 impl BuildAction {
@@ -60,17 +108,19 @@ impl BuildAction {
         loaded_project: Loaded<Project, ProjectConfig>,
         typst_driver: TypstDriver,
         inputs: Option<Vec<String>>,
+        format: BuildFormat,
     ) -> Self {
         Self {
             loaded_project,
             typst_driver,
             inputs,
+            format,
         }
     }
 }
 
 impl Action for BuildAction {
-    type Output = ();
+    type Output = Vec<DistObject>;
     type Event = BuildEvent;
     type Warning = BuildWarning;
     type Error = BuildError;
@@ -113,7 +163,7 @@ impl Action for BuildAction {
 
         if targets.is_empty() {
             warning(BuildWarning::NoTargetsFound);
-            return Ok(());
+            return Ok(Vec::new());
         }
 
         monitor(AppEvent::line(
@@ -125,6 +175,7 @@ impl Action for BuildAction {
 
         // 4. 成果物領土の準備
         let artifact_scope = self.loaded_project.build_artifact_scope();
+        let mut results = Vec::new();
 
         // 5. 各ターゲットのビルド実行
         for paper in targets {
@@ -144,51 +195,105 @@ impl Action for BuildAction {
                 },
             ));
 
-            // 領土階層から成果物実体（Artifact）を生成
-            let mut artifact = artifact_scope
-                .paper_scope(loaded_paper.paper_id())
-                .format_artifact("pdf");
-
-            if let Err(e) = std::fs::create_dir_all(artifact.path()) {
-                errors.push(BuildError::IoError(e));
-                continue;
-            }
-
-            let output_path = artifact
-                .path()
-                .join(format!("{}.pdf", loaded_paper.output_base_name()));
-
-            let command = TypstCommand::Compile {
-                source: loaded_paper.main_typ_path(),
-                output: Some(output_path),
+            let mut dist_obj = DistObject {
+                paper_id: loaded_paper.paper_id().to_string(),
+                pdf: None,
+                png: None,
+                svg: None,
+                html: None,
             };
 
-            match self.typst_driver.execute(command) {
-                Ok(res) if res.exit_code == 0 => {
-                    artifact.success = true;
-                    monitor(AppEvent::line(
-                        scope.clone(),
-                        BuildEvent::Finished {
-                            artifact,
-                            duration_ms: res.duration_ms,
-                        },
-                    ));
+            for fmt in self.format.active_formats() {
+                // 領土階層から成果物実体（Artifact）を生成
+                let mut artifact = artifact_scope
+                    .paper_scope(loaded_paper.paper_id())
+                    .format_artifact(fmt);
+
+                // 以前の出力（特に複数ページの画像）をクリーンアップ
+                if artifact.path().exists()
+                    && let Err(e) = std::fs::remove_dir_all(artifact.path())
+                {
+                    errors.push(BuildError::IoError(e));
+                    continue;
                 }
-                Ok(res) => {
-                    artifact.success = false;
-                    artifact.error_message = Some(res.stderr);
-                    errors.push(BuildError::PaperBuildError(artifact));
+
+                if let Err(e) = std::fs::create_dir_all(artifact.path()) {
+                    errors.push(BuildError::IoError(e));
+                    continue;
                 }
-                Err(e) => {
-                    artifact.success = false;
-                    artifact.error_message = Some(e.to_string());
-                    errors.push(BuildError::PaperBuildError(artifact));
+
+                let output_filename = match fmt {
+                    "pdf" => format!("{}.pdf", loaded_paper.output_base_name()),
+                    "png" => "{0p}.png".to_string(),
+                    "svg" => "{0p}.svg".to_string(),
+                    "html" => format!("{}.html", loaded_paper.output_base_name()),
+                    _ => unreachable!(),
+                };
+
+                let output_path = artifact.path().join(output_filename);
+                let features = if fmt == "html" {
+                    vec!["html".to_string()]
+                } else {
+                    vec![]
+                };
+
+                let command = TypstCommand::Compile {
+                    source: loaded_paper.main_typ_path(),
+                    output: Some(output_path.clone()),
+                    features,
+                };
+
+                match self.typst_driver.execute(command) {
+                    Ok(res) if res.exit_code == 0 => {
+                        artifact.success = true;
+                        monitor(AppEvent::line(
+                            scope.clone(),
+                            BuildEvent::Finished {
+                                artifact: artifact.clone(),
+                                duration_ms: res.duration_ms,
+                            },
+                        ));
+                        match fmt {
+                            "pdf" => dist_obj.pdf = Some(output_path),
+                            "html" => dist_obj.html = Some(output_path),
+                            "png" | "svg" => {
+                                let mut files = Vec::new();
+                                if let Ok(entries) = std::fs::read_dir(artifact.path()) {
+                                    for entry in entries.flatten() {
+                                        if entry.path().extension().and_then(|e| e.to_str())
+                                            == Some(fmt)
+                                        {
+                                            files.push(entry.path());
+                                        }
+                                    }
+                                }
+                                files.sort();
+                                if fmt == "png" {
+                                    dist_obj.png = Some(files);
+                                } else {
+                                    dist_obj.svg = Some(files);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    Ok(res) => {
+                        artifact.success = false;
+                        artifact.error_message = Some(res.stderr);
+                        errors.push(BuildError::PaperBuildError(artifact));
+                    }
+                    Err(e) => {
+                        artifact.success = false;
+                        artifact.error_message = Some(e.to_string());
+                        errors.push(BuildError::PaperBuildError(artifact));
+                    }
                 }
             }
+            results.push(dist_obj);
         }
 
         if errors.is_empty() {
-            Ok(())
+            Ok(results)
         } else {
             Err(errors)
         }
@@ -231,12 +336,26 @@ mod tests {
         let project = loaded_project(temp.path());
         let driver = TypstDriver::new(PathBuf::from("typst"));
 
-        let action = BuildAction::new(project, driver, None);
+        let action = BuildAction::new(project, driver, None, Default::default());
         let mut warnings = Vec::new();
 
         let result = action.run(&mut |_| {}, &mut |warning| warnings.push(warning));
 
         assert!(result.is_ok());
         assert_eq!(warnings, vec![BuildWarning::NoTargetsFound]);
+    }
+
+    #[test]
+    fn test_build_format_active_formats() {
+        let mut format = super::BuildFormat::default();
+        assert_eq!(format.active_formats(), vec!["pdf"]);
+
+        format.png = true;
+        format.svg = true;
+        format.html = true;
+        assert_eq!(format.active_formats(), vec!["pdf", "png", "svg", "html"]);
+
+        format.pdf = false;
+        assert_eq!(format.active_formats(), vec!["png", "svg", "html"]);
     }
 }

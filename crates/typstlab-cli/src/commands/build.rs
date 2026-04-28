@@ -1,13 +1,20 @@
 use anyhow::{Result, anyhow};
 use colored::Colorize;
-use typstlab_app::{AppContext, BuildAction, BuildError, BuildEvent, BuildWarning};
+use typstlab_app::{
+    AppContext, BuildAction, BuildError, BuildEvent, BuildFormat, BuildWarning, DistObject,
+};
 use typstlab_proto::{Action, AppEvent, Artifact, CliSpeaker, Entity};
 
 /// build コマンドのエントリポイント
-pub fn run(ctx: AppContext, inputs: Option<Vec<String>>, verbose: bool) -> Result<()> {
+pub fn run(
+    ctx: AppContext,
+    inputs: Option<Vec<String>>,
+    format: BuildFormat,
+    verbose: bool,
+) -> Result<()> {
     use typstlab_base::driver::TypstDriver;
     let driver = TypstDriver::new(ctx.typst.path());
-    let action = BuildAction::new(ctx.loaded_project, driver, inputs);
+    let action = BuildAction::new(ctx.loaded_project, driver, inputs, format);
     let presenter = BuildPresenter;
     let mut warning_seen = false;
 
@@ -43,7 +50,7 @@ impl CliSpeaker for BuildPresenter {
     type Event = BuildEvent;
     type Warning = BuildWarning;
     type Error = BuildError;
-    type Output = ();
+    type Output = Vec<DistObject>;
 
     fn render_event(&self, event: AppEvent<BuildEvent>) {
         match event.payload {
@@ -114,7 +121,22 @@ impl CliSpeaker for BuildPresenter {
         }
     }
 
-    fn render_result(&self, _output: &()) {
+    fn render_result(&self, output: &Vec<DistObject>) {
         println!("\n{}", "All builds completed successfully!".green().bold());
+        for dist in output {
+            println!("  📄 {}", dist.paper_id.bold());
+            if let Some(pdf) = &dist.pdf {
+                println!("    {} {}", "PDF:".cyan(), pdf.display());
+            }
+            if let Some(pngs) = &dist.png {
+                println!("    {} {} pages", "PNG:".cyan(), pngs.len());
+            }
+            if let Some(svgs) = &dist.svg {
+                println!("    {} {} pages", "SVG:".cyan(), svgs.len());
+            }
+            if let Some(html) = &dist.html {
+                println!("    {} {}", "HTML:".cyan(), html.display());
+            }
+        }
     }
 }

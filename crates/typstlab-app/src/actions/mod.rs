@@ -11,7 +11,7 @@ pub mod resolve_typst;
 pub mod status;
 
 pub use bootstrap::{AppContext, BootstrapAction, BootstrapError, BootstrapEvent};
-pub use build::{BuildAction, BuildError, BuildEvent, BuildWarning};
+pub use build::{BuildAction, BuildError, BuildEvent, BuildFormat, BuildWarning, DistObject};
 pub use create::{CreateAction, CreateError, CreateEvent};
 pub use discovery::{DiscoveryAction, DiscoveryError};
 pub use download_docs::{DownloadDocsAction, DownloadDocsError, DownloadDocsEvent};

@@ -21,10 +21,21 @@ pub struct Cli {
 
 #[derive(Subcommand, Clone)]
 pub enum Commands {
-    /// Build papers
     Build {
         /// Optional paper IDs or paths to build (if omitted, builds all)
         papers: Vec<String>,
+        /// Output PDF document (default if no other formats are specified)
+        #[arg(long)]
+        pdf: bool,
+        /// Output PNG images for each page
+        #[arg(long)]
+        png: bool,
+        /// Output SVG images for each page
+        #[arg(long)]
+        svg: bool,
+        /// Output HTML document
+        #[arg(long)]
+        html: bool,
     },
     /// Show project status
     Status,
@@ -117,7 +128,13 @@ impl Action for CliAction {
                 return Ok(());
             }
 
-            Commands::Build { papers } => {
+            Commands::Build {
+                papers,
+                pdf,
+                png,
+                svg,
+                html,
+            } => {
                 let ctx = bootstrap_context(&mut |e| {
                     monitor(e.map_payload(CliEvent::Bootstrap));
                 })
@@ -128,7 +145,19 @@ impl Action for CliAction {
                 } else {
                     Some(papers.clone())
                 };
-                commands::build::run(ctx, inputs, self.cli.verbose)
+
+                let mut actual_pdf = *pdf;
+                if !actual_pdf && !png && !svg && !html {
+                    actual_pdf = true;
+                }
+
+                let format = typstlab_app::BuildFormat {
+                    pdf: actual_pdf,
+                    png: *png,
+                    svg: *svg,
+                    html: *html,
+                };
+                commands::build::run(ctx, inputs, format, self.cli.verbose)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
             }
 

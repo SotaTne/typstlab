@@ -8,6 +8,7 @@ pub enum TypstCommand {
     Compile {
         source: PathBuf,
         output: Option<PathBuf>,
+        features: Vec<String>,
     },
     Query {
         source: PathBuf,
@@ -46,8 +47,16 @@ impl TypstCommand {
 
     pub fn to_args(&self) -> Vec<String> {
         match self {
-            TypstCommand::Compile { source, output } => {
+            TypstCommand::Compile {
+                source,
+                output,
+                features,
+            } => {
                 let mut args = vec!["compile".to_string(), source.to_string_lossy().to_string()];
+                if !features.is_empty() {
+                    args.push("--features".to_string());
+                    args.push(features.join(","));
+                }
                 if let Some(out) = output {
                     args.push(out.to_string_lossy().to_string());
                 }
