@@ -26,6 +26,8 @@ pub enum Commands {
         /// Optional paper IDs or paths to build (if omitted, builds all)
         papers: Vec<String>,
     },
+    /// Show project status
+    Status,
     /// Create a new project
     New {
         /// Project name (optional, defaults to current directory name)
@@ -113,6 +115,16 @@ impl Action for CliAction {
                     Some(papers.clone())
                 };
                 commands::build::run(ctx, inputs, self.cli.verbose)
+                    .map_err(|e| vec![CliError::Command(e.to_string())])?;
+            }
+
+            Commands::Status => {
+                let ctx = bootstrap_context(&mut |e| {
+                    monitor(e.map_payload(CliEvent::Bootstrap));
+                })
+                .map_err(|error| vec![error])?;
+
+                commands::status::run(ctx, self.cli.verbose)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
             }
 
