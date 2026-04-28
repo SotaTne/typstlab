@@ -89,6 +89,7 @@ impl Store<Typst, StoreError> for TypstStore {
 
         let bin = self.binary_path(id);
         if !bin.exists() {
+            std::fs::remove_dir_all(&dest_path)?;
             return Err(StoreError::NotFound(format!(
                 "Binary not found after commit for {}",
                 id
@@ -175,5 +176,26 @@ mod tests {
         std::fs::write(bin_path, b"dummy").unwrap();
         let resolved = store.resolve(version).unwrap();
         assert!(resolved.is_some());
+    }
+
+    #[test]
+    fn test_typst_store_cleans_committed_directory_when_binary_missing() {
+        let temp = TempDir::new().unwrap();
+        let store = TypstStore::new(temp.path().to_path_buf());
+        let version = "0.14.2";
+
+        let staging = store.create_staging_area(version).unwrap();
+        std::fs::write(staging.path().join("README.txt"), b"not a typst binary").unwrap();
+
+        let error = match store.commit_staged(version, staging) {
+            Ok(_) => panic!("expected commit to fail without typst binary"),
+            Err(error) => error,
+        };
+
+        assert!(matches!(error, StoreError::NotFound(_)));
+        assert!(
+            !store.typst_path(version).exists(),
+            "invalid committed directory must be removed after validation failure"
+        );
     }
 }
