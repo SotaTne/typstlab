@@ -378,14 +378,34 @@ mod tests {
         }
     }
 
+    /// TAR + XZ データを生成する。
+    ///
+    /// `force_raw_path` が `true` の場合、OS の tar クレートが path を検証する前に
+    /// GNU ヘッダの name フィールドへ生バイトで書き込む（Windows でもルートパスを埋め込める）。
     fn create_tar_xz_raw(entries: Vec<(&str, &[u8], Option<&str>)>) -> Vec<u8> {
+        create_tar_xz_with_opts(entries, false)
+    }
+
+    fn create_tar_xz_with_opts(
+        entries: Vec<(&str, &[u8], Option<&str>)>,
+        force_raw_path: bool,
+    ) -> Vec<u8> {
         let mut tar_buf = Vec::new();
         {
             let mut builder = TarBuilder::new(&mut tar_buf);
             for (path, content, link) in entries {
                 let mut header = TarHeader::new_gnu();
-                // 誠実なテストのため、ここで失敗した場合は unwrap() で落とす
-                header.set_path(path).unwrap();
+                if force_raw_path {
+                    // Windows の tar クレートが set_path で弾く前に
+                    // GNU ヘッダの name フィールド（100 バイト）へ直接書き込む。
+                    let gnu = header.as_gnu_mut().unwrap();
+                    let bytes = path.as_bytes();
+                    let len = bytes.len().min(gnu.name.len() - 1);
+                    gnu.name[..len].copy_from_slice(&bytes[..len]);
+                    // null 終端はデフォルトで 0 になっている
+                } else {
+                    header.set_path(path).unwrap();
+                }
                 header.set_size(content.len() as u64);
                 if let Some(l) = link {
                     header.set_entry_type(tar::EntryType::Symlink);
@@ -498,8 +518,10 @@ mod tests {
 
     #[test]
     fn test_err_security_rooted_path_tar() {
-        // Unix 上でも \Windows\... を rooted とみなすように path.rs を強化済み
-        let xz_data = create_tar_xz_raw(vec![("\\Windows\\evil.txt", b"evil", None)]);
+        // Windows の tar クレートは set_path でバックスラッシュ始まりのパスを弾くため、
+        // GNU ヘッダへ直接書き込んで typstlab 側のセキュリティチェックを検証する。
+        let xz_data =
+            create_tar_xz_with_opts(vec![("\\Windows\\evil.txt", b"evil", None)], true);
         let provider = MockProvider {
             data: Ok(xz_data),
             chunk_size: 1024,
