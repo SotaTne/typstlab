@@ -57,11 +57,10 @@ impl CliSpeaker for BuildPresenter {
             BuildEvent::DiscoveredTargets { count } => {
                 println!("{} Found {} target(s) to build.", "📋".blue(), count);
             }
-            BuildEvent::DiscoveryStarted { inputs } => {
-                if inputs.len() > 1 {
-                    println!("{} Resolving {} targets...", "🔍".cyan(), inputs.len());
-                }
+            BuildEvent::DiscoveryStarted { inputs } if inputs.len() > 1 => {
+                println!("{} Resolving {} targets...", "🔍".cyan(), inputs.len());
             }
+            BuildEvent::DiscoveryStarted { .. } => {}
             BuildEvent::Starting { paper_id } => {
                 println!("{} Building {}...", "🔨".cyan(), paper_id.bold());
             }
