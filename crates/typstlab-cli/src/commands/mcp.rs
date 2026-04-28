@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use std::path::PathBuf;
+use typstlab_mcp::serve_stdio;
 use typstlab_proto::PROJECT_SETTING_FILE;
 
 pub fn run_stdio(root: PathBuf) -> Result<()> {
@@ -8,7 +9,7 @@ pub fn run_stdio(root: PathBuf) -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(typstlab_mcp_2::serve_stdio(root))
+        .block_on(serve_stdio(root))
         .map_err(|error| anyhow!("MCP stdio server failed: {}", error))
 }
 

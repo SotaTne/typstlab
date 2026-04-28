@@ -7,7 +7,7 @@ edition = "2024"
 typstlab-proto = { path = "../typstlab-proto" }
 typstlab-base = { path = "../typstlab-base" }
 typstlab-app = { path = "../typstlab-app" }
-typstlab-mcp-2 = { path = "../typstlab-mcp-2" }
+typstlab-mcp = { path = "../typstlab-mcp" }
 anyhow = "1"
 thiserror = "2"
 dirs = "5"
