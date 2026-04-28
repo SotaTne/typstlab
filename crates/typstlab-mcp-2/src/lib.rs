@@ -1,67 +1,65 @@
-use typstlab_app::actions::build::{BuildError, BuildEvent, BuildWarning};
-use typstlab_proto::{AppEvent, Artifact, McpSpeaker};
+pub mod tools;
+pub mod utils;
 
-pub struct McpBuildPresenter;
+use std::path::PathBuf;
 
-impl McpSpeaker for McpBuildPresenter {
-    type Event = BuildEvent;
-    type Warning = BuildWarning;
-    type Error = BuildError;
-    type Output = ();
+use rmcp::handler::server::wrapper::Parameters;
+use rmcp::model::CallToolResult;
+use rmcp::{ErrorData as McpError, schemars, serve_server, tool, tool_router};
 
-    fn render_event(&self, event: AppEvent<BuildEvent>) -> String {
-        match event.payload {
-            BuildEvent::ProjectLoaded { name } => {
-                format!("Project loaded: {}", name)
-            }
-            BuildEvent::DiscoveryStarted { inputs } => {
-                format!("Identifying targets for inputs: {:?}", inputs)
-            }
-            BuildEvent::DiscoveredTargets { count } => {
-                format!("Discovered {} papers to build.", count)
-            }
-            BuildEvent::Starting { paper_id } => {
-                format!("Starting build for paper: {}", paper_id)
-            }
-            BuildEvent::Finished {
-                artifact,
-                duration_ms,
-            } => {
-                format!(
-                    "SUCCESS: Artifact created at '{}' in {}ms.",
-                    artifact.root().display(),
-                    duration_ms
-                )
-            }
-        }
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct PaperId {
+    #[schemars(description = "The ID of the paper to build and render.")]
+    pub id: String,
+}
+
+pub struct TypstlabServer {
+    project_root: PathBuf,
+}
+
+impl TypstlabServer {
+    pub fn new(project_root: PathBuf) -> Self {
+        Self { project_root }
+    }
+}
+
+#[tool_router(server_handler)]
+impl TypstlabServer {
+    #[tool(
+        description = "Get the current typstlab project status, including toolchain, docs, papers, templates, and dist paths."
+    )]
+    async fn status(&self) -> Result<CallToolResult, McpError> {
+        let root = self.project_root.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let ctx = utils::bootstrap_context(root).map_err(utils::internal_error)?;
+            tools::status::execute(ctx).map_err(utils::internal_error)
+        })
+        .await
+        .map_err(|error| McpError::internal_error(error.to_string(), None))?
     }
 
-    fn render_warning(&self, warning: BuildWarning) -> String {
-        match warning {
-            BuildWarning::NoTargetsFound => "WARNING: No papers found to build.".to_string(),
-        }
-    }
+    #[tool(
+        description = "Build a paper by ID, returning the base64-encoded PNG image of each page."
+    )]
+    async fn build_and_render(
+        &self,
+        Parameters(PaperId { id }): Parameters<PaperId>,
+    ) -> Result<CallToolResult, McpError> {
+        let root = self.project_root.clone();
 
-    fn render_error(&self, error: &BuildError) -> String {
-        match error {
-            BuildError::PaperBuildError(artifact) => {
-                let artifact_error = artifact.error();
-                let error_message = artifact_error
-                    .as_deref()
-                    .unwrap_or("artifact reported no error message");
-                format!(
-                    "ERROR in artifact '{}':\n{}",
-                    artifact.root().display(),
-                    error_message
-                )
-            }
-            _ => {
-                format!("SYSTEM ERROR: {}", error)
-            }
-        }
+        tokio::task::spawn_blocking(move || {
+            let ctx = utils::bootstrap_context(root).map_err(utils::internal_error)?;
+            tools::build_and_render::execute(ctx, id).map_err(utils::internal_error)
+        })
+        .await
+        .map_err(|error| McpError::internal_error(error.to_string(), None))?
     }
+}
 
-    fn render_result(&self, _output: &()) -> String {
-        "All build tasks finished successfully.".to_string()
-    }
+pub async fn serve_stdio(project_root: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let service = serve_server(TypstlabServer::new(project_root), rmcp::transport::stdio()).await?;
+
+    service.waiting().await?;
+    Ok(())
 }

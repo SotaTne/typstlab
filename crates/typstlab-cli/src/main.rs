@@ -40,6 +40,11 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: GenCommands,
     },
+    /// Run the MCP server
+    Mcp {
+        #[command(subcommand)]
+        subcommand: McpCommands,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -56,6 +61,15 @@ pub enum GenCommands {
     Template {
         /// Template ID (directory name)
         id: String,
+    },
+}
+
+#[derive(Subcommand, Clone)]
+pub enum McpCommands {
+    /// Run the MCP server over stdio for a project root
+    Stdio {
+        /// Project root containing typstlab.toml
+        root: PathBuf,
     },
 }
 
@@ -150,6 +164,13 @@ impl Action for CliAction {
                     }
                 }
             }
+
+            Commands::Mcp { subcommand } => match subcommand {
+                McpCommands::Stdio { root } => {
+                    commands::mcp::run_stdio(root.clone())
+                        .map_err(|e| vec![CliError::Command(e.to_string())])?;
+                }
+            },
         }
 
         Ok(())

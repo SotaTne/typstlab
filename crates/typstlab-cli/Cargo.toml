@@ -7,11 +7,13 @@ edition = "2024"
 typstlab-proto = { path = "../typstlab-proto" }
 typstlab-base = { path = "../typstlab-base" }
 typstlab-app = { path = "../typstlab-app" }
+typstlab-mcp-2 = { path = "../typstlab-mcp-2" }
 anyhow = "1"
 thiserror = "2"
 dirs = "5"
 clap = { version = "4", features = ["derive"] }
 colored = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 tempfile = "3"

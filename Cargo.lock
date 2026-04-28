@@ -527,7 +527,16 @@ version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
 dependencies = [
- "dirs-sys",
+ "dirs-sys 0.4.1",
+]
+
+[[package]]
+name = "dirs"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
+dependencies = [
+ "dirs-sys 0.5.0",
 ]
 
 [[package]]
@@ -538,8 +547,20 @@ checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
 dependencies = [
  "libc",
  "option-ext",
- "redox_users",
+ "redox_users 0.4.6",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "dirs-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e01a3366d27ee9890022452ee61b2b63a67e6f13f58900b651ff5665f0bb1fab"
+dependencies = [
+ "libc",
+ "option-ext",
+ "redox_users 0.5.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1879,6 +1900,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "redox_users"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
+dependencies = [
+ "getrandom 0.2.16",
+ "libredox",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "ref-cast"
 version = "1.0.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2000,7 +2032,7 @@ dependencies = [
  "pastey",
  "pin-project-lite",
  "process-wrap",
- "rmcp-macros",
+ "rmcp-macros 0.14.0",
  "schemars",
  "serde",
  "serde_json",
@@ -2012,10 +2044,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "rmcp"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67d69668de0b0ccd9cc435f700f3b39a7861863cf37a15e1f304ea78688a4826"
+dependencies = [
+ "async-trait",
+ "base64",
+ "chrono",
+ "futures",
+ "pastey",
+ "pin-project-lite",
+ "rmcp-macros 1.5.0",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "rmcp-macros"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b79ed92303f9262db79575aa8c3652581668e9d136be6fd0b9ededa78954c95"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn",
+]
+
+[[package]]
+name = "rmcp-macros"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48fdc01c81097b0aed18633e676e269fefa3a78ec1df56b4fe597c1241b92025"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2778,13 +2845,13 @@ dependencies = [
  "chrono",
  "clap",
  "colored 2.2.0",
- "dirs",
+ "dirs 5.0.1",
  "flate2",
  "mockito",
  "predicates",
  "rayon",
  "reqwest",
- "rmcp",
+ "rmcp 0.14.0",
  "semver",
  "serde",
  "serde_json",
@@ -2845,11 +2912,13 @@ dependencies = [
  "anyhow",
  "clap",
  "colored 3.0.0",
- "dirs",
+ "dirs 5.0.1",
  "tempfile",
  "thiserror 2.0.17",
+ "tokio",
  "typstlab-app",
  "typstlab-base",
+ "typstlab-mcp-2",
  "typstlab-proto",
 ]
 
@@ -2859,7 +2928,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "dirs",
+ "dirs 5.0.1",
  "fs2",
  "schemars",
  "serde",
@@ -2893,7 +2962,7 @@ dependencies = [
  "base64",
  "chrono",
  "futures-util",
- "rmcp",
+ "rmcp 0.14.0",
  "semver",
  "serde",
  "serde_json",
@@ -2912,7 +2981,11 @@ name = "typstlab-mcp-2"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dirs 6.0.0",
+ "rmcp 1.5.0",
+ "serde",
  "serde_json",
+ "tokio",
  "typstlab-app",
  "typstlab-base",
  "typstlab-proto",
@@ -2942,7 +3015,7 @@ name = "typstlab-typst"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "dirs",
+ "dirs 5.0.1",
  "flate2",
  "html5ever",
  "markdown",
