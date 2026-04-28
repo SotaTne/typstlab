@@ -520,8 +520,7 @@ mod tests {
     fn test_err_security_rooted_path_tar() {
         // Windows の tar クレートは set_path でバックスラッシュ始まりのパスを弾くため、
         // GNU ヘッダへ直接書き込んで typstlab 側のセキュリティチェックを検証する。
-        let xz_data =
-            create_tar_xz_with_opts(vec![("\\Windows\\evil.txt", b"evil", None)], true);
+        let xz_data = create_tar_xz_with_opts(vec![("\\Windows\\evil.txt", b"evil", None)], true);
         let provider = MockProvider {
             data: Ok(xz_data),
             chunk_size: 1024,
