@@ -1,0 +1,60 @@
+{
+    "$schema": "https://json-schema.org/draft-07/schema#",
+    "title": "Typst Versions",
+    "description": "Typst versions and their compatible commands",
+    "type": "object",
+    "definitions": {
+        "stable_version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "all_version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+(?:-rc(?:\\.\\d+)?)?$"
+        },
+        "all_version_list": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/all_version"
+            }
+        },
+        "stable_version_list": {
+            "type": "array",
+            "items": {
+                "$ref": "#/definitions/stable_version"
+            }
+        }
+    },
+    "properties": {
+        "$schema": {
+            "type": "string"
+        },
+        "base_url": {
+            "type": "string",
+            "pattern": "^https://github\\.com/[a-zA-Z0-9\\-]+/[a-zA-Z0-9\\-_\\.]+$"
+        },
+        "version_pattern": {
+            "type": "string",
+            "description": "Pattern to match and extract versions from GitHub tags/releases. Use '{version}' as the placeholder for the version string (e.g., 'v{version}' or 'docs-v{version}').",
+            "pattern": "\\{version\\}"
+        },
+        "0.14.2": {
+            "$ref": "#/definitions/stable_version_list"
+        },
+        "0.14.1": {
+            "$ref": "#/definitions/stable_version_list"
+        },
+        "ignores": {
+            "$ref": "#/definitions/all_version_list",
+            "description": "Versions that should be ignored when resolving compatible versions"
+        }
+    },
+    "required": [
+        "$schema",
+        "base_url",
+        "version_pattern",
+        "0.14.2",
+        "0.14.1"
+    ],
+    "additionalProperties": false
+}

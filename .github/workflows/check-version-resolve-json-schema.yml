@@ -1,0 +1,32 @@
+name: JSON Schema Validation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "crates/typstlab-base/src/version_resolver_jsons/*.json"
+      - ".github/workflows/check-version-resolve-json-schema.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "crates/typstlab-base/src/version_resolver_jsons/*.json"
+      - ".github/workflows/check-version-resolve-json-schema.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate JSON Schemas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Run AJV Validation
+        run: |
+          # スキーマファイルを除いたすべてのJSONファイルをバリデーション
+          # find を使って対象ファイルをリストアップし、ajv-cli に渡す
+          FILES=$(find crates/typstlab-base/src/version_resolver_jsons -name "*.json" ! -name "typst_version_schema.json")
+          bunx ajv-cli validate \
+            -s crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json \
+            -d $FILES
