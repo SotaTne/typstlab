@@ -8,6 +8,8 @@ export interface ConsistencyResult {
   extraInSchema: string[];
   missingInRequired: string[];
   extraInRequired: string[];
+  ignoredInProperties: string[];
+  ignoredInRequired: string[];
 }
 
 /**
@@ -28,6 +30,14 @@ export function checkTypstSchemaConsistency(
     throw new Error("Invalid schema: 'required' not found or not an array");
   }
 
+  const ignoredVersions = Array.isArray(schema.version_ignores)
+    ? schema.version_ignores.filter((version: unknown): version is string =>
+        typeof version === "string" && /^\d+\.\d+\.\d+$/.test(version)
+      )
+    : [];
+
+  const ignoredVersionSet = new Set(ignoredVersions);
+
   // 1. GitHub のタグから安定版（X.Y.Z）だけを抽出
   const githubVersions = githubReleases
     .map((r) => extractVersion(r.tag_name, "v{version}"))
@@ -42,12 +52,21 @@ export function checkTypstSchemaConsistency(
   // 3. スキーマの required リストを取得
   const requiredList = schema.required || [];
 
+  const ignoredInProperties = schemaVersions.filter((v) => ignoredVersionSet.has(v));
+  const ignoredInRequired = requiredList.filter(
+    (key: string) => /^\d+\.\d+\.\d+$/.test(key) && ignoredVersionSet.has(key)
+  );
+
+  const effectiveGithubVersions = githubVersions.filter((v) => !ignoredVersionSet.has(v));
+  const effectiveSchemaVersions = schemaVersions.filter((v) => !ignoredVersionSet.has(v));
+  const effectiveRequiredList = requiredList.filter((key: string) => !ignoredVersionSet.has(key));
+
   // 4. 比較
-  const missingInSchema = githubVersions.filter((v) => !schemaVersions.includes(v));
-  const extraInSchema = schemaVersions.filter((v) => !githubVersions.includes(v));
-  const missingInRequired = schemaVersions.filter((v) => !requiredList.includes(v));
+  const missingInSchema = effectiveGithubVersions.filter((v) => !effectiveSchemaVersions.includes(v));
+  const extraInSchema = effectiveSchemaVersions.filter((v) => !effectiveGithubVersions.includes(v));
+  const missingInRequired = effectiveSchemaVersions.filter((v) => !effectiveRequiredList.includes(v));
   const extraInRequired = requiredList.filter((key: string) =>
-    /^\d+\.\d+\.\d+$/.test(key) && !schemaVersions.includes(key)
+    /^\d+\.\d+\.\d+$/.test(key) && !effectiveSchemaVersions.includes(key) && !ignoredVersionSet.has(key)
   );
 
   return {
@@ -55,5 +74,7 @@ export function checkTypstSchemaConsistency(
     extraInSchema,
     missingInRequired,
     extraInRequired,
+    ignoredInProperties,
+    ignoredInRequired,
   };
 }

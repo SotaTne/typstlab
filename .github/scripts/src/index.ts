@@ -10,6 +10,7 @@ import { reportSchemaInconsistency } from "./app/schema_issue_reporter";
  */
 export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArguments) {
   const { github, core } = args;
+  const schemaRelativePath = "crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json";
 
   // 1. スキーマファイルの調達
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,7 +18,7 @@ export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArgument
 
   const schemaPath = path.join(
     workspaceRoot,
-    "crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json"
+    schemaRelativePath
   );
   
   if (!fs.existsSync(schemaPath)) {
@@ -39,14 +40,16 @@ export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArgument
   const result = checkTypstSchemaConsistency(schema, releases);
 
   // 4. 報告（Issue作成）を専門家に委譲
-  await reportSchemaInconsistency(args, result);
+  await reportSchemaInconsistency(args, result, schemaRelativePath);
 
   // 監視ジョブとしては成功終了にする。異常は issue と warning で伝える。
   if (
     result.missingInSchema.length > 0 ||
     result.extraInSchema.length > 0 ||
     result.missingInRequired.length > 0 ||
-    result.extraInRequired.length > 0
+    result.extraInRequired.length > 0 ||
+    result.ignoredInProperties.length > 0 ||
+    result.ignoredInRequired.length > 0
   ) {
     core.warning("Schema is inconsistent with GitHub releases. Check the created issue for details.");
   }

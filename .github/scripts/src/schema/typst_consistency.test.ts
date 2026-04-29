@@ -13,7 +13,8 @@ describe("Typst Schema Consistency", () => {
       properties: {
         "0.14.1": {}
       },
-      required: ["0.14.1"]
+      required: ["0.14.1"],
+      version_ignores: []
     };
     const result = checkTypstSchemaConsistency(schema, mockReleases);
     expect(result.missingInSchema).toEqual(["0.14.2"]);
@@ -27,7 +28,8 @@ describe("Typst Schema Consistency", () => {
         "0.14.1": {},
         "0.15.0": {} // GHにないので過剰
       },
-      required: ["0.14.2", "0.14.1", "0.15.0"]
+      required: ["0.14.2", "0.14.1", "0.15.0"],
+      version_ignores: []
     };
     const result = checkTypstSchemaConsistency(schema, mockReleases);
     expect(result.extraInSchema).toEqual(["0.15.0"]);
@@ -39,7 +41,8 @@ describe("Typst Schema Consistency", () => {
         "0.14.2": {},
         "0.14.1": {}
       },
-      required: ["0.14.2"] // 0.14.1 が漏れている
+      required: ["0.14.2"], // 0.14.1 が漏れている
+      version_ignores: []
     };
     const result = checkTypstSchemaConsistency(schema, mockReleases);
     expect(result.missingInRequired).toEqual(["0.14.1"]);
@@ -51,9 +54,29 @@ describe("Typst Schema Consistency", () => {
         "0.14.2": {},
         "0.14.1": {}
       },
-      required: ["0.14.2", "0.14.1", "0.15.0"]
+      required: ["0.14.2", "0.14.1", "0.15.0"],
+      version_ignores: []
     };
     const result = checkTypstSchemaConsistency(schema, mockReleases);
     expect(result.extraInRequired).toEqual(["0.15.0"]);
+  });
+
+  test("ignores configured versions in release comparison and reports schema hits", () => {
+    const schema = {
+      properties: {
+        "0.14.2": {},
+        "0.14.1": {},
+        "0.11.1": {}
+      },
+      required: ["0.14.2", "0.14.1", "0.11.1"],
+      version_ignores: ["0.11.1"]
+    };
+    const result = checkTypstSchemaConsistency(schema, mockReleases);
+    expect(result.missingInSchema).toEqual([]);
+    expect(result.extraInSchema).toEqual([]);
+    expect(result.missingInRequired).toEqual([]);
+    expect(result.extraInRequired).toEqual([]);
+    expect(result.ignoredInProperties).toEqual(["0.11.1"]);
+    expect(result.ignoredInRequired).toEqual(["0.11.1"]);
   });
 });

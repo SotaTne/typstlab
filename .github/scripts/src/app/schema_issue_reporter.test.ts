@@ -32,10 +32,16 @@ describe("Schema Issue Reporter", () => {
       missingInSchema: ["0.15.0"],
       extraInSchema: ["0.14.99"],
       missingInRequired: ["0.14.2"],
-      extraInRequired: ["0.15.1"]
+      extraInRequired: ["0.15.1"],
+      ignoredInProperties: ["0.11.1"],
+      ignoredInRequired: ["0.11.1"]
     };
 
-    await reportSchemaInconsistency(args, result);
+    await reportSchemaInconsistency(
+      args,
+      result,
+      "crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json"
+    );
 
     expect(createIssueMock).toHaveBeenCalled();
     // 型アサーションを使用して title/body へのアクセスを可能にする
@@ -47,11 +53,14 @@ describe("Schema Issue Reporter", () => {
     // タイトルに件数が含まれているか
     expect(callArgs.title).toContain("2 issues"); // missingInSchema + missingInRequired
     expect(callArgs.title).toContain("2 extra");
+    expect(callArgs.title).toContain("2 ignored-version hits");
 
     // 本文にバージョンが含まれているか
     expect(callArgs.body).toContain("0.14.99");
     expect(callArgs.body).toContain("0.14.2");
     expect(callArgs.body).toContain("0.15.1");
+    expect(callArgs.body).toContain("0.11.1");
+    expect(callArgs.body).toContain("Source file: `crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json`");
   });
 
   test("skips issue creation when no issues are found", async () => {
@@ -73,10 +82,16 @@ describe("Schema Issue Reporter", () => {
       missingInSchema: [],
       extraInSchema: [],
       missingInRequired: [],
-      extraInRequired: []
+      extraInRequired: [],
+      ignoredInProperties: [],
+      ignoredInRequired: []
     };
 
-    await reportSchemaInconsistency(args, result);
+    await reportSchemaInconsistency(
+      args,
+      result,
+      "crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json"
+    );
     expect(createIssueMock).not.toHaveBeenCalled();
   });
 });

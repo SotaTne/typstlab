@@ -3,10 +3,12 @@ import type { ConsistencyResult } from "./typst_consistency";
 /**
  * Builds a Markdown body for the consistency check report.
  */
-export function buildConsistencyIssueBody(result: ConsistencyResult): string {
+export function buildConsistencyIssueBody(result: ConsistencyResult, schemaPath: string): string {
   const sections: string[] = [];
 
   sections.push("## 🔍 Typst Schema Consistency Report");
+  sections.push("");
+  sections.push(`Source file: \`${schemaPath}\``);
   sections.push("");
   sections.push("Automatic consistency check between GitHub releases and `typst_version_schema.json` properties.");
   sections.push("");
@@ -37,6 +39,22 @@ export function buildConsistencyIssueBody(result: ConsistencyResult): string {
     sections.push("The following versions are present in the `required` array but are missing from `properties`:");
     sections.push(result.extraInRequired.map((v) => `- ${v}`).join("\n"));
     sections.push("");
+  }
+
+  if (result.ignoredInProperties.length > 0 || result.ignoredInRequired.length > 0) {
+    sections.push("### ⚠️ Ignored Versions Still Present in Schema");
+
+    if (result.ignoredInProperties.length > 0) {
+      sections.push("The following versions are listed in `version_ignores` but still appear in `properties`:");
+      sections.push(result.ignoredInProperties.map((v) => `- ${v}`).join("\n"));
+      sections.push("");
+    }
+
+    if (result.ignoredInRequired.length > 0) {
+      sections.push("The following versions are listed in `version_ignores` but still appear in `required`:");
+      sections.push(result.ignoredInRequired.map((v) => `- ${v}`).join("\n"));
+      sections.push("");
+    }
   }
 
   sections.push("---");
