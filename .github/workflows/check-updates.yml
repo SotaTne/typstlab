@@ -1,0 +1,34 @@
+name: Tool Update Monitor
+
+on:
+  schedule:
+    # 毎週月曜日の朝 6:00 JST (21:00 UTC)
+    - cron: "0 21 * * 0"
+  workflow_dispatch:
+    # 手動実行用
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: install
+        run: bun install
+        working-directory: .github/scripts
+
+      - name: build
+        run: bun run build:index
+        working-directory: .github/scripts
+
+      - name: Check Typst Update and base schema json
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { jobCheckTypstSchemaConsistency } = await import('${{ github.workspace }}/.github/scripts/dist/index.js');
+            await jobCheckTypstSchemaConsistency({ github, context, core });
