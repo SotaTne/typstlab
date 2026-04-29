@@ -25,8 +25,10 @@ jobs:
       - name: Run AJV Validation
         run: |
           # スキーマファイルを除いたすべてのJSONファイルをバリデーション
-          # find を使って対象ファイルをリストアップし、ajv-cli に渡す
-          FILES=$(find crates/typstlab-base/src/version_resolver_jsons -name "*.json" ! -name "typst_version_schema.json")
-          bunx ajv-cli validate \
-            -s crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json \
-            -d $FILES
+          # find で対象ファイルを列挙し、1ファイルずつ ajv-cli に渡す
+          while IFS= read -r -d '' file; do
+            bunx ajv-cli validate \
+              --spec=draft7 \
+              -s crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json \
+              -d "$file"
+          done < <(find crates/typstlab-base/src/version_resolver_jsons -name "*.json" ! -name "typst_version_schema.json" -print0)

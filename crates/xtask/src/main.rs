@@ -44,7 +44,7 @@ fn run_json_check() -> Result<()> {
         let entry = entry?;
         let path = entry.path();
 
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
             let filename = path.file_name().unwrap().to_string_lossy();
             if filename == "typst_version_schema.json" {
                 continue;
@@ -122,6 +122,11 @@ mod tests {
         writeln!(file, r#"{{"version": "#).unwrap();
         let result = validate_file(file.path(), &schema);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to parse JSON"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to parse JSON")
+        );
     }
 }
