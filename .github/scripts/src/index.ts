@@ -41,13 +41,13 @@ export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArgument
   // 4. 報告（Issue作成）を専門家に委譲
   await reportSchemaInconsistency(args, result);
 
-  // 最終的なステータス設定
+  // 監視ジョブとしては成功終了にする。異常は issue と warning で伝える。
   if (
     result.missingInSchema.length > 0 ||
     result.extraInSchema.length > 0 ||
     result.missingInRequired.length > 0 ||
     result.extraInRequired.length > 0
   ) {
-    core.setFailed("Schema is inconsistent with GitHub releases. Check the created issue for details.");
+    core.warning("Schema is inconsistent with GitHub releases. Check the created issue for details.");
   }
 }
