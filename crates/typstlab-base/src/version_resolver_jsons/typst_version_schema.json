@@ -44,6 +44,18 @@
         "0.14.1": {
             "$ref": "#/definitions/stable_version_list"
         },
+        "0.14.0": {
+            "$ref": "#/definitions/stable_version_list"
+        },
+        "0.13.1": {
+            "$ref": "#/definitions/stable_version_list"
+        },
+        "0.13.0": {
+            "$ref": "#/definitions/stable_version_list"
+        },
+        "0.12.0": {
+            "$ref": "#/definitions/stable_version_list"
+        },
         "ignores": {
             "$ref": "#/definitions/all_version_list",
             "description": "Versions that should be ignored when resolving compatible versions"
@@ -54,7 +66,11 @@
         "base_url",
         "version_pattern",
         "0.14.2",
-        "0.14.1"
+        "0.14.1",
+        "0.14.0",
+        "0.13.1",
+        "0.13.0",
+        "0.12.0"
     ],
     "version_ignores": [
         "0.11.1",
