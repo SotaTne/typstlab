@@ -1,0 +1,35 @@
+name: CI (workflow scripts test)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/scripts/**"
+      - ".github/workflows/ci-workflow-scripts-test.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - ".github/scripts/**"
+      - ".github/workflows/ci-workflow-scripts-test.yml"
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+
+      - name: install
+        run: bun install
+        working-directory: .github/scripts
+
+      - name: test
+        run: bun test
+        working-directory: .github/scripts

@@ -1,0 +1,17 @@
+{
+  "name": "typstlab-scripts",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "cli": "bun src/cli.ts",
+    "test": "bun test",
+    "build:index": "bun build src/index.ts --target=node --bundle --outfile=dist/index.js",
+    "build:cli": "bun build src/cli.ts --target=node --bundle --outfile=dist/cli.js"
+  },
+  "devDependencies": {
+    "@actions/github-script": "github:actions/github-script",
+    "@types/bun": "latest",
+    "commander": "^14.0.3",
+    "typescript": "^6"
+  }
+}
