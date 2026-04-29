@@ -30,6 +30,10 @@ jobs:
         run: bun install
         working-directory: .github/scripts
 
+      - name: build
+        run: bun run build:index
+        working-directory: .github/scripts
+
       - name: test
         run: bun test
         working-directory: .github/scripts
