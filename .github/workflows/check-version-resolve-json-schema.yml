@@ -22,13 +22,10 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      - name: Run AJV Validation
-        run: |
-          # スキーマファイルを除いたすべてのJSONファイルをバリデーション
-          # find で対象ファイルを列挙し、1ファイルずつ ajv-cli に渡す
-          while IFS= read -r -d '' file; do
-            bunx ajv-cli validate \
-              --spec=draft7 \
-              -s crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json \
-              -d "$file"
-          done < <(find crates/typstlab-base/src/version_resolver_jsons -name "*.json" ! -name "typst_version_schema.json" -print0)
+      - name: Compile schema file
+        run: bun run json-check:schema
+        working-directory: .github/scripts
+
+      - name: Validate resolver JSON files
+        run: bun run json-check:files
+        working-directory: .github/scripts
