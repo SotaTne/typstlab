@@ -6,11 +6,14 @@ on:
     paths:
       - "crates/typstlab-base/src/version_resolver_jsons/*.json"
       - ".github/workflows/check-version-resolve-json-schema.yml"
+      - ".github/scripts/ajv/*.cjs"
   pull_request:
     branches: [ main ]
     paths:
       - "crates/typstlab-base/src/version_resolver_jsons/*.json"
       - ".github/workflows/check-version-resolve-json-schema.yml"
+      - ".github/scripts/ajv/*.cjs"
+
   workflow_dispatch:
 
 jobs:

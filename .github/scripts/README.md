@@ -25,8 +25,8 @@ bun run build:index
 ## JSON Check
 
 `typst_version_schema.json` を 2 段階で検証します。
-1 段目は schema 自体を `--strict=false` 付きで compile し、`version_ignores` のような独自キーを許容します。
-2 段目は残りの JSON を schema で validate します。`version_ignores` は no-op keyword として読み込まれます。
+1 段目は schema 自体を compile し、`version_ignores` を custom keyword として読み込みます。
+2 段目は残りの JSON を schema で validate します。`version_ignores` は validate 側でも同じ keyword 定義で読み込まれます。
 
 ```bash
 bun run json-check:schema
