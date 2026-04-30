@@ -78,6 +78,7 @@ describe("Typst Schema Consistency", () => {
     expect(result.extraInRequired).toEqual([]);
     expect(result.ignoredInProperties).toEqual(["0.11.1"]);
     expect(result.ignoredInRequired).toEqual(["0.11.1"]);
+    expect(result.effectiveGithubVersions).toEqual(["0.14.2", "0.14.1"]);
     expect(result.effectiveSchemaVersions).toEqual(["0.14.2", "0.14.1"]);
   });
 });

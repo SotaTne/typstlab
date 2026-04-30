@@ -42,7 +42,7 @@ export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArgument
 
   // 4. 他 JSON ファイルのキーチェック（副作用チェック）
   const resolverDir = path.join(workspaceRoot, "crates/typstlab-base/src/version_resolver_jsons");
-  const keyCheckResult = checkJsonFileKeys(resolverDir, workspaceRoot, result.effectiveSchemaVersions);
+  const keyCheckResult = checkJsonFileKeys(resolverDir, workspaceRoot, result.effectiveGithubVersions);
 
   // 5. 報告（Issue作成）を専門家に委譲
   await reportSchemaInconsistency(args, result, keyCheckResult, schemaRelativePath);
