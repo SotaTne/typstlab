@@ -5,6 +5,8 @@ import type { AsyncFunctionArguments } from "@actions/github-script";
 import { checkJsonFileKeys } from "./schema/json_key_checker";
 import { checkTypstSchemaConsistency } from "./schema/typst_consistency";
 import { reportSchemaInconsistency } from "./app/schema_issue_reporter";
+import { checkToolchainUpdate } from "./monitor/toolchain_update_checker";
+import { reportToolchainUpdate } from "./app/toolchain_update_reporter";
 
 /**
  * Job: Typst スキーマの整合性チェックとレポート
@@ -58,5 +60,31 @@ export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArgument
     keyCheckResult.files.length > 0
   ) {
     core.warning("Schema is inconsistent with GitHub releases. Check the created issue for details.");
+  }
+}
+
+/**
+ * Job: Resolver JSON の toolchain 更新整合性チェックとレポート
+ */
+export async function jobMonitorToolchainUpdate(args: AsyncFunctionArguments) {
+  const { core } = args;
+  const resolverRelativeDir = "crates/typstlab-base/src/version_resolver_jsons";
+
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const workspaceRoot = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, "../../../");
+  const resolverDir = path.join(workspaceRoot, resolverRelativeDir);
+
+  if (!fs.existsSync(resolverDir)) {
+    core.setFailed(`Resolver directory not found at: ${resolverDir}`);
+    return;
+  }
+
+  core.info("Fetching releases for resolver JSON files...");
+
+  const result = await checkToolchainUpdate(args, resolverDir, workspaceRoot);
+  await reportToolchainUpdate(args, result, resolverRelativeDir);
+
+  if (result.files.length > 0) {
+    core.warning("Resolver JSON toolchain update is inconsistent with GitHub releases. Check the created issue for details.");
   }
 }

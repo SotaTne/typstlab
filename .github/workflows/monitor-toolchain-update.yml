@@ -1,14 +1,14 @@
-name: Tool Update Monitor
+name: Monitor Toolchain Update
 
 on:
   schedule:
-    # 毎週月曜日の朝 6:00 JST (21:00 UTC)
-    - cron: "0 21 * * 0"
+    # 毎週月曜日の朝 6:30 JST (21:30 UTC)
+    - cron: "30 21 * * 0"
   workflow_dispatch:
     # 手動実行用
 
 jobs:
-  check-updates:
+  monitor-toolchain-update:
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -26,9 +26,9 @@ jobs:
         run: bun run build:index
         working-directory: .github/scripts
 
-      - name: Check Typst Update and base schema json
+      - name: Monitor Toolchain Update
         uses: actions/github-script@v9
         with:
           script: |
-            const { jobCheckTypstSchemaConsistency } = await import('${{ github.workspace }}/.github/scripts/dist/index.js');
-            await jobCheckTypstSchemaConsistency({ github, context, core });
+            const { jobMonitorToolchainUpdate } = await import('${{ github.workspace }}/.github/scripts/dist/index.js');
+            await jobMonitorToolchainUpdate({ github, context, core });

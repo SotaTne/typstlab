@@ -25,5 +25,9 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
     "rootDir": "./src",
-  }
+  },
+  "exclude": [
+    "ajv/*",
+    "dist/*"
+  ]
 }
