@@ -62,8 +62,9 @@ describe("Toolchain Update Reporter", () => {
     expect(callArgs.title).toContain("1 file(s)");
     expect(callArgs.title).toContain("1 version issue(s)");
     expect(callArgs.title).toContain("2 ignore issue(s)");
-    expect(callArgs.body).toContain("## 🔍 Toolchain Update Report");
-    expect(callArgs.body).toContain("crates/typstlab-base/src/version_resolver_jsons/typst.json");
+    expect(callArgs.body).toContain("# 🔍 Toolchain Update Report");
+    expect(callArgs.body).toContain("## typst/typst");
+    expect(callArgs.body).toContain("Path: `crates/typstlab-base/src/version_resolver_jsons/typst.json`");
     expect(callArgs.body).toContain("Base URL: `https://github.com/typst/typst`");
     expect(callArgs.body).toContain("Version pattern: `v{version}`");
     expect(callArgs.body).toContain("##### `0.14.1`");
