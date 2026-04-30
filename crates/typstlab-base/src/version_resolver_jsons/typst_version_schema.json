@@ -38,7 +38,7 @@
             "description": "Pattern to match and extract versions from GitHub tags/releases. Use '{version}' as the placeholder for the version string (e.g., 'v{version}' or 'docs-v{version}').",
             "pattern": "\\{version\\}"
         },
-        "0.14.2": {
+        "0.14.3": {
             "$ref": "#/definitions/stable_version_list"
         },
         "0.14.1": {
@@ -65,7 +65,7 @@
         "$schema",
         "base_url",
         "version_pattern",
-        "0.14.2",
+        "0.14.3",
         "0.14.1",
         "0.14.0",
         "0.13.1",

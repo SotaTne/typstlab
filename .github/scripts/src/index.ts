@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AsyncFunctionArguments } from "@actions/github-script";
+import { checkJsonFileKeys } from "./schema/json_key_checker";
 import { checkTypstSchemaConsistency } from "./schema/typst_consistency";
 import { reportSchemaInconsistency } from "./app/schema_issue_reporter";
 
@@ -39,8 +40,12 @@ export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArgument
   // 3. 整合性チェックの実行
   const result = checkTypstSchemaConsistency(schema, releases);
 
-  // 4. 報告（Issue作成）を専門家に委譲
-  await reportSchemaInconsistency(args, result, schemaRelativePath);
+  // 4. 他 JSON ファイルのキーチェック（副作用チェック）
+  const resolverDir = path.join(workspaceRoot, "crates/typstlab-base/src/version_resolver_jsons");
+  const keyCheckResult = checkJsonFileKeys(resolverDir, workspaceRoot, result.effectiveSchemaVersions);
+
+  // 5. 報告（Issue作成）を専門家に委譲
+  await reportSchemaInconsistency(args, result, keyCheckResult, schemaRelativePath);
 
   // 監視ジョブとしては成功終了にする。異常は issue と warning で伝える。
   if (
@@ -49,7 +54,8 @@ export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArgument
     result.missingInRequired.length > 0 ||
     result.extraInRequired.length > 0 ||
     result.ignoredInProperties.length > 0 ||
-    result.ignoredInRequired.length > 0
+    result.ignoredInRequired.length > 0 ||
+    keyCheckResult.files.length > 0
   ) {
     core.warning("Schema is inconsistent with GitHub releases. Check the created issue for details.");
   }

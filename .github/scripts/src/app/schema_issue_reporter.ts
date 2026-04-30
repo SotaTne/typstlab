@@ -1,5 +1,6 @@
 import type { AsyncFunctionArguments } from "@actions/github-script";
 import type { ConsistencyResult } from "../schema/typst_consistency";
+import type { JsonKeyCheckResult } from "../schema/json_key_checker";
 import { buildConsistencyIssueBody } from "../schema/typst_consistency_body_builder";
 
 /**
@@ -8,21 +9,29 @@ import { buildConsistencyIssueBody } from "../schema/typst_consistency_body_buil
 export async function reportSchemaInconsistency(
   { github, context, core }: AsyncFunctionArguments,
   result: ConsistencyResult,
+  keyCheckResult: JsonKeyCheckResult,
   schemaPath: string
 ) {
   const missingCount = result.missingInSchema.length + result.missingInRequired.length;
   const extraCount = result.extraInSchema.length + result.extraInRequired.length;
   const ignoredCount = result.ignoredInProperties.length + result.ignoredInRequired.length;
+  const keyIssueCount = keyCheckResult.files.reduce(
+    (sum, file) => sum + file.missingKeys.length + file.extraKeys.length,
+    0
+  );
 
-  if (missingCount === 0 && extraCount === 0 && ignoredCount === 0) {
+  if (missingCount === 0 && extraCount === 0 && ignoredCount === 0 && keyIssueCount === 0) {
     core.info("No inconsistencies found. Skipping issue creation.");
     return;
   }
 
-  const title = `[Automation] Schema Consistency: ${missingCount} issues, ${extraCount} extra versions found${ignoredCount > 0 ? `, ${ignoredCount} ignored-version hits` : ""}`;
+  const title =
+    missingCount > 0 || extraCount > 0 || ignoredCount > 0
+      ? `[Automation] Schema Consistency: ${missingCount} issues, ${extraCount} extra versions found${ignoredCount > 0 ? `, ${ignoredCount} ignored versions still present` : ""}${keyIssueCount > 0 ? `, ${keyIssueCount} resolver JSON key issue(s)` : ""}`
+      : `[Automation] Resolver JSON Key Mismatch: ${keyIssueCount} issue(s) found in resolver JSON files`;
   
   // 本文をスキーマ側の専門家に作ってもらう
-  const body = buildConsistencyIssueBody(result, schemaPath);
+  const body = buildConsistencyIssueBody(result, keyCheckResult, schemaPath);
 
   core.info(`Creating issue: ${title}`);
 
