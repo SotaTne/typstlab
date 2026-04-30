@@ -2,8 +2,8 @@
     "$schema": "./typst_version_schema.json",
     "base_url": "https://github.com/typst/typst",
     "version_pattern": "v{version}",
-    "0.14.3": [
-        "0.14.3"
+    "0.14.2": [
+        "0.14.2"
     ],
     "0.14.1": [
         "0.14.1"
