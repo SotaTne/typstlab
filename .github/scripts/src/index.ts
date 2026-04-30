@@ -2,11 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AsyncFunctionArguments } from "@actions/github-script";
-import { checkJsonFileKeys } from "./schema/json_key_checker";
-import { checkTypstSchemaConsistency } from "./schema/typst_consistency";
-import { reportSchemaInconsistency } from "./app/schema_issue_reporter";
-import { checkToolchainUpdate } from "./monitor/toolchain_update_checker";
-import { reportToolchainUpdate } from "./app/toolchain_update_reporter";
+import { checkJsonFileKeys } from "./schema/json_key_checker.ts";
+import { checkTypstSchemaConsistency } from "./schema/typst_consistency.ts";
+import { reportSchemaInconsistency } from "./app/schema_issue_reporter.ts";
+import { checkToolchainUpdate } from "./monitor/toolchain_update_checker.ts";
+import { reportToolchainUpdate } from "./app/toolchain_update_reporter.ts";
 
 /**
  * Job: Typst スキーマの整合性チェックとレポート

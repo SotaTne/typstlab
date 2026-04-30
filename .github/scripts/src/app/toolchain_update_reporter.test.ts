@@ -22,7 +22,7 @@ describe("Toolchain Update Reporter", () => {
         }
       },
       core: {
-        info: mock(() => { }),
+        info: mock(() => { })
       }
     } as any;
 
@@ -30,27 +30,30 @@ describe("Toolchain Update Reporter", () => {
       files: [
         {
           filePath: "crates/typstlab-base/src/version_resolver_jsons/typst.json",
+          repoName: "typst/typst",
           baseUrl: "https://github.com/typst/typst",
           versionPattern: "v{version}",
-          releaseVersions: ["0.14.3", "0.14.1", "0.14.0"],
-          ignoredVersions: ["0.13.1"],
-          versionChecks: [
+          releaseVersions: ["0.14.3", "0.14.2", "0.14.1", "0.14.0"],
+          ignoredVersions: ["0.14.0", "0.99.0"],
+          missingVersions: ["0.14.1"],
+          extraVersions: ["0.13.0"],
+          duplicateValueVersions: [
             {
-              typstVersion: "0.14.1",
-              missingVersions: ["0.14.0"],
-              extraVersions: [],
-              duplicateVersions: []
+              version: "0.14.2",
+              assignments: [
+                { typstVersion: "0.14.3", count: 1 },
+                { typstVersion: "0.14.2", count: 1 }
+              ]
             }
           ],
-          ignoreCheck: {
-            extraVersions: ["0.99.0"],
-            duplicateVersions: ["0.13.1"]
-          }
+          ignoredVersionsNotInReleases: ["0.99.0"],
+          ignoredVersionsPresentInValues: ["0.14.0"],
+          duplicateIgnoredVersions: ["0.14.0"]
         }
       ]
     };
 
-    await reportToolchainUpdate(args, result as any, "crates/typstlab/src/version_resolver_jsons");
+    await reportToolchainUpdate(args, result as any, "crates/typstlab-base/src/version_resolver_jsons");
 
     expect(createIssueMock).toHaveBeenCalled();
     const callArgs = createIssueMock.mock.calls[0]?.[0] as { title: string; body: string } | undefined;
@@ -60,17 +63,16 @@ describe("Toolchain Update Reporter", () => {
 
     expect(callArgs.title).toContain("Toolchain Update Monitor");
     expect(callArgs.title).toContain("1 file(s)");
-    expect(callArgs.title).toContain("1 version issue(s)");
-    expect(callArgs.title).toContain("2 ignore issue(s)");
+    expect(callArgs.title).toContain("6 issue item(s)");
     expect(callArgs.body).toContain("# 🔍 Toolchain Update Report");
     expect(callArgs.body).toContain("## typst/typst");
     expect(callArgs.body).toContain("Path: `crates/typstlab-base/src/version_resolver_jsons/typst.json`");
-    expect(callArgs.body).toContain("Base URL: `https://github.com/typst/typst`");
-    expect(callArgs.body).toContain("Version pattern: `v{version}`");
-    expect(callArgs.body).toContain("##### `0.14.1`");
-    expect(callArgs.body).toContain("###### ❌ Missing versions");
-    expect(callArgs.body).toContain("`0.14.0`");
-    expect(callArgs.body).toContain("##### `ignores`");
+    expect(callArgs.body).toContain("### Missing versions");
+    expect(callArgs.body).toContain("### Extra versions");
+    expect(callArgs.body).toContain("### Duplicate versions in JSON values");
+    expect(callArgs.body).toContain("### Ignored versions still present in JSON values");
+    expect(callArgs.body).toContain("### Ignored versions not found in releases");
+    expect(callArgs.body).toContain("### Duplicate ignores");
   });
 
   test("skips issue creation when no toolchain issues are found", async () => {

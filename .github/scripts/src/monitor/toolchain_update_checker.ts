@@ -5,26 +5,29 @@ import { extractVersion } from "../utils/version_extractor";
 
 const STABLE_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
-export interface ToolchainVersionCheckResult {
+export interface ToolchainVersionAssignment {
   typstVersion: string;
-  missingVersions: string[];
-  extraVersions: string[];
-  duplicateVersions: string[];
+  count: number;
 }
 
-export interface ToolchainIgnoreCheckResult {
-  extraVersions: string[];
-  duplicateVersions: string[];
+export interface ToolchainDuplicateVersionResult {
+  version: string;
+  assignments: ToolchainVersionAssignment[];
 }
 
 export interface ToolchainFileCheckResult {
   filePath: string;
+  repoName: string;
   baseUrl: string;
   versionPattern: string;
   releaseVersions: string[];
   ignoredVersions: string[];
-  versionChecks: ToolchainVersionCheckResult[];
-  ignoreCheck: ToolchainIgnoreCheckResult;
+  missingVersions: string[];
+  extraVersions: string[];
+  duplicateValueVersions: ToolchainDuplicateVersionResult[];
+  ignoredVersionsNotInReleases: string[];
+  ignoredVersionsPresentInValues: string[];
+  duplicateIgnoredVersions: string[];
 }
 
 export interface ToolchainUpdateResult {
@@ -77,7 +80,7 @@ function difference(left: string[], right: string[]): string[] {
   return left.filter((value) => !rightSet.has(value));
 }
 
-function parseGitHubRepo(baseUrl: string): { owner: string; repo: string } {
+function parseGitHubRepo(baseUrl: string): { owner: string; repo: string; repoName: string } {
   const parsed = new URL(baseUrl);
 
   if (parsed.hostname !== "github.com") {
@@ -95,7 +98,7 @@ function parseGitHubRepo(baseUrl: string): { owner: string; repo: string } {
     throw new Error(`Invalid base_url path: ${baseUrl}`);
   }
 
-  return { owner, repo };
+  return { owner, repo, repoName: `${owner}/${repo}` };
 }
 
 function getReleaseVersions(releases: ReleaseList, versionPattern: string): string[] {
@@ -118,7 +121,7 @@ function getReleaseVersions(releases: ReleaseList, versionPattern: string): stri
   return unique(versions);
 }
 
-function getVersionKeys(json: ResolverJson): Array<[string, string[]]> {
+function getVersionEntries(json: ResolverJson): Array<[string, string[]]> {
   return Object.entries(json)
     .filter((entry): entry is [string, unknown[]] => {
       const [key, value] = entry;
@@ -126,16 +129,42 @@ function getVersionKeys(json: ResolverJson): Array<[string, string[]]> {
     })
     .map(([key, value]) => [
       key,
-      value.filter((entry: unknown): entry is string => typeof entry === "string")
+      value.filter((entry: unknown): entry is string => typeof entry === "string" && STABLE_VERSION_PATTERN.test(entry))
     ] as [string, string[]]);
 }
 
-function getIgnoredVersions(json: ResolverJson): string[] {
+function getIgnoreVersions(json: ResolverJson): string[] {
   if (!Array.isArray(json.ignores)) {
     return [];
   }
 
-  return json.ignores.filter((value: unknown): value is string => typeof value === "string" && STABLE_VERSION_PATTERN.test(value));
+  return json.ignores.filter((value: unknown): value is string =>
+    typeof value === "string" && STABLE_VERSION_PATTERN.test(value)
+  );
+}
+
+function collectValueOccurrences(entries: Array<[string, string[]]>): Map<string, Map<string, number>> {
+  const occurrences = new Map<string, Map<string, number>>();
+
+  for (const [typstVersion, values] of entries) {
+    const countByVersion = new Map<string, number>();
+
+    for (const value of values) {
+      countByVersion.set(value, (countByVersion.get(value) ?? 0) + 1);
+    }
+
+    for (const [value, count] of countByVersion) {
+      const assignments = occurrences.get(value) ?? new Map<string, number>();
+      assignments.set(typstVersion, (assignments.get(typstVersion) ?? 0) + count);
+      occurrences.set(value, assignments);
+    }
+  }
+
+  return occurrences;
+}
+
+function flattenOccurrences(occurrences: Map<string, Map<string, number>>): string[] {
+  return [...occurrences.keys()];
 }
 
 async function fetchReleaseVersions(
@@ -160,36 +189,61 @@ function buildFileCheckResult(
   releaseVersions: string[],
   json: ResolverJson
 ): ToolchainFileCheckResult {
-  const versionKeys = getVersionKeys(json);
-  const ignoredVersions = unique(getIgnoredVersions(json));
+  const versionEntries = getVersionEntries(json);
+  const occurrences = collectValueOccurrences(versionEntries);
+  const allValueVersions = flattenOccurrences(occurrences);
+
+  const ignoredVersions = unique(getIgnoreVersions(json));
   const ignoredVersionSet = new Set(ignoredVersions);
+  const releaseVersionSet = new Set(releaseVersions);
   const effectiveReleaseVersions = releaseVersions.filter((version) => !ignoredVersionSet.has(version));
+  const effectiveValueVersions = allValueVersions.filter((version) => !ignoredVersionSet.has(version));
 
-  const versionChecks = versionKeys.map(([typstVersion, values]) => {
-    const effectiveValues = values.filter((version) => !ignoredVersionSet.has(version));
-    const uniqueEffectiveValues = unique(effectiveValues);
-    return {
-      typstVersion,
-      missingVersions: difference(effectiveReleaseVersions, uniqueEffectiveValues),
-      extraVersions: difference(uniqueEffectiveValues, effectiveReleaseVersions),
-      duplicateVersions: findDuplicates(effectiveValues),
-    };
-  });
+  const missingVersions = difference(effectiveReleaseVersions, effectiveValueVersions);
+  const extraVersions = difference(effectiveValueVersions, effectiveReleaseVersions);
 
-  const ignoreCheck = {
-    extraVersions: difference(ignoredVersions, releaseVersions),
-    duplicateVersions: findDuplicates(getIgnoredVersions(json)),
-  };
+  const duplicateValueVersions = [...occurrences.entries()]
+    .filter(([, assignments]) => {
+      let count = 0;
+      for (const value of assignments.values()) {
+        count += value;
+      }
+      return count > 1;
+    })
+    .map(([version, assignments]) => ({
+      version,
+      assignments: [...assignments.entries()].map(([typstVersion, count]) => ({ typstVersion, count })),
+    }));
+
+  const ignoredVersionsNotInReleases = ignoredVersions.filter((version) => !releaseVersionSet.has(version));
+  const ignoredVersionsPresentInValues = ignoredVersions.filter((version) => occurrences.has(version));
+  const duplicateIgnoredVersions = findDuplicates(getIgnoreVersions(json));
 
   return {
     filePath,
+    repoName: parseGitHubRepo(baseUrl).repoName,
     baseUrl,
     versionPattern,
     releaseVersions,
     ignoredVersions,
-    versionChecks,
-    ignoreCheck,
+    missingVersions,
+    extraVersions,
+    duplicateValueVersions,
+    ignoredVersionsNotInReleases,
+    ignoredVersionsPresentInValues,
+    duplicateIgnoredVersions,
   };
+}
+
+function hasIssues(result: ToolchainFileCheckResult): boolean {
+  return (
+    result.missingVersions.length > 0 ||
+    result.extraVersions.length > 0 ||
+    result.duplicateValueVersions.length > 0 ||
+    result.ignoredVersionsNotInReleases.length > 0 ||
+    result.ignoredVersionsPresentInValues.length > 0 ||
+    result.duplicateIgnoredVersions.length > 0
+  );
 }
 
 export async function checkToolchainUpdate(
@@ -233,12 +287,7 @@ export async function checkToolchainUpdate(
       json
     );
 
-    const hasVersionIssues = fileCheckResult.versionChecks.some(
-      (check) => check.missingVersions.length > 0 || check.extraVersions.length > 0 || check.duplicateVersions.length > 0
-    );
-    const hasIgnoreIssues = fileCheckResult.ignoreCheck.extraVersions.length > 0 || fileCheckResult.ignoreCheck.duplicateVersions.length > 0;
-
-    if (hasVersionIssues || hasIgnoreIssues) {
+    if (hasIssues(fileCheckResult)) {
       files.push(fileCheckResult);
     }
   }

@@ -11,7 +11,9 @@ describe("Consistency Issue Body Builder", () => {
       missingInRequired: [],
       extraInRequired: [],
       ignoredInProperties: [],
-      ignoredInRequired: []
+      ignoredInRequired: [],
+      effectiveGithubVersions: [],
+      effectiveSchemaVersions: []
     };
     const body = buildConsistencyIssueBody(
       result,
@@ -39,7 +41,9 @@ Automatic consistency check between GitHub releases and \`typst_version_schema.j
       missingInRequired: [],
       extraInRequired: [],
       ignoredInProperties: [],
-      ignoredInRequired: []
+      ignoredInRequired: [],
+      effectiveGithubVersions: [],
+      effectiveSchemaVersions: []
     };
     const body = buildConsistencyIssueBody(
       result,
@@ -71,7 +75,9 @@ The following versions exist on GitHub but are NOT defined in the schema propert
       missingInRequired: ["0.14.2"],
       extraInRequired: ["0.15.0"],
       ignoredInProperties: ["0.11.1"],
-      ignoredInRequired: ["0.11.1"]
+      ignoredInRequired: ["0.11.1"],
+      effectiveGithubVersions: [],
+      effectiveSchemaVersions: []
     };
     const keyCheckResult = {
       files: [

@@ -1,33 +1,30 @@
 import type { AsyncFunctionArguments } from "@actions/github-script";
-import type { ToolchainUpdateResult } from "../monitor/toolchain_update_checker";
-import { buildToolchainUpdateIssueBody } from "../monitor/toolchain_update_body_builder";
+import type { ToolchainUpdateResult } from "../monitor/toolchain_update_checker.ts";
+import { buildToolchainUpdateIssueBody } from "../monitor/toolchain_update_body_builder.ts";
 
 export async function reportToolchainUpdate(
   { github, context, core }: AsyncFunctionArguments,
   result: ToolchainUpdateResult,
   resolverDir: string
 ) {
-  const versionIssueCount = result.files.reduce(
-    (sum, file) =>
+  const issueCount = result.files.reduce((sum, file) => {
+    return (
       sum +
-      file.versionChecks.reduce(
-        (fileSum, check) =>
-          fileSum + check.missingVersions.length + check.extraVersions.length + check.duplicateVersions.length,
-        0
-      ),
-    0
-  );
-  const ignoreIssueCount = result.files.reduce(
-    (sum, file) => sum + file.ignoreCheck.extraVersions.length + file.ignoreCheck.duplicateVersions.length,
-    0
-  );
+      file.missingVersions.length +
+      file.extraVersions.length +
+      file.duplicateValueVersions.length +
+      file.ignoredVersionsNotInReleases.length +
+      file.ignoredVersionsPresentInValues.length +
+      file.duplicateIgnoredVersions.length
+    );
+  }, 0);
 
-  if (versionIssueCount === 0 && ignoreIssueCount === 0) {
+  if (issueCount === 0) {
     core.info("No toolchain update issues found. Skipping issue creation.");
     return;
   }
 
-  const title = `[Automation] Toolchain Update Monitor: ${result.files.length} file(s), ${versionIssueCount} version issue(s), ${ignoreIssueCount} ignore issue(s)`;
+  const title = `[Automation] Toolchain Update Monitor: ${result.files.length} file(s), ${issueCount} issue item(s)`;
   const body = buildToolchainUpdateIssueBody(result.files);
 
   core.info(`Creating issue: ${title}`);

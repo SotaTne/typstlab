@@ -1,59 +1,69 @@
-import type { ToolchainFileCheckResult } from "./toolchain_update_checker";
+import type { ToolchainDuplicateVersionResult, ToolchainFileCheckResult } from "./toolchain_update_checker.ts";
 
 function formatInlineVersions(versions: string[], separator = " "): string {
   return versions.map((version) => `\`${version}\``).join(separator);
 }
 
+function formatDuplicateTable(duplicates: ToolchainDuplicateVersionResult[]): string[] {
+  const rows = duplicates.map((duplicate) => {
+    const keys = duplicate.assignments
+      .map((assignment) => {
+        const suffix = assignment.count > 1 ? ` x${assignment.count}` : "";
+        return `\`${assignment.typstVersion}\`${suffix}`;
+      })
+      .join(", ");
+
+    return `| \`${duplicate.version}\` | ${keys} |`;
+  });
+
+  return ["| value | keys |", "| --- | --- |", ...rows];
+}
+
 function buildFileSection(file: ToolchainFileCheckResult): string[] {
   const sections: string[] = [];
-  const repoName = file.baseUrl.replace(/^https:\/\/github\.com\//, "");
-  const issueChecks = file.versionChecks.filter(
-    (check) => check.missingVersions.length > 0 || check.extraVersions.length > 0 || check.duplicateVersions.length > 0
-  );
 
-  sections.push(`## ${repoName}`);
+  sections.push(`## ${file.repoName}`);
   sections.push("");
   sections.push(`Path: \`${file.filePath}\``);
   sections.push(`Base URL: \`${file.baseUrl}\``);
   sections.push(`Version pattern: \`${file.versionPattern}\``);
   sections.push("");
 
-  for (const check of issueChecks) {
-    sections.push(`##### \`${check.typstVersion}\``);
-
-    if (check.missingVersions.length > 0) {
-      sections.push("###### ❌ Missing versions");
-      sections.push(formatInlineVersions(check.missingVersions, ", "));
-      sections.push("");
-    }
-
-    if (check.extraVersions.length > 0) {
-      sections.push("###### ⚠️ Extra versions");
-      sections.push(formatInlineVersions(check.extraVersions, ", "));
-      sections.push("");
-    }
-
-    if (check.duplicateVersions.length > 0) {
-      sections.push("###### ⚠️ Duplicate versions");
-      sections.push(formatInlineVersions(check.duplicateVersions, ", "));
-      sections.push("");
-    }
+  if (file.missingVersions.length > 0) {
+    sections.push("### Missing versions");
+    sections.push(formatInlineVersions(file.missingVersions, ", "));
+    sections.push("");
   }
 
-  if (file.ignoreCheck.extraVersions.length > 0 || file.ignoreCheck.duplicateVersions.length > 0) {
-    sections.push("##### `ignores`");
+  if (file.extraVersions.length > 0) {
+    sections.push("### Extra versions");
+    sections.push(formatInlineVersions(file.extraVersions, ", "));
+    sections.push("");
+  }
 
-    if (file.ignoreCheck.extraVersions.length > 0) {
-      sections.push("###### ⚠️ Extra versions");
-      sections.push(formatInlineVersions(file.ignoreCheck.extraVersions, ", "));
-      sections.push("");
-    }
+  if (file.duplicateValueVersions.length > 0) {
+    sections.push("### Duplicate versions in JSON values");
+    sections.push("");
+    sections.push(...formatDuplicateTable(file.duplicateValueVersions));
+    sections.push("");
+  }
 
-    if (file.ignoreCheck.duplicateVersions.length > 0) {
-      sections.push("###### ⚠️ Duplicate versions");
-      sections.push(formatInlineVersions(file.ignoreCheck.duplicateVersions, ", "));
-      sections.push("");
-    }
+  if (file.ignoredVersionsPresentInValues.length > 0) {
+    sections.push("### Ignored versions still present in JSON values");
+    sections.push(formatInlineVersions(file.ignoredVersionsPresentInValues, ", "));
+    sections.push("");
+  }
+
+  if (file.ignoredVersionsNotInReleases.length > 0) {
+    sections.push("### Ignored versions not found in releases");
+    sections.push(formatInlineVersions(file.ignoredVersionsNotInReleases, ", "));
+    sections.push("");
+  }
+
+  if (file.duplicateIgnoredVersions.length > 0) {
+    sections.push("### Duplicate ignores");
+    sections.push(formatInlineVersions(file.duplicateIgnoredVersions, ", "));
+    sections.push("");
   }
 
   return sections;

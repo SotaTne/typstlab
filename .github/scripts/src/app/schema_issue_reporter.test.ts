@@ -37,6 +37,7 @@ describe("Schema Issue Reporter", () => {
       extraInRequired: ["0.15.1"],
       ignoredInProperties: ["0.11.1"],
       ignoredInRequired: ["0.11.1"],
+      effectiveGithubVersions: ["0.14.2", "0.14.1"],
       effectiveSchemaVersions: ["0.14.2", "0.14.1"]
     };
     const keyCheckResult = {
@@ -110,6 +111,7 @@ describe("Schema Issue Reporter", () => {
       extraInRequired: [],
       ignoredInProperties: [],
       ignoredInRequired: [],
+      effectiveGithubVersions: ["0.14.2", "0.14.1"],
       effectiveSchemaVersions: ["0.14.2", "0.14.1"]
     };
     const keyCheckResult = {
@@ -158,6 +160,7 @@ describe("Schema Issue Reporter", () => {
       extraInRequired: [],
       ignoredInProperties: [],
       ignoredInRequired: [],
+      effectiveGithubVersions: ["0.14.2", "0.14.1"],
       effectiveSchemaVersions: ["0.14.2", "0.14.1"]
     };
     const keyCheckResult = { files: [] };
