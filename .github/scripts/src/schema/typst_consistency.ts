@@ -10,6 +10,7 @@ export interface ConsistencyResult {
   extraInRequired: string[];
   ignoredInProperties: string[];
   ignoredInRequired: string[];
+  effectiveSchemaVersions: string[];
 }
 
 /**
@@ -76,5 +77,6 @@ export function checkTypstSchemaConsistency(
     extraInRequired,
     ignoredInProperties,
     ignoredInRequired,
+    effectiveSchemaVersions,
   };
 }
