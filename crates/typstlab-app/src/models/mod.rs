@@ -15,7 +15,9 @@ pub use build_artifact_scope::BuildArtifactScope;
 pub use docs::Docs;
 pub use paper::{Paper, PaperConfig, PaperCreationArgs, PaperError, PaperHandle};
 pub use paper_scope::{CollectionError, PaperScope};
-pub use project::{Project, ProjectConfig, ProjectError, ProjectHandle};
+pub use project::{
+    Project, ProjectConfig, ProjectError, ProjectHandle, ProjectToolChain, ToolChoice,
+};
 pub use store_docs::DocsStore;
 pub use store_typst::TypstStore;
 pub use template::Template;

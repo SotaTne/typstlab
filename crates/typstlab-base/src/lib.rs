@@ -17,4 +17,7 @@ pub use platform::{Arch, Os, Platform};
 pub use project_docs::{
     ProjectDocs, ProjectDocsCommitError, ProjectDocsSyncError, sync_project_docs,
 };
-pub use version_resolver::{ResolvedVersionSet, resolve_versions_from_typst};
+pub use version_resolver::{
+    ProjectToolChain, ResolvedToolChain, ToolChoice, VersionResolveError, get_latest_typst,
+    resolve_toolchain,
+};

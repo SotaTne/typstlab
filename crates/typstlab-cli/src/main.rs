@@ -217,7 +217,7 @@ impl CliSpeaker for RootPresenter {
     fn render_event(&self, event: AppEvent<CliEvent>) {
         match event.payload {
             CliEvent::Bootstrap(e) => {
-                use typstlab_app::ResolveEvent;
+                use typstlab_app::{ResolveEvent, ToolchainResolveEvent};
                 match e {
                     BootstrapEvent::ProjectLoading(LoadEvent::Started) => {
                         println!("{} Loading project configuration...", "⏳".cyan());
@@ -225,10 +225,10 @@ impl CliSpeaker for RootPresenter {
                     BootstrapEvent::ProjectReady { name } => {
                         println!("{} Project: {}", "📁".blue(), name.bold());
                     }
-                    BootstrapEvent::ResolvingTypst {
+                    BootstrapEvent::ResolvingToolchain(ToolchainResolveEvent::ResolvingTypst {
                         version,
                         event: ResolveEvent::CacheMiss,
-                    } => {
+                    }) => {
                         println!(
                             "{} Typst {} not found, preparing to download...",
                             "📥".yellow(),

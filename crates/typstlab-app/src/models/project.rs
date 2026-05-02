@@ -5,6 +5,9 @@ use std::path::PathBuf;
 use thiserror::Error;
 use typstlab_proto::{Creatable, Entity, Loadable, Loaded, PROJECT_SETTING_FILE};
 
+pub use typstlab_base::version_resolver::ProjectToolChain;
+pub use typstlab_base::version_resolver::ToolChoice;
+
 #[derive(Error, Debug)]
 pub enum ProjectError {
     #[error("IO error: {0}")]
@@ -17,12 +20,11 @@ pub enum ProjectError {
     NotInitialized,
 }
 
-// ... (ProjectConfig 等の定義は変更なし)
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct ProjectConfig {
     pub project: ProjectInfo,
     #[serde(default)]
-    pub typst: TypstInfo,
+    pub toolchain: ProjectToolChain,
     #[serde(default)]
     pub structure: StructureConfig,
 }
@@ -46,26 +48,9 @@ impl Default for ProjectInfo {
 fn default_project_name() -> String {
     "unnamed-project".to_string()
 }
+
 fn default_init_date() -> String {
     chrono::Utc::now().format("%Y-%m-%d").to_string()
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TypstInfo {
-    #[serde(default = "default_typst_version")]
-    pub version: String,
-}
-
-impl Default for TypstInfo {
-    fn default() -> Self {
-        Self {
-            version: default_typst_version(),
-        }
-    }
-}
-
-fn default_typst_version() -> String {
-    "0.14.2".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -91,9 +76,11 @@ impl Default for StructureConfig {
 fn default_papers_dir() -> PathBuf {
     PathBuf::from("papers")
 }
+
 fn default_dist_dir() -> PathBuf {
     PathBuf::from("dist")
 }
+
 fn default_templates_dir() -> PathBuf {
     PathBuf::from("templates")
 }
@@ -148,7 +135,7 @@ impl Creatable for Project {
                     name: args.name,
                     init_date: default_init_date(),
                 },
-                typst: TypstInfo::default(),
+                toolchain: ProjectToolChain::default(),
                 structure: StructureConfig::default(),
             },
         })
@@ -174,7 +161,7 @@ pub trait ProjectHandle {
     fn templates_scope(&self) -> crate::models::template_scope::TemplateScope;
     fn build_artifact_scope(&self) -> BuildArtifactScope;
     fn name(&self) -> &str;
-    fn typst_version(&self) -> &str;
+    fn toolchain(&self) -> &ProjectToolChain;
 }
 
 impl ProjectHandle for Loaded<Project, ProjectConfig> {
@@ -203,15 +190,19 @@ impl ProjectHandle for Loaded<Project, ProjectConfig> {
         &self.config.project.name
     }
 
-    fn typst_version(&self) -> &str {
-        &self.config.typst.version
+    fn toolchain(&self) -> &ProjectToolChain {
+        &self.config.toolchain
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Project, ProjectConfig, ProjectHandle, ProjectInfo, StructureConfig, TypstInfo};
+    use super::{
+        Project, ProjectConfig, ProjectHandle, ProjectInfo, ProjectToolChain, StructureConfig,
+        ToolChoice,
+    };
     use std::path::PathBuf;
+    use typstlab_base::get_latest_typst;
     use typstlab_proto::{Entity, Loaded};
 
     fn loaded_project(root: &str) -> Loaded<Project, ProjectConfig> {
@@ -222,8 +213,10 @@ mod tests {
                     name: "demo".to_string(),
                     init_date: "2026-04-23".to_string(),
                 },
-                typst: TypstInfo {
-                    version: "0.14.2".to_string(),
+                toolchain: ProjectToolChain {
+                    typst: "0.14.2".to_string(),
+                    typst_docs: ToolChoice::Auto,
+                    typstyle: ToolChoice::None,
                 },
                 structure: StructureConfig {
                     papers_dir: PathBuf::from("content").join("papers"),
@@ -268,8 +261,10 @@ mod tests {
                 name = "demo"
                 init_date = "2026-04-23"
 
-                [typst]
-                version = "0.14.2"
+                [toolchain]
+                typst = "0.14.2"
+                typst_docs = "auto"
+                typstyle = "none"
 
                 [structure]
                 papers_dir = "content/papers"
@@ -283,5 +278,17 @@ mod tests {
             PathBuf::from("content").join("papers")
         );
         assert_eq!(config.structure.dist_dir, PathBuf::from("out").join("dist"));
+        assert_eq!(config.toolchain.typst, "0.14.2");
+        assert!(matches!(config.toolchain.typst_docs, ToolChoice::Auto));
+        assert!(matches!(config.toolchain.typstyle, ToolChoice::None));
+    }
+
+    #[test]
+    fn test_project_config_defaults_toolchain() {
+        let config = ProjectConfig::default();
+
+        assert_eq!(config.toolchain.typst, get_latest_typst());
+        assert!(matches!(config.toolchain.typst_docs, ToolChoice::Auto));
+        assert!(matches!(config.toolchain.typstyle, ToolChoice::None));
     }
 }

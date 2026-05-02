@@ -1,8 +1,7 @@
+use crate::actions::toolchain_resolve::ToolChain;
 use crate::models::project::ProjectHandle;
 use crate::models::template_scope::TemplateScope;
-use crate::models::{
-    CollectionError, Docs, Paper, PaperScope, Project, ProjectConfig, Template, Typst,
-};
+use crate::models::{CollectionError, Paper, PaperScope, Project, ProjectConfig, Template};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -12,7 +11,7 @@ use typstlab_proto::{Action, Collection, Entity, Loaded};
 pub struct StatusOutput {
     pub project: ProjectStatus,
     pub toolchain: ToolchainStatus,
-    pub docs: DocsStatus,
+    pub docs: Option<DocsStatus>,
     pub papers: ScopeStatus,
     pub templates: ScopeStatus,
     pub dist: DirectoryStatus,
@@ -53,16 +52,14 @@ pub struct DirectoryStatus {
 
 pub struct StatusAction {
     pub loaded_project: Loaded<Project, ProjectConfig>,
-    pub typst: Typst,
-    pub docs: Docs,
+    pub toolchain: ToolChain,
 }
 
 impl StatusAction {
-    pub fn new(loaded_project: Loaded<Project, ProjectConfig>, typst: Typst, docs: Docs) -> Self {
+    pub fn new(loaded_project: Loaded<Project, ProjectConfig>, toolchain: ToolChain) -> Self {
         Self {
             loaded_project,
-            typst,
-            docs,
+            toolchain,
         }
     }
 }
@@ -113,13 +110,13 @@ impl Action for StatusAction {
             },
             toolchain: ToolchainStatus {
                 typst: TypstStatus {
-                    version: self.typst.version.clone(),
-                    path_in_store: self.typst.path(),
+                    version: self.toolchain.typst.version.clone(),
+                    path_in_store: self.toolchain.typst.path(),
                 },
             },
-            docs: DocsStatus {
-                path_in_store: self.docs.path(),
-            },
+            docs: self.toolchain.typst_docs.map(|docs| DocsStatus {
+                path_in_store: docs.path(),
+            }),
             papers: ScopeStatus {
                 root: papers_scope.path(),
                 items: papers.into_iter().map(|p| p.id).collect(),
@@ -187,8 +184,8 @@ fn path_exists(path: &Path) -> Result<bool, Vec<StatusError>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::project::{ProjectInfo, StructureConfig, TypstInfo};
-    use crate::models::{Project, ProjectConfig};
+    use crate::models::project::{ProjectInfo, StructureConfig};
+    use crate::models::{Docs, Project, ProjectConfig, ProjectToolChain, Typst};
     use tempfile::TempDir;
 
     fn dummy_loaded_project(root: PathBuf) -> Loaded<Project, ProjectConfig> {
@@ -199,11 +196,17 @@ mod tests {
                     name: "demo".to_string(),
                     init_date: "2026-04-23".to_string(),
                 },
-                typst: TypstInfo {
-                    version: "0.14.2".to_string(),
-                },
+                toolchain: ProjectToolChain::default(),
                 structure: StructureConfig::default(),
             },
+        }
+    }
+
+    fn dummy_toolchain() -> ToolChain {
+        ToolChain {
+            typst: Typst::new("0.14.2".to_string(), PathBuf::from("/bin/typst")),
+            typst_docs: Some(Docs::new(PathBuf::from("/docs"))),
+            typstyle: None,
         }
     }
 
@@ -217,10 +220,7 @@ mod tests {
         // do NOT create papers directory
 
         let loaded = dummy_loaded_project(project_root.clone());
-        let typst = Typst::new("0.14.2".to_string(), PathBuf::from("/bin/typst"));
-        let docs = Docs::new(PathBuf::from("/docs"));
-
-        let action = StatusAction::new(loaded, typst, docs);
+        let action = StatusAction::new(loaded, dummy_toolchain());
 
         let mut warnings = Vec::new();
         let output = action
@@ -241,9 +241,7 @@ mod tests {
         std::fs::create_dir_all(project_root.join("papers")).unwrap();
 
         let loaded = dummy_loaded_project(project_root.clone());
-        let typst = Typst::new("0.14.2".to_string(), PathBuf::from("/bin/typst"));
-        let docs = Docs::new(PathBuf::from("/docs"));
-        let action = StatusAction::new(loaded, typst, docs);
+        let action = StatusAction::new(loaded, dummy_toolchain());
         let mut warnings = Vec::new();
 
         let output = action.run(&mut |_| {}, &mut |w| warnings.push(w)).unwrap();
@@ -266,9 +264,7 @@ mod tests {
         std::fs::write(project_root.join("papers"), b"not a directory").unwrap();
 
         let loaded = dummy_loaded_project(project_root);
-        let typst = Typst::new("0.14.2".to_string(), PathBuf::from("/bin/typst"));
-        let docs = Docs::new(PathBuf::from("/docs"));
-        let action = StatusAction::new(loaded, typst, docs);
+        let action = StatusAction::new(loaded, dummy_toolchain());
 
         let errors = match action.run(&mut |_| {}, &mut |_| {}) {
             Ok(_) => panic!("expected status to fail when papers cannot be read"),
@@ -289,9 +285,7 @@ mod tests {
         std::fs::write(project_root.join("templates"), b"not a directory").unwrap();
 
         let loaded = dummy_loaded_project(project_root);
-        let typst = Typst::new("0.14.2".to_string(), PathBuf::from("/bin/typst"));
-        let docs = Docs::new(PathBuf::from("/docs"));
-        let action = StatusAction::new(loaded, typst, docs);
+        let action = StatusAction::new(loaded, dummy_toolchain());
 
         let errors = match action.run(&mut |_| {}, &mut |_| {}) {
             Ok(_) => panic!("expected status to fail when templates cannot be read"),

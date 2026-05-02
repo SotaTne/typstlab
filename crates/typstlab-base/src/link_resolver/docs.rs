@@ -1,17 +1,16 @@
-use super::ResolvedLink;
-use crate::version_resolver::ResolvedVersionSet;
+use super::{ResolvedLink, Version};
 use typstlab_proto::SourceFormat;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DocsLinkRequest {
-    pub versions: ResolvedVersionSet,
+pub struct DocsLinkRequest<'a> {
+    pub version: Version<'a>,
 }
 
-pub fn resolve_docs_link(request: DocsLinkRequest) -> ResolvedLink {
+pub fn resolve_docs_link(request: DocsLinkRequest<'_>) -> ResolvedLink {
     ResolvedLink {
         url: format!(
             "https://github.com/typst-community/dev-builds/releases/download/docs-v{}/docs.json",
-            request.versions.docs_version
+            request.version.as_str()
         ),
         format: SourceFormat::Raw,
     }
@@ -24,10 +23,7 @@ mod tests {
     #[test]
     fn test_resolve_docs_link_uses_docs_version_and_raw_format() {
         let link = resolve_docs_link(DocsLinkRequest {
-            versions: ResolvedVersionSet {
-                typst_version: "0.14.2".to_string(),
-                docs_version: "0.14.2".to_string(),
-            },
+            version: Version::new("0.14.2"),
         });
 
         assert_eq!(

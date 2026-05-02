@@ -1,17 +1,11 @@
 use crate::actions::load::{LoadAction, LoadEvent};
-use crate::actions::resolve_docs::ResolveDocsAction;
-use crate::actions::resolve_typst::ResolveEvent;
-use crate::models::{
-    Docs, DocsStore, Project, ProjectConfig, ProjectError, ProjectHandle, Typst, TypstStore,
+use crate::actions::toolchain_resolve::{
+    ToolChain, ToolchainResolveAction, ToolchainResolveError, ToolchainResolveEvent,
+    ToolchainResolveInput,
 };
+use crate::models::{DocsStore, Project, ProjectConfig, ProjectError, ProjectHandle, TypstStore};
 use std::path::PathBuf;
 use thiserror::Error;
-use typstlab_base::install::{DocsInstaller, HttpProvider, TypstInstaller};
-use typstlab_base::link_resolver::{
-    DocsLinkRequest, TypstLinkRequest, resolve_docs_link, resolve_typst_link,
-};
-use typstlab_base::platform::Platform;
-use typstlab_base::version_resolver::resolve_versions_from_typst;
 use typstlab_proto::Loaded;
 use typstlab_proto::{Action, AppEvent, EventScope};
 
@@ -19,39 +13,18 @@ use typstlab_proto::{Action, AppEvent, EventScope};
 pub enum BootstrapError {
     #[error("Failed to load project: {0}")]
     ProjectLoadError(#[from] ProjectError),
-    #[error("Typst resolution failed: {0}")]
-    TypstResolutionError(String),
-    #[error("Docs resolution failed: {0}")]
-    DocsResolutionError(String),
-    #[error("Failed to initialize HTTP provider: {0}")]
-    DocsInstallInitError(String),
-    #[error("Typst link resolution failed: {0}")]
-    TypstLinkResolutionError(String),
-    #[error("Failed to initialize Typst HTTP provider: {0}")]
-    TypstInstallInitError(String),
+    #[error("Toolchain resolution failed: {0:?}")]
+    ToolchainResolve(Vec<ToolchainResolveError>),
 }
 
 /// 起動プロセス中に発生するイベント
 #[derive(Debug, Clone)]
 pub enum BootstrapEvent {
-    IdentifyingProject {
-        root: PathBuf,
-    },
+    IdentifyingProject { root: PathBuf },
     ProjectLoading(LoadEvent),
-    ProjectReady {
-        name: String,
-    },
-    PreparingStore {
-        cache_root: PathBuf,
-    },
-    ResolvingTypst {
-        version: String,
-        event: ResolveEvent,
-    },
-    ResolvingDocs {
-        version: String,
-        event: ResolveEvent,
-    },
+    ProjectReady { name: String },
+    PreparingStore { cache_root: PathBuf },
+    ResolvingToolchain(ToolchainResolveEvent),
     Ready,
 }
 
@@ -59,8 +32,7 @@ pub struct AppContext {
     pub loaded_project: Loaded<Project, ProjectConfig>,
     pub typst_store: TypstStore,
     pub docs_store: DocsStore,
-    pub typst: Typst,
-    pub docs: Docs,
+    pub toolchain: ToolChain,
 }
 
 pub struct BootstrapAction {
@@ -123,75 +95,23 @@ impl Action for BootstrapAction {
         let typst_store = TypstStore::new(self.cache_root.join("typst"));
         let docs_store = DocsStore::new(self.cache_root.join("docs"));
 
-        // 3. Typst 解決
-        let version = loaded_project.typst_version().to_string();
-        let versions = resolve_versions_from_typst(&version);
-        let platform = Platform::current();
-        let typst_link = resolve_typst_link(TypstLinkRequest {
-            platform,
-            versions: versions.clone(),
-        })
-        .map_err(|error| vec![BootstrapError::TypstLinkResolutionError(error.to_string())])?;
-        let typst_installer = TypstInstaller::new(
-            HttpProvider::try_new()
-                .map_err(|error| vec![BootstrapError::TypstInstallInitError(error.to_string())])?,
-        );
-        let typst_resolver = crate::actions::resolve_typst::ResolveTypstAction {
-            store: typst_store.clone(),
-            version: version.clone(),
-            installer: typst_installer,
-            link: typst_link,
+        // 3. Toolchain 解決
+        let toolchain_action = ToolchainResolveAction {
+            input: ToolchainResolveInput {
+                project_root: project_root.clone(),
+                toolchain: loaded_project.toolchain().clone(),
+                typst_store: typst_store.clone(),
+                docs_store: docs_store.clone(),
+            },
         };
-        let typst = typst_resolver
+        let toolchain = toolchain_action
             .run(
                 &mut |e| {
-                    monitor(e.map_payload(|event| BootstrapEvent::ResolvingTypst {
-                        version: version.clone(),
-                        event,
-                    }));
+                    monitor(e.map_payload(BootstrapEvent::ResolvingToolchain));
                 },
                 &mut |_| {},
             )
-            .map_err(|errs| {
-                vec![BootstrapError::TypstResolutionError(
-                    errs.into_iter()
-                        .map(|err| err.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                )]
-            })?;
-
-        // 4. Docs 解決
-        let docs_link = resolve_docs_link(DocsLinkRequest { versions });
-        let docs_installer = DocsInstaller::new(
-            HttpProvider::try_new()
-                .map_err(|error| vec![BootstrapError::DocsInstallInitError(error.to_string())])?,
-        );
-        let docs_resolver = ResolveDocsAction {
-            project_root,
-            store: docs_store.clone(),
-            version: version.clone(),
-            installer: docs_installer,
-            link: docs_link,
-        };
-        let docs = docs_resolver
-            .run(
-                &mut |e| {
-                    monitor(e.map_payload(|event| BootstrapEvent::ResolvingDocs {
-                        version: version.clone(),
-                        event,
-                    }));
-                },
-                &mut |_| {},
-            )
-            .map_err(|errs| {
-                vec![BootstrapError::DocsResolutionError(
-                    errs.into_iter()
-                        .map(|err| err.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                )]
-            })?;
+            .map_err(|errs| vec![BootstrapError::ToolchainResolve(errs)])?;
 
         monitor(AppEvent::line(scope, BootstrapEvent::Ready));
 
@@ -199,8 +119,7 @@ impl Action for BootstrapAction {
             loaded_project,
             typst_store,
             docs_store,
-            typst,
-            docs,
+            toolchain,
         })
     }
 }

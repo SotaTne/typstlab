@@ -1,6 +1,5 @@
-use super::ResolvedLink;
+use super::{ResolvedLink, Version};
 use crate::platform::{Arch, Os, Platform};
-use crate::version_resolver::ResolvedVersionSet;
 use thiserror::Error;
 use typstlab_proto::SourceFormat;
 
@@ -12,9 +11,9 @@ const TYPST_ZIP_FORMAT: SourceFormat = SourceFormat::Zip {
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypstLinkRequest {
+pub struct TypstLinkRequest<'a> {
     pub platform: Platform,
-    pub versions: ResolvedVersionSet,
+    pub version: Version<'a>,
 }
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
@@ -23,12 +22,12 @@ pub enum LinkResolveError {
     UnsupportedTypstPlatform { platform: Platform },
 }
 
-pub fn resolve_typst_link(request: TypstLinkRequest) -> Result<ResolvedLink, LinkResolveError> {
+pub fn resolve_typst_link(request: TypstLinkRequest<'_>) -> Result<ResolvedLink, LinkResolveError> {
     let (target, format) = typst_target_and_format(request.platform)?;
     Ok(ResolvedLink {
         url: format!(
             "https://github.com/typst/typst/releases/download/v{}/typst-{}.{}",
-            request.versions.typst_version,
+            request.version.as_str(),
             target,
             typst_archive_extension(request.platform.os)
         ),
@@ -68,13 +67,10 @@ fn typst_archive_extension(os: Os) -> &'static str {
 mod tests {
     use super::*;
 
-    fn request(os: Os, arch: Arch) -> TypstLinkRequest {
+    fn request(os: Os, arch: Arch) -> TypstLinkRequest<'static> {
         TypstLinkRequest {
             platform: Platform { os, arch },
-            versions: ResolvedVersionSet {
-                typst_version: "0.14.2".to_string(),
-                docs_version: "0.14.2".to_string(),
-            },
+            version: Version::new("0.14.2"),
         }
     }
 

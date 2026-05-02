@@ -2473,6 +2473,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "colored",
+ "reqwest",
  "serde",
  "serde_json",
  "tar",

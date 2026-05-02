@@ -8,7 +8,7 @@ use typstlab_proto::{Action, AppEvent, CliSpeaker};
 /// `gen paper` コマンドのエントリポイント
 pub fn run(ctx: AppContext, id: String, template: Option<String>, verbose: bool) -> Result<()> {
     // 1. Typst ドライバーの解決 (Build と同様に Project のバージョンを使用)
-    let typst = ctx.typst;
+    let typst = ctx.toolchain.typst;
 
     use typstlab_proto::Entity;
     let driver = TypstDriver::new(typst.path());

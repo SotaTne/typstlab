@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+#[derive(Debug, Clone)]
 pub struct Typst {
     pub version: String,
     pub binary_path: PathBuf,

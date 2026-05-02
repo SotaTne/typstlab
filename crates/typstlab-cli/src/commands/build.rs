@@ -13,7 +13,7 @@ pub fn run(
     verbose: bool,
 ) -> Result<()> {
     use typstlab_base::driver::TypstDriver;
-    let driver = TypstDriver::new(ctx.typst.path());
+    let driver = TypstDriver::new(ctx.toolchain.typst.path());
     let action = BuildAction::new(ctx.loaded_project, driver, inputs, format);
     let presenter = BuildPresenter;
     let mut warning_seen = false;

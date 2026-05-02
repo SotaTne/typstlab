@@ -303,8 +303,8 @@ impl Action for BuildAction {
 #[cfg(test)]
 mod tests {
     use super::{BuildAction, BuildWarning};
-    use crate::models::project::{ProjectInfo, StructureConfig, TypstInfo};
-    use crate::models::{Project, ProjectConfig};
+    use crate::models::project::{ProjectInfo, StructureConfig};
+    use crate::models::{Project, ProjectConfig, ProjectToolChain};
     use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -319,9 +319,7 @@ mod tests {
                     name: "demo".to_string(),
                     init_date: "2026-04-23".to_string(),
                 },
-                typst: TypstInfo {
-                    version: "0.14.2".to_string(),
-                },
+                toolchain: ProjectToolChain::default(),
                 structure: StructureConfig::default(),
             },
         }

@@ -22,7 +22,7 @@ enum McpStatusWarning {
 }
 
 pub fn execute(ctx: AppContext) -> Result<CallToolResult, String> {
-    let action = StatusAction::new(ctx.loaded_project, ctx.typst, ctx.docs);
+    let action = StatusAction::new(ctx.loaded_project, ctx.toolchain);
     let mut warnings = Vec::new();
     let status = action
         .run(&mut |_| {}, &mut |warning| warnings.push(warning))

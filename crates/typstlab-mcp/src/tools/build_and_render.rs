@@ -5,7 +5,7 @@ use typstlab_proto::{Action, Entity};
 
 pub fn execute(ctx: AppContext, paper_id: String) -> Result<CallToolResult, String> {
     use typstlab_base::driver::TypstDriver;
-    let driver = TypstDriver::new(ctx.typst.path());
+    let driver = TypstDriver::new(ctx.toolchain.typst.path());
     let format = BuildFormat {
         pdf: false,
         png: true,

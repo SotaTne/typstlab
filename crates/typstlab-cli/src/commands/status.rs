@@ -5,7 +5,7 @@ use typstlab_app::{AppContext, StatusAction, StatusError, StatusOutput, StatusWa
 use typstlab_proto::{Action, CliSpeaker};
 
 pub fn run(ctx: AppContext, _verbose: bool) -> Result<()> {
-    let action = StatusAction::new(ctx.loaded_project, ctx.typst, ctx.docs);
+    let action = StatusAction::new(ctx.loaded_project, ctx.toolchain);
     let presenter = StatusPresenter;
     let mut warnings = Vec::new();
 
@@ -71,12 +71,14 @@ impl CliSpeaker for StatusPresenter {
             "binary",
             &output.toolchain.typst.path_in_store,
         );
-        print_resource(
-            "docs",
-            &[("version", output.toolchain.typst.version.as_str())],
-            "path",
-            &output.docs.path_in_store,
-        );
+        if let Some(docs) = &output.docs {
+            print_resource(
+                "docs",
+                &[("version", output.toolchain.typst.version.as_str())],
+                "path",
+                &docs.path_in_store,
+            );
+        }
         println!();
 
         print_collection("Papers", &output.papers.root, &output.papers.items);
