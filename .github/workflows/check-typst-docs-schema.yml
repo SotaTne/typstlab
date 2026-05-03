@@ -1,0 +1,89 @@
+name: Check Typst Docs Schema
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/typstlab-base/src/docs_parser/**"
+      - "crates/typstlab-base/src/version_resolver_jsons/type_docs.json"
+      - "crates/typstlab-base/Cargo.toml"
+      - "crates/xtask/**"
+      - ".cargo/config.toml"
+      - ".github/workflows/check-typst-docs-schema.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/typstlab-base/src/docs_parser/**"
+      - "crates/typstlab-base/src/version_resolver_jsons/type_docs.json"
+      - "crates/typstlab-base/Cargo.toml"
+      - "crates/xtask/**"
+      - ".cargo/config.toml"
+      - ".github/workflows/check-typst-docs-schema.yml"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  DOCS_CACHE_DIR: .cache/typstlab-docs-json
+  TYPE_DOCS_JSON: crates/typstlab-base/src/version_resolver_jsons/type_docs.json
+
+jobs:
+  check-typst-docs-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/cache@v5
+        with:
+          path: ${{ env.DOCS_CACHE_DIR }}
+          key: typst-docs-json-${{ hashFiles('crates/typstlab-base/src/version_resolver_jsons/type_docs.json') }}
+          restore-keys: |
+            typst-docs-json-
+
+      - name: Fetch Typst docs.json releases
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$DOCS_CACHE_DIR"
+          base_url="$(jq -r '.base_url' "$TYPE_DOCS_JSON")"
+          version_pattern="$(jq -r '.version_pattern' "$TYPE_DOCS_JSON")"
+
+          jq -r '
+            [
+              to_entries[]
+              | select(.value | type == "array")
+              | .value[]
+            ]
+            | unique
+            | .[]
+          ' "$TYPE_DOCS_JSON" > "$DOCS_CACHE_DIR/version-set.txt"
+
+          while IFS= read -r version; do
+            file="$DOCS_CACHE_DIR/docs-${version}.json"
+            if [[ -s "$file" ]]; then
+              echo "Using cached docs.json for ${version}"
+              continue
+            fi
+
+            tag="${version_pattern/\{version\}/$version}"
+            url="${base_url}/releases/download/${tag}/docs.json"
+            echo "Downloading ${url}"
+            curl --fail --location --retry 3 --retry-delay 2 --output "$file" "$url"
+          done < "$DOCS_CACHE_DIR/version-set.txt"
+
+      - name: Check docs schema
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t files < <(find "$DOCS_CACHE_DIR" -name "docs-*.json" -type f | sort)
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "No docs.json files were fetched."
+            exit 1
+          fi
+
+          cargo xtask check_docs_schema "${files[@]}"

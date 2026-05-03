@@ -28,4 +28,7 @@ pub enum DocsRenderError {
 
     #[error("docs body render failed: {0}")]
     Body(String),
+
+    #[error("html render failed: {0}")]
+    Html(#[from] crate::docs_parser::html::HtmlRenderError),
 }

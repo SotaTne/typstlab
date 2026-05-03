@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use super::html::Html;
 use serde::{Deserialize, Serialize};
 
 /// Parsed docs.json node.
@@ -20,8 +19,6 @@ pub struct DocsEntry {
     pub body: Option<DocsBody>,
     #[serde(default)]
     pub children: Vec<DocsEntry>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -33,9 +30,20 @@ pub struct OutlineItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct DocsBody {
-    pub kind: String,
-    pub content: serde_json::Value,
+#[serde(tag = "kind", content = "content")]
+pub enum DocsBody {
+    #[serde(rename = "html")]
+    Html(Html),
+    #[serde(rename = "func")]
+    Func(FuncContent),
+    #[serde(rename = "type")]
+    Type(TypeContent),
+    #[serde(rename = "category")]
+    Category(CategoryContent),
+    #[serde(rename = "group")]
+    Group(GroupContent),
+    #[serde(rename = "symbols")]
+    Symbols(SymbolsContent),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -47,9 +55,9 @@ pub struct FuncContent {
     #[serde(default)]
     pub oneliner: Option<String>,
     #[serde(default)]
-    pub details: Option<serde_json::Value>,
+    pub details: Option<RichContent>,
     #[serde(default)]
-    pub example: Option<serde_json::Value>,
+    pub example: Option<String>,
     #[serde(default)]
     pub params: Vec<ParamContent>,
     #[serde(default)]
@@ -60,19 +68,27 @@ pub struct FuncContent {
     pub element: bool,
     #[serde(default)]
     pub contextual: bool,
+    #[serde(default, rename = "self")]
+    pub self_param: bool,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub deprecation: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ParamContent {
     pub name: String,
     #[serde(default)]
-    pub details: Option<serde_json::Value>,
+    pub details: Option<RichContent>,
     #[serde(default)]
-    pub example: Option<serde_json::Value>,
+    pub example: Option<String>,
     #[serde(default)]
     pub types: Vec<String>,
     #[serde(default)]
-    pub default: Option<serde_json::Value>,
+    pub default: Option<String>,
+    #[serde(default)]
+    pub strings: Vec<StringChoice>,
     #[serde(default)]
     pub required: bool,
     #[serde(default)]
@@ -86,19 +102,26 @@ pub struct ParamContent {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct StringChoice {
+    pub string: String,
+    #[serde(default)]
+    pub details: Option<RichContent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct TypeContent {
     pub name: String,
     pub title: String,
     #[serde(default)]
     pub oneliner: Option<String>,
     #[serde(default)]
-    pub details: Option<serde_json::Value>,
+    pub details: Option<RichContent>,
     #[serde(default)]
     pub constructor: Option<FuncContent>,
     #[serde(default)]
     pub scope: Vec<FuncContent>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub keywords: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -106,11 +129,11 @@ pub struct CategoryContent {
     pub name: String,
     pub title: String,
     #[serde(default)]
-    pub details: Option<serde_json::Value>,
+    pub details: Option<RichContent>,
     #[serde(default)]
     pub items: Vec<CategoryItem>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    pub shorthands: Option<ShorthandsContent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -124,15 +147,21 @@ pub struct CategoryItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ShorthandsContent {
+    #[serde(default)]
+    pub markup: Vec<SymbolItem>,
+    #[serde(default)]
+    pub math: Vec<SymbolItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct GroupContent {
     pub name: String,
     pub title: String,
     #[serde(default)]
-    pub details: Option<serde_json::Value>,
+    pub details: Option<RichContent>,
     #[serde(default)]
     pub functions: Vec<FuncContent>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -140,11 +169,9 @@ pub struct SymbolsContent {
     pub name: String,
     pub title: String,
     #[serde(default)]
-    pub details: Option<serde_json::Value>,
+    pub details: Option<RichContent>,
     #[serde(default)]
     pub list: Vec<SymbolItem>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -158,4 +185,35 @@ pub struct SymbolItem {
     pub markup_shorthand: Option<String>,
     #[serde(default, rename = "mathShorthand")]
     pub math_shorthand: Option<String>,
+    #[serde(default)]
+    pub accent: bool,
+    #[serde(default)]
+    pub alternates: Vec<String>,
+    #[serde(default, rename = "mathClass")]
+    pub math_class: Option<String>,
+    #[serde(default)]
+    pub deprecation: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum RichContent {
+    Plain(String),
+    Blocks(Vec<RichBlock>),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "kind", content = "content")]
+pub enum RichBlock {
+    #[serde(rename = "html")]
+    Html(Html),
+    #[serde(rename = "example")]
+    Example(ExampleContent),
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ExampleContent {
+    pub body: Html,
+    #[serde(default)]
+    pub title: Option<String>,
 }

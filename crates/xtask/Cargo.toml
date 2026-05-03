@@ -9,7 +9,9 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 jsonschema = { version = "0.46", default-features = false }
 serde_json = "1"
+serde_path_to_error = "0.1"
 serde = { version = "1", features = ["derive"] }
+typstlab-base = { path = "../typstlab-base" }
 walkdir = "2"
 
 [dev-dependencies]

@@ -1,9 +1,8 @@
 use std::io::Read;
 
 use super::DocsRenderError;
-use super::body::body_to_markdown;
 use super::route::route_to_relative_path;
-use super::schema::DocsEntry;
+use super::schema::{DocsBody, DocsEntry};
 use super::sink::{DocsRenderSink, RenderedDocs, TempDocsRenderSink};
 
 pub fn parse_docs_json_from_reader<R>(reader: R) -> Result<Vec<DocsEntry>, serde_json::Error>
@@ -78,6 +77,17 @@ fn entry_to_markdown(entry: &DocsEntry) -> Result<String, DocsRenderError> {
     Ok(markdown)
 }
 
+fn body_to_markdown(body: &DocsBody) -> Result<String, DocsRenderError> {
+    match body {
+        DocsBody::Html(content) => Ok(content.to_markdown()?),
+        DocsBody::Func(_)
+        | DocsBody::Type(_)
+        | DocsBody::Category(_)
+        | DocsBody::Group(_)
+        | DocsBody::Symbols(_) => Ok(String::new()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
@@ -147,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_docs_json_tolerates_unknown_fields() {
+    fn test_parse_docs_json_ignores_unknown_fields() {
         let json = br#"[
             {
                 "route": "/DOCS-BASE/",
@@ -160,7 +170,7 @@ mod tests {
         let entries = parse_docs_json_from_reader(&json[..]).unwrap();
 
         assert_eq!(entries.len(), 1);
-        assert!(entries[0].extra.contains_key("future_field"));
+        assert_eq!(entries[0].title, "Overview");
     }
 
     #[test]

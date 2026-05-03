@@ -284,6 +284,28 @@ mod tests {
     }
 
     #[test]
+    fn test_config_deserializes_toolchain_plain_version_choice() {
+        let config: ProjectConfig = toml::from_str(
+            r#"
+                [project]
+                name = "demo"
+                init_date = "2026-04-23"
+
+                [toolchain]
+                typst = "0.14.2"
+                typst_docs = "0.13.0"
+                typstyle = "none"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.toolchain.typst_docs,
+            ToolChoice::Version("0.13.0".to_string())
+        );
+    }
+
+    #[test]
     fn test_project_config_defaults_toolchain() {
         let config = ProjectConfig::default();
 

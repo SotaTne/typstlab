@@ -1,7 +1,9 @@
 use semver::Version as SemverVersion;
-use serde::{Deserialize, Serialize};
+use serde::de::{Error as DeError, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::sync::OnceLock;
 use thiserror::Error;
 
@@ -46,12 +48,54 @@ fn default_typstyle_choice() -> ToolChoice {
     ToolChoice::None
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolChoice {
     Auto,
     None,
     Version(String),
+}
+
+impl Serialize for ToolChoice {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::Auto => serializer.serialize_str("auto"),
+            Self::None => serializer.serialize_str("none"),
+            Self::Version(version) => serializer.serialize_str(version),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolChoice {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(ToolChoiceVisitor)
+    }
+}
+
+struct ToolChoiceVisitor;
+
+impl Visitor<'_> for ToolChoiceVisitor {
+    type Value = ToolChoice;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(r#""auto", "none", or a version string"#)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: DeError,
+    {
+        Ok(match value {
+            "auto" => ToolChoice::Auto,
+            "none" => ToolChoice::None,
+            version => ToolChoice::Version(version.to_string()),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -354,6 +398,20 @@ mod tests {
                 typstyle: ToolChoice::None,
             }
         );
+    }
+
+    #[test]
+    fn test_tool_choice_deserializes_plain_version_string() {
+        let choice: ToolChoice = serde_json::from_str(r#""0.13.0""#).unwrap();
+
+        assert_eq!(choice, ToolChoice::Version("0.13.0".to_string()));
+    }
+
+    #[test]
+    fn test_tool_choice_serializes_as_plain_string() {
+        let serialized = serde_json::to_string(&ToolChoice::Version("0.13.0".to_string())).unwrap();
+
+        assert_eq!(serialized, r#""0.13.0""#);
     }
 
     #[test]

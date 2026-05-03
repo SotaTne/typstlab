@@ -1,3 +1,4 @@
 [alias]
 xtask = "run --package xtask --"
-json-check = "run --package xtask -- json-check"
+json-check = "run --package xtask -- json_check"
+check_docs_schema = "run --package xtask -- check_docs_schema"
