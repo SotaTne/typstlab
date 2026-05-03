@@ -1,9 +1,26 @@
 use super::ast::Html;
 use super::error::HtmlRenderError;
+use crate::docs_parser::html::markdown::{MarkdownContext, ToMarkdownDocument};
 use crate::docs_parser::md::ToMarkdown;
 
 pub fn html_to_markdown(html: &Html) -> Result<String, HtmlRenderError> {
-    Ok(trim_markdown(html.root.to_markdown()))
+    Ok(trim_markdown(
+        html.root.to_markdown_document()?.to_markdown(),
+    ))
+}
+
+pub fn html_to_markdown_with_source_route(
+    html: &Html,
+    source_route: &str,
+) -> Result<String, HtmlRenderError> {
+    let context = MarkdownContext {
+        source_route: Some(source_route.to_string()),
+    };
+    Ok(trim_markdown(
+        html.root
+            .to_markdown_document_with_context(&context)?
+            .to_markdown(),
+    ))
 }
 
 fn trim_markdown(markdown: String) -> String {
@@ -23,6 +40,19 @@ mod tests {
         assert!(markdown.contains("Hello"));
         assert!(markdown.contains("**world**"));
         assert!(markdown.contains("[link](/x)"));
+    }
+
+    #[test]
+    fn renders_docs_base_links_relative_to_source_route() {
+        let html = Html::parse(
+            r#"<p>Fixed crash when <a href="/DOCS-BASE/reference/foundations/symbol/" title="`symbol`">symbol</a> function was called.</p>"#,
+        )
+        .unwrap();
+        let markdown =
+            html_to_markdown_with_source_route(&html, "/DOCS-BASE/changelog/0.1/").unwrap();
+
+        assert!(markdown.contains("[symbol](../reference/foundations/symbol.md \"`symbol`\")"));
+        assert!(!markdown.contains("/DOCS-BASE/"));
     }
 
     #[test]

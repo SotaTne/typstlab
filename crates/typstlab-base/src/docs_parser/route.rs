@@ -23,6 +23,37 @@ pub fn route_to_relative_path(route: &str) -> Result<PathBuf, DocsRenderError> {
     Ok(Path::new(trimmed).with_extension("md"))
 }
 
+pub fn route_to_relative_link(
+    source_route: &str,
+    target_route: &str,
+) -> Result<PathBuf, DocsRenderError> {
+    let source_path = route_to_relative_path(source_route)?;
+    let target_path = route_to_relative_path(target_route)?;
+    Ok(relative_path_between(&source_path, &target_path))
+}
+
+pub fn resolve_docs_href(source_route: &str, href: &str) -> Result<String, DocsRenderError> {
+    let Some(target) = href.strip_prefix(DOCS_ROUTE_PREFIX) else {
+        return Ok(href.to_string());
+    };
+
+    let (target_route, fragment) = match target.split_once('#') {
+        Some((route, fragment)) => (route, Some(fragment)),
+        None => (target, None),
+    };
+
+    let target_route = format!("{DOCS_ROUTE_PREFIX}{target_route}");
+    let mut relative = route_to_relative_link(source_route, &target_route)?
+        .display()
+        .to_string();
+    if let Some(fragment) = fragment {
+        relative.push('#');
+        relative.push_str(fragment);
+    }
+
+    Ok(relative)
+}
+
 pub fn validate_output_path(path: &Path) -> Result<(), DocsRenderError> {
     let path_text = path.to_string_lossy();
     validate_relative_path_text(&path_text)
@@ -51,6 +82,44 @@ fn has_windows_drive_prefix(path: &str) -> bool {
     bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
+fn relative_path_between(from: &Path, to: &Path) -> PathBuf {
+    let from_dir = from.parent().unwrap_or_else(|| Path::new(""));
+    let from_components = normalized_components(from_dir);
+    let to_components = normalized_components(to);
+
+    let mut common = 0;
+    while common < from_components.len()
+        && common < to_components.len()
+        && from_components[common] == to_components[common]
+    {
+        common += 1;
+    }
+
+    let mut relative = PathBuf::new();
+    for _ in common..from_components.len() {
+        relative.push("..");
+    }
+
+    for component in &to_components[common..] {
+        relative.push(component);
+    }
+
+    if relative.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        relative
+    }
+}
+
+fn normalized_components(path: &Path) -> Vec<String> {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => Some(value.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,6 +136,26 @@ mod tests {
     fn test_route_nested_maps_to_markdown_path() {
         assert_eq!(
             route_to_relative_path("/DOCS-BASE/tutorial/writing/").unwrap(),
+            PathBuf::from("tutorial").join("writing.md")
+        );
+    }
+
+    #[test]
+    fn test_route_relative_link_from_same_directory() {
+        assert_eq!(
+            route_to_relative_link(
+                "/DOCS-BASE/reference/text/",
+                "/DOCS-BASE/reference/text/highlight/"
+            )
+            .unwrap(),
+            PathBuf::from("text").join("highlight.md")
+        );
+    }
+
+    #[test]
+    fn test_route_relative_link_from_root_to_nested() {
+        assert_eq!(
+            route_to_relative_link("/DOCS-BASE/", "/DOCS-BASE/tutorial/writing/").unwrap(),
             PathBuf::from("tutorial").join("writing.md")
         );
     }

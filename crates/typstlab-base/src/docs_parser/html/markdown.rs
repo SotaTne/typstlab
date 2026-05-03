@@ -3,15 +3,34 @@ use super::error::HtmlToMarkdownError;
 use crate::docs_parser::md::{
     Block, Document, Inline, ListItem, Table, TableAlign, TableCell, TableRow,
 };
+use crate::docs_parser::route::resolve_docs_href;
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MarkdownContext;
+#[derive(Debug, Clone, Default)]
+pub struct MarkdownContext {
+    pub source_route: Option<String>,
+}
 
 pub trait ToMarkdownDocument {
-    fn to_markdown_blocks(&self) -> Result<Vec<Block>, HtmlToMarkdownError>;
+    fn to_markdown_blocks(&self) -> Result<Vec<Block>, HtmlToMarkdownError> {
+        self.to_markdown_blocks_with_context(&MarkdownContext::default())
+    }
+
+    fn to_markdown_blocks_with_context(
+        &self,
+        context: &MarkdownContext,
+    ) -> Result<Vec<Block>, HtmlToMarkdownError>;
 
     fn to_markdown_document(&self) -> Result<Document, HtmlToMarkdownError> {
-        Ok(Document::new(self.to_markdown_blocks()?))
+        self.to_markdown_document_with_context(&MarkdownContext::default())
+    }
+
+    fn to_markdown_document_with_context(
+        &self,
+        context: &MarkdownContext,
+    ) -> Result<Document, HtmlToMarkdownError> {
+        Ok(Document::new(
+            self.to_markdown_blocks_with_context(context)?,
+        ))
     }
 }
 
@@ -19,14 +38,27 @@ pub fn html_tree_to_markdown_document(tree: &HtmlTree) -> Result<Document, HtmlT
     tree.to_markdown_document()
 }
 
+pub fn html_tree_to_markdown_document_with_context(
+    tree: &HtmlTree,
+    context: &MarkdownContext,
+) -> Result<Document, HtmlToMarkdownError> {
+    tree.to_markdown_document_with_context(context)
+}
+
 impl ToMarkdownDocument for HtmlTree {
-    fn to_markdown_blocks(&self) -> Result<Vec<Block>, HtmlToMarkdownError> {
-        nodes_to_blocks(&self.children)
+    fn to_markdown_blocks_with_context(
+        &self,
+        context: &MarkdownContext,
+    ) -> Result<Vec<Block>, HtmlToMarkdownError> {
+        nodes_to_blocks(&self.children, context)
     }
 }
 
 impl ToMarkdownDocument for HtmlNode {
-    fn to_markdown_blocks(&self) -> Result<Vec<Block>, HtmlToMarkdownError> {
+    fn to_markdown_blocks_with_context(
+        &self,
+        context: &MarkdownContext,
+    ) -> Result<Vec<Block>, HtmlToMarkdownError> {
         match self {
             Self::Text(value) => {
                 if value.is_empty() {
@@ -35,21 +67,24 @@ impl ToMarkdownDocument for HtmlNode {
                     Ok(vec![Block::Paragraph(vec![Inline::Text(value.clone())])])
                 }
             }
-            Self::Element(element) => element.to_markdown_blocks(),
+            Self::Element(element) => element.to_markdown_blocks_with_context(context),
         }
     }
 }
 
 impl ToMarkdownDocument for HtmlElement {
-    fn to_markdown_blocks(&self) -> Result<Vec<Block>, HtmlToMarkdownError> {
+    fn to_markdown_blocks_with_context(
+        &self,
+        context: &MarkdownContext,
+    ) -> Result<Vec<Block>, HtmlToMarkdownError> {
         let block = match self.tag {
-            HtmlTag::H1 => heading(1, children_to_inlines(&self.children)?),
-            HtmlTag::H2 => heading(2, children_to_inlines(&self.children)?),
-            HtmlTag::H3 => heading(3, children_to_inlines(&self.children)?),
-            HtmlTag::H4 => heading(4, children_to_inlines(&self.children)?),
-            HtmlTag::H5 => heading(5, children_to_inlines(&self.children)?),
-            HtmlTag::H6 => heading(6, children_to_inlines(&self.children)?),
-            HtmlTag::P => Block::Paragraph(children_to_inlines(&self.children)?),
+            HtmlTag::H1 => heading(1, children_to_inlines(&self.children, context)?),
+            HtmlTag::H2 => heading(2, children_to_inlines(&self.children, context)?),
+            HtmlTag::H3 => heading(3, children_to_inlines(&self.children, context)?),
+            HtmlTag::H4 => heading(4, children_to_inlines(&self.children, context)?),
+            HtmlTag::H5 => heading(5, children_to_inlines(&self.children, context)?),
+            HtmlTag::H6 => heading(6, children_to_inlines(&self.children, context)?),
+            HtmlTag::P => Block::Paragraph(children_to_inlines(&self.children, context)?),
             HtmlTag::Code => code_or_paragraph(text_content(&self.children)),
             HtmlTag::Pre => Block::Code {
                 lang: None,
@@ -57,17 +92,22 @@ impl ToMarkdownDocument for HtmlElement {
             },
             HtmlTag::Ul => Block::List {
                 ordered: false,
-                items: list_items(&self.children)?,
+                items: list_items(&self.children, context)?,
             },
             HtmlTag::Ol => Block::List {
                 ordered: true,
-                items: list_items(&self.children)?,
+                items: list_items(&self.children, context)?,
             },
             HtmlTag::Li => {
-                return Ok(vec![Block::Paragraph(children_to_inlines(&self.children)?)]);
+                return Ok(vec![Block::Paragraph(children_to_inlines(
+                    &self.children,
+                    context,
+                )?)]);
             }
-            HtmlTag::Blockquote => Block::Blockquote(flow_children_to_blocks(&self.children)?),
-            HtmlTag::Table => table(&self.children)?,
+            HtmlTag::Blockquote => {
+                Block::Blockquote(flow_children_to_blocks(&self.children, context)?)
+            }
+            HtmlTag::Table => table(&self.children, context)?,
             HtmlTag::Tr => {
                 return Err(HtmlToMarkdownError::UnsupportedTag(self.tag));
             }
@@ -87,7 +127,7 @@ impl ToMarkdownDocument for HtmlElement {
             | HtmlTag::Kbd
             | HtmlTag::Details
             | HtmlTag::Summary => {
-                return flow_children_to_blocks(&self.children);
+                return flow_children_to_blocks(&self.children, context);
             }
         };
 
@@ -95,25 +135,31 @@ impl ToMarkdownDocument for HtmlElement {
     }
 }
 
-fn nodes_to_blocks(nodes: &[HtmlNode]) -> Result<Vec<Block>, HtmlToMarkdownError> {
+fn nodes_to_blocks(
+    nodes: &[HtmlNode],
+    context: &MarkdownContext,
+) -> Result<Vec<Block>, HtmlToMarkdownError> {
     nodes.iter().try_fold(Vec::new(), |mut blocks, node| {
-        blocks.extend(node.to_markdown_blocks()?);
+        blocks.extend(node.to_markdown_blocks_with_context(context)?);
         Ok(blocks)
     })
 }
 
-fn flow_children_to_blocks(children: &[HtmlNode]) -> Result<Vec<Block>, HtmlToMarkdownError> {
+fn flow_children_to_blocks(
+    children: &[HtmlNode],
+    context: &MarkdownContext,
+) -> Result<Vec<Block>, HtmlToMarkdownError> {
     let mut blocks = Vec::new();
     let mut inlines = Vec::new();
 
     for child in children {
-        if let Some(inline) = node_to_inline(child)? {
+        if let Some(inline) = node_to_inline(child, context)? {
             inlines.push(inline);
             continue;
         }
 
         push_inline_paragraph(&mut blocks, &mut inlines);
-        blocks.extend(child.to_markdown_blocks()?);
+        blocks.extend(child.to_markdown_blocks_with_context(context)?);
     }
 
     push_inline_paragraph(&mut blocks, &mut inlines);
@@ -126,38 +172,49 @@ fn push_inline_paragraph(blocks: &mut Vec<Block>, inlines: &mut Vec<Inline>) {
     }
 }
 
-fn children_to_inlines(children: &[HtmlNode]) -> Result<Vec<Inline>, HtmlToMarkdownError> {
+fn children_to_inlines(
+    children: &[HtmlNode],
+    context: &MarkdownContext,
+) -> Result<Vec<Inline>, HtmlToMarkdownError> {
     children.iter().try_fold(Vec::new(), |mut inlines, child| {
-        if let Some(inline) = node_to_inline(child)? {
+        if let Some(inline) = node_to_inline(child, context)? {
             inlines.push(inline);
         } else {
-            inlines.extend(blocks_to_inlines(&child.to_markdown_blocks()?));
+            inlines.extend(blocks_to_inlines(
+                &child.to_markdown_blocks_with_context(context)?,
+            ));
         }
         Ok(inlines)
     })
 }
 
-fn node_to_inline(node: &HtmlNode) -> Result<Option<Inline>, HtmlToMarkdownError> {
+fn node_to_inline(
+    node: &HtmlNode,
+    context: &MarkdownContext,
+) -> Result<Option<Inline>, HtmlToMarkdownError> {
     match node {
         HtmlNode::Text(value) => Ok(Some(Inline::Text(value.clone()))),
-        HtmlNode::Element(element) => element_to_inline(element),
+        HtmlNode::Element(element) => element_to_inline(element, context),
     }
 }
 
-fn element_to_inline(element: &HtmlElement) -> Result<Option<Inline>, HtmlToMarkdownError> {
+fn element_to_inline(
+    element: &HtmlElement,
+    context: &MarkdownContext,
+) -> Result<Option<Inline>, HtmlToMarkdownError> {
     let inline = match element.tag {
         HtmlTag::A => Inline::Link {
-            children: children_to_inlines(&element.children)?,
-            url: element.attrs.href.clone().unwrap_or_default(),
+            children: children_to_inlines(&element.children, context)?,
+            url: resolve_href(context, element.attrs.href.as_deref())?,
             title: element.attrs.title.clone(),
         },
         HtmlTag::Code | HtmlTag::Kbd => Inline::Code(text_content(&element.children)),
-        HtmlTag::Strong => Inline::Strong(children_to_inlines(&element.children)?),
-        HtmlTag::Em => Inline::Emphasis(children_to_inlines(&element.children)?),
+        HtmlTag::Strong => Inline::Strong(children_to_inlines(&element.children, context)?),
+        HtmlTag::Em => Inline::Emphasis(children_to_inlines(&element.children, context)?),
         HtmlTag::Br => Inline::Break,
         HtmlTag::Img => Inline::Image {
             alt: element.attrs.alt.clone().unwrap_or_default(),
-            url: element.attrs.src.clone().unwrap_or_default(),
+            url: resolve_href(context, element.attrs.src.as_deref())?,
             title: element.attrs.title.clone(),
         },
         HtmlTag::Span | HtmlTag::Sup | HtmlTag::Summary => {
@@ -188,6 +245,22 @@ fn element_to_inline(element: &HtmlElement) -> Result<Option<Inline>, HtmlToMark
     Ok(Some(inline))
 }
 
+fn resolve_href(
+    context: &MarkdownContext,
+    href: Option<&str>,
+) -> Result<String, HtmlToMarkdownError> {
+    let Some(href) = href else {
+        return Ok(String::new());
+    };
+
+    let Some(source_route) = context.source_route.as_deref() else {
+        return Ok(href.to_string());
+    };
+
+    resolve_docs_href(source_route, href)
+        .map_err(|error| HtmlToMarkdownError::Route(error.to_string()))
+}
+
 fn blocks_to_inlines(blocks: &[Block]) -> Vec<Inline> {
     blocks
         .iter()
@@ -207,23 +280,31 @@ fn code_or_paragraph(value: String) -> Block {
     }
 }
 
-fn list_items(children: &[HtmlNode]) -> Result<Vec<ListItem>, HtmlToMarkdownError> {
+fn list_items(
+    children: &[HtmlNode],
+    context: &MarkdownContext,
+) -> Result<Vec<ListItem>, HtmlToMarkdownError> {
     children.iter().try_fold(Vec::new(), |mut items, child| {
         match child {
             HtmlNode::Element(element) if element.tag == HtmlTag::Li => {
-                items.push(ListItem::new(flow_children_to_blocks(&element.children)?));
+                items.push(ListItem::new(flow_children_to_blocks(
+                    &element.children,
+                    context,
+                )?));
             }
             HtmlNode::Text(text) if text.trim().is_empty() => {}
             _ => {
-                items.push(ListItem::new(child.to_markdown_blocks()?));
+                items.push(ListItem::new(
+                    child.to_markdown_blocks_with_context(context)?,
+                ));
             }
         }
         Ok(items)
     })
 }
 
-fn table(children: &[HtmlNode]) -> Result<Block, HtmlToMarkdownError> {
-    let rows = table_rows(children)?;
+fn table(children: &[HtmlNode], context: &MarkdownContext) -> Result<Block, HtmlToMarkdownError> {
+    let rows = table_rows(children, context)?;
     let column_count = rows
         .iter()
         .map(|row| row.cells.len())
@@ -236,16 +317,19 @@ fn table(children: &[HtmlNode]) -> Result<Block, HtmlToMarkdownError> {
     }))
 }
 
-fn table_rows(children: &[HtmlNode]) -> Result<Vec<TableRow>, HtmlToMarkdownError> {
+fn table_rows(
+    children: &[HtmlNode],
+    context: &MarkdownContext,
+) -> Result<Vec<TableRow>, HtmlToMarkdownError> {
     children.iter().try_fold(Vec::new(), |mut rows, child| {
         match child {
             HtmlNode::Element(element) if element.tag == HtmlTag::Tr => {
-                rows.push(TableRow::new(table_cells(&element.children)?));
+                rows.push(TableRow::new(table_cells(&element.children, context)?));
             }
             HtmlNode::Element(element)
                 if matches!(element.tag, HtmlTag::Thead | HtmlTag::Tbody | HtmlTag::Div) =>
             {
-                rows.extend(table_rows(&element.children)?);
+                rows.extend(table_rows(&element.children, context)?);
             }
             HtmlNode::Text(text) if text.trim().is_empty() => {}
             _ => {
@@ -259,11 +343,17 @@ fn table_rows(children: &[HtmlNode]) -> Result<Vec<TableRow>, HtmlToMarkdownErro
     })
 }
 
-fn table_cells(children: &[HtmlNode]) -> Result<Vec<TableCell>, HtmlToMarkdownError> {
+fn table_cells(
+    children: &[HtmlNode],
+    context: &MarkdownContext,
+) -> Result<Vec<TableCell>, HtmlToMarkdownError> {
     children.iter().try_fold(Vec::new(), |mut cells, child| {
         match child {
             HtmlNode::Element(element) if matches!(element.tag, HtmlTag::Th | HtmlTag::Td) => {
-                cells.push(TableCell::new(children_to_inlines(&element.children)?));
+                cells.push(TableCell::new(children_to_inlines(
+                    &element.children,
+                    context,
+                )?));
             }
             HtmlNode::Text(text) if text.trim().is_empty() => {}
             _ => {

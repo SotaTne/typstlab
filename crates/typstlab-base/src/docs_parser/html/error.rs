@@ -17,6 +17,9 @@ pub enum HtmlParseError {
 
 #[derive(Debug, Error)]
 pub enum HtmlToMarkdownError {
+    #[error("docs route resolution failed: {0}")]
+    Route(String),
+
     #[error("html tag cannot be converted to markdown document here: {0:?}")]
     UnsupportedTag(crate::docs_parser::html::HtmlTag),
 

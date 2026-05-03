@@ -6,23 +6,30 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Html {
-    pub root: Document,
+    pub root: HtmlTree,
 }
 
 impl Html {
     pub fn parse(input: &str) -> Result<Self, HtmlParseError> {
         let tree = parser::parse_html(input)?;
-        Ok(Self {
-            root: tree.to_markdown_document()?,
-        })
+        Ok(Self { root: tree })
     }
 
     pub fn to_document(&self) -> Document {
-        self.root.clone()
+        self.root
+            .to_markdown_document()
+            .expect("html to markdown conversion must succeed")
     }
 
     pub fn to_markdown(&self) -> Result<String, HtmlRenderError> {
         render::html_to_markdown(self)
+    }
+
+    pub fn to_markdown_with_source_route(
+        &self,
+        source_route: &str,
+    ) -> Result<String, HtmlRenderError> {
+        render::html_to_markdown_with_source_route(self, source_route)
     }
 }
 
@@ -44,25 +51,25 @@ impl TryFrom<HtmlTree> for Document {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HtmlTree {
     pub children: Vec<HtmlNode>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum HtmlNode {
     Element(HtmlElement),
     Text(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HtmlElement {
     pub tag: HtmlTag,
     pub attrs: HtmlAttrs,
     pub children: Vec<HtmlNode>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct HtmlAttrs {
     pub href: Option<String>,
     pub src: Option<String>,
@@ -72,7 +79,7 @@ pub struct HtmlAttrs {
     pub id: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum HtmlTag {
     H1,
     H2,

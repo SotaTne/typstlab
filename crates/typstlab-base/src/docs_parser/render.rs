@@ -2,7 +2,7 @@ use std::io::Read;
 
 use super::DocsRenderError;
 use super::html::{Html, HtmlRenderError};
-use super::route::route_to_relative_path;
+use super::route::{route_to_relative_link, route_to_relative_path};
 use super::schema::{
     CategoryContent, CategoryItem, DocsBody, DocsEntry, FuncContent, GroupContent, ParamContent,
     RichBlock, RichContent, SymbolItem, SymbolsContent, TypeContent,
@@ -74,7 +74,7 @@ fn entry_to_markdown(entry: &DocsEntry) -> Result<String, DocsRenderError> {
     markdown.push_str("---\n\n");
 
     if let Some(body) = &entry.body {
-        let body_markdown = body_to_markdown(body)?;
+        let body_markdown = body_to_markdown(entry, body)?;
         if body_markdown.trim().is_empty() {
             return Err(DocsRenderError::Body(format!(
                 "body rendered empty for route {}",
@@ -88,21 +88,24 @@ fn entry_to_markdown(entry: &DocsEntry) -> Result<String, DocsRenderError> {
     Ok(markdown)
 }
 
-fn body_to_markdown(body: &DocsBody) -> Result<String, DocsRenderError> {
+fn body_to_markdown(entry: &DocsEntry, body: &DocsBody) -> Result<String, DocsRenderError> {
     match body {
-        DocsBody::Html(content) => Ok(content.to_markdown()?),
-        DocsBody::Func(content) => func_to_markdown(content),
-        DocsBody::Type(content) => type_to_markdown(content),
-        DocsBody::Category(content) => category_to_markdown(content),
-        DocsBody::Group(content) => group_to_markdown(content),
-        DocsBody::Symbols(content) => symbols_to_markdown(content),
+        DocsBody::Html(content) => Ok(content.to_markdown_with_source_route(&entry.route)?),
+        DocsBody::Func(content) => func_to_markdown(content, &entry.route),
+        DocsBody::Type(content) => type_to_markdown(content, &entry.route),
+        DocsBody::Category(content) => category_to_markdown(entry, content),
+        DocsBody::Group(content) => group_to_markdown(content, &entry.route),
+        DocsBody::Symbols(content) => symbols_to_markdown(content, &entry.route),
     }
 }
 
-fn category_to_markdown(content: &CategoryContent) -> Result<String, DocsRenderError> {
+fn category_to_markdown(
+    entry: &DocsEntry,
+    content: &CategoryContent,
+) -> Result<String, DocsRenderError> {
     let mut markdown = String::new();
-    push_rich_content(&mut markdown, content.details.as_ref())?;
-    push_category_items(&mut markdown, "Items", &content.items);
+    push_rich_content(&mut markdown, content.details.as_ref(), &entry.route)?;
+    push_category_items(&mut markdown, &entry.route, "Items", &content.items)?;
     if let Some(shorthands) = &content.shorthands {
         push_symbol_items(&mut markdown, "Markup Shorthands", &shorthands.markup);
         push_symbol_items(&mut markdown, "Math Shorthands", &shorthands.math);
@@ -110,37 +113,43 @@ fn category_to_markdown(content: &CategoryContent) -> Result<String, DocsRenderE
     Ok(trim_section(markdown))
 }
 
-fn type_to_markdown(content: &TypeContent) -> Result<String, DocsRenderError> {
+fn type_to_markdown(content: &TypeContent, source_route: &str) -> Result<String, DocsRenderError> {
     let mut markdown = String::new();
     push_oneliner(&mut markdown, content.oneliner.as_deref());
-    push_rich_content(&mut markdown, content.details.as_ref())?;
+    push_rich_content(&mut markdown, content.details.as_ref(), source_route)?;
     if let Some(constructor) = &content.constructor {
-        push_func_summary(&mut markdown, "Constructor", constructor);
+        push_func_summary(&mut markdown, "Constructor", constructor, source_route);
     }
-    push_func_list(&mut markdown, "Definitions", &content.scope);
+    push_func_list(&mut markdown, "Definitions", &content.scope, source_route);
     Ok(trim_section(markdown))
 }
 
-fn func_to_markdown(content: &FuncContent) -> Result<String, DocsRenderError> {
+fn func_to_markdown(content: &FuncContent, source_route: &str) -> Result<String, DocsRenderError> {
     let mut markdown = String::new();
     push_oneliner(&mut markdown, content.oneliner.as_deref());
-    push_rich_content(&mut markdown, content.details.as_ref())?;
-    push_params(&mut markdown, &content.params)?;
+    push_rich_content(&mut markdown, content.details.as_ref(), source_route)?;
+    push_params(&mut markdown, &content.params, source_route)?;
     push_returns(&mut markdown, &content.returns);
-    push_func_list(&mut markdown, "Definitions", &content.scope);
+    push_func_list(&mut markdown, "Definitions", &content.scope, source_route);
     Ok(trim_section(markdown))
 }
 
-fn group_to_markdown(content: &GroupContent) -> Result<String, DocsRenderError> {
+fn group_to_markdown(
+    content: &GroupContent,
+    source_route: &str,
+) -> Result<String, DocsRenderError> {
     let mut markdown = String::new();
-    push_rich_content(&mut markdown, content.details.as_ref())?;
-    push_func_list(&mut markdown, "Functions", &content.functions);
+    push_rich_content(&mut markdown, content.details.as_ref(), source_route)?;
+    push_func_list(&mut markdown, "Functions", &content.functions, source_route);
     Ok(trim_section(markdown))
 }
 
-fn symbols_to_markdown(content: &SymbolsContent) -> Result<String, DocsRenderError> {
+fn symbols_to_markdown(
+    content: &SymbolsContent,
+    source_route: &str,
+) -> Result<String, DocsRenderError> {
     let mut markdown = String::new();
-    push_rich_content(&mut markdown, content.details.as_ref())?;
+    push_rich_content(&mut markdown, content.details.as_ref(), source_route)?;
     push_symbol_items(&mut markdown, "Symbols", &content.list);
     Ok(trim_section(markdown))
 }
@@ -154,6 +163,7 @@ fn push_oneliner(markdown: &mut String, oneliner: Option<&str>) {
 fn push_rich_content(
     markdown: &mut String,
     content: Option<&RichContent>,
+    source_route: &str,
 ) -> Result<(), DocsRenderError> {
     let Some(content) = content else {
         return Ok(());
@@ -161,17 +171,22 @@ fn push_rich_content(
 
     match content {
         RichContent::Plain(value) => {
-            push_block(markdown, &html_string_to_markdown(value)?);
+            push_block(markdown, &html_string_to_markdown(value, source_route)?);
         }
         RichContent::Blocks(blocks) => {
             for block in blocks {
                 match block {
-                    RichBlock::Html(html) => push_block(markdown, &html.to_markdown()?),
+                    RichBlock::Html(html) => {
+                        push_block(markdown, &html.to_markdown_with_source_route(source_route)?)
+                    }
                     RichBlock::Example(example) => {
                         if let Some(title) = &example.title {
                             push_block(markdown, &format!("### {title}"));
                         }
-                        push_block(markdown, &example.body.to_markdown()?);
+                        push_block(
+                            markdown,
+                            &example.body.to_markdown_with_source_route(source_route)?,
+                        );
                     }
                 }
             }
@@ -181,16 +196,21 @@ fn push_rich_content(
     Ok(())
 }
 
-fn html_string_to_markdown(input: &str) -> Result<String, DocsRenderError> {
+fn html_string_to_markdown(input: &str, source_route: &str) -> Result<String, DocsRenderError> {
     Html::parse(input)
         .map_err(|error| DocsRenderError::Html(HtmlRenderError::Parse(error)))?
-        .to_markdown()
+        .to_markdown_with_source_route(source_route)
         .map_err(DocsRenderError::from)
 }
 
-fn push_category_items(markdown: &mut String, title: &str, items: &[CategoryItem]) {
+fn push_category_items(
+    markdown: &mut String,
+    source_route: &str,
+    title: &str,
+    items: &[CategoryItem],
+) -> Result<(), DocsRenderError> {
     if items.is_empty() {
-        return;
+        return Ok(());
     }
 
     push_block(markdown, &format!("## {title}"));
@@ -200,7 +220,8 @@ fn push_category_items(markdown: &mut String, title: &str, items: &[CategoryItem
         } else {
             item.name.clone()
         };
-        let mut line = format!("- [{name}]({})", item.route);
+        let target = route_to_relative_link(source_route, &item.route)?;
+        let mut line = format!("- [{name}]({})", target.display());
         if let Some(oneliner) = &item.oneliner {
             line.push_str(": ");
             line.push_str(oneliner);
@@ -209,27 +230,33 @@ fn push_category_items(markdown: &mut String, title: &str, items: &[CategoryItem
         markdown.push('\n');
     }
     markdown.push('\n');
+    Ok(())
 }
 
-fn push_func_summary(markdown: &mut String, title: &str, func: &FuncContent) {
+fn push_func_summary(markdown: &mut String, title: &str, func: &FuncContent, source_route: &str) {
     push_block(markdown, &format!("## {title}"));
-    push_func_item(markdown, func);
+    push_func_item(markdown, func, source_route);
     markdown.push('\n');
 }
 
-fn push_func_list(markdown: &mut String, title: &str, functions: &[FuncContent]) {
+fn push_func_list(
+    markdown: &mut String,
+    title: &str,
+    functions: &[FuncContent],
+    source_route: &str,
+) {
     if functions.is_empty() {
         return;
     }
 
     push_block(markdown, &format!("## {title}"));
     for func in functions {
-        push_func_item(markdown, func);
+        push_func_item(markdown, func, source_route);
     }
     markdown.push('\n');
 }
 
-fn push_func_item(markdown: &mut String, func: &FuncContent) {
+fn push_func_item(markdown: &mut String, func: &FuncContent, _source_route: &str) {
     let title = if func.title.is_empty() {
         &func.name
     } else {
@@ -248,7 +275,11 @@ fn push_func_item(markdown: &mut String, func: &FuncContent) {
     markdown.push('\n');
 }
 
-fn push_params(markdown: &mut String, params: &[ParamContent]) -> Result<(), DocsRenderError> {
+fn push_params(
+    markdown: &mut String,
+    params: &[ParamContent],
+    source_route: &str,
+) -> Result<(), DocsRenderError> {
     if params.is_empty() {
         return Ok(());
     }
@@ -267,7 +298,7 @@ fn push_params(markdown: &mut String, params: &[ParamContent]) -> Result<(), Doc
         markdown.push_str(&line);
         markdown.push('\n');
 
-        let details = rich_content_to_markdown(param.details.as_ref())?;
+        let details = rich_content_to_markdown(param.details.as_ref(), source_route)?;
         if !details.trim().is_empty() {
             for line in details.lines() {
                 markdown.push_str("  ");
@@ -280,9 +311,12 @@ fn push_params(markdown: &mut String, params: &[ParamContent]) -> Result<(), Doc
     Ok(())
 }
 
-fn rich_content_to_markdown(content: Option<&RichContent>) -> Result<String, DocsRenderError> {
+fn rich_content_to_markdown(
+    content: Option<&RichContent>,
+    source_route: &str,
+) -> Result<String, DocsRenderError> {
     let mut markdown = String::new();
-    push_rich_content(&mut markdown, content)?;
+    push_rich_content(&mut markdown, content, source_route)?;
     Ok(trim_section(markdown))
 }
 
@@ -489,11 +523,7 @@ mod tests {
         let markdown = &sink.files[0].1;
         assert!(markdown.contains("Text styling."));
         assert!(markdown.contains("## Items"));
-        assert!(
-            markdown.contains(
-                "- [`highlight`](/DOCS-BASE/reference/text/highlight/): Highlights text."
-            )
-        );
+        assert!(markdown.contains("- [`highlight`](text/highlight.md): Highlights text."));
     }
 
     #[test]
