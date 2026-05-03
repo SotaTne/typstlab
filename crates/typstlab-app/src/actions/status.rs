@@ -37,6 +37,7 @@ pub struct TypstStatus {
 #[derive(Serialize, Debug, Clone)]
 pub struct DocsStatus {
     pub path_in_store: PathBuf,
+    pub cache: PathBuf,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -98,6 +99,8 @@ impl Action for StatusAction {
         let papers_scope = self.loaded_project.papers_scope();
         let templates_scope = self.loaded_project.templates_scope();
         let dist_scope = self.loaded_project.build_artifact_scope();
+        let docs = self.toolchain.typst_docs;
+        let docs_cache = self.toolchain.typst_docs_cache;
 
         let papers = list_papers(&papers_scope, warning)?;
         let templates = list_templates(&templates_scope, warning)?;
@@ -114,8 +117,9 @@ impl Action for StatusAction {
                     path_in_store: self.toolchain.typst.path(),
                 },
             },
-            docs: self.toolchain.typst_docs.map(|docs| DocsStatus {
+            docs: docs.map(|docs| DocsStatus {
                 path_in_store: docs.path(),
+                cache: docs_cache.unwrap_or_default(),
             }),
             papers: ScopeStatus {
                 root: papers_scope.path(),
@@ -206,6 +210,7 @@ mod tests {
         ToolChain {
             typst: Typst::new("0.14.2".to_string(), PathBuf::from("/bin/typst")),
             typst_docs: Some(Docs::new(PathBuf::from("/docs"))),
+            typst_docs_cache: Some(PathBuf::from("/cache/docs")),
             typstyle: None,
         }
     }
@@ -228,6 +233,10 @@ mod tests {
             .expect("StatusAction should succeed even if papers dir is missing");
 
         assert_eq!(output.papers.items.len(), 0);
+        assert_eq!(
+            output.docs.as_ref().map(|docs| docs.cache.clone()),
+            Some(PathBuf::from("/cache/docs"))
+        );
         assert_eq!(warnings.len(), 1);
 
         let expected_path = project_root.join("papers");

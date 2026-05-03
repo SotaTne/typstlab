@@ -60,6 +60,10 @@ impl From<StatusWarning> for McpStatusWarning {
 mod tests {
     use super::*;
     use serde_json::json;
+    use typstlab_app::actions::status::StatusOutput;
+    use typstlab_app::actions::status::{
+        DirectoryStatus, DocsStatus, ProjectStatus, ScopeStatus, ToolchainStatus, TypstStatus,
+    };
 
     #[test]
     fn test_status_warning_serializes_stable_kind() {
@@ -73,6 +77,50 @@ mod tests {
             json!({
                 "kind": "papers_dir_not_found",
                 "path": "papers",
+            })
+        );
+    }
+
+    #[test]
+    fn test_status_result_includes_docs_cache() {
+        let result = McpStatusResult {
+            status: StatusOutput {
+                project: ProjectStatus {
+                    name: "demo".to_string(),
+                    root_path: PathBuf::from("/project"),
+                },
+                toolchain: ToolchainStatus {
+                    typst: TypstStatus {
+                        version: "0.14.2".to_string(),
+                        path_in_store: PathBuf::from("/cache/typst/0.14.2/typst"),
+                    },
+                },
+                docs: Some(DocsStatus {
+                    path_in_store: PathBuf::from("/project/.typstlab/typst_docs"),
+                    cache: PathBuf::from("/Users/sota/Library/Caches/typstlab/docs"),
+                }),
+                papers: ScopeStatus {
+                    root: PathBuf::from("/project/papers"),
+                    items: Vec::new(),
+                },
+                templates: ScopeStatus {
+                    root: PathBuf::from("/project/templates"),
+                    items: Vec::new(),
+                },
+                dist: DirectoryStatus {
+                    root: PathBuf::from("/project/dist"),
+                },
+            },
+            warnings: Vec::new(),
+        };
+
+        let value = serde_json::to_value(result).unwrap();
+
+        assert_eq!(
+            value["status"]["docs"],
+            json!({
+                "path_in_store": "/project/.typstlab/typst_docs",
+                "cache": "/Users/sota/Library/Caches/typstlab/docs",
             })
         );
     }

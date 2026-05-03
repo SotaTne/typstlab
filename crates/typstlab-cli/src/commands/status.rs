@@ -78,6 +78,7 @@ impl CliSpeaker for StatusPresenter {
                 "path",
                 &docs.path_in_store,
             );
+            print_path_indented(4, "cache", &docs.cache);
         }
         println!();
 
@@ -100,8 +101,14 @@ fn print_value(label: &str, value: &str) {
 }
 
 fn print_path(label: &str, path: &Path) {
+    print_path_indented(2, label, path);
+}
+
+fn print_path_indented(indent: usize, label: &str, path: &Path) {
+    let padding = " ".repeat(indent);
     println!(
-        "  {:<8} {}",
+        "{}{:<8} {}",
+        padding,
         label.bright_black(),
         path.display().to_string().bright_black()
     );

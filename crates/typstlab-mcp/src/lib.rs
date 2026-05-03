@@ -26,7 +26,7 @@ impl TypstlabServer {
 #[tool_router(server_handler)]
 impl TypstlabServer {
     #[tool(
-        description = "Get the current typstlab project status, including toolchain, docs, papers, templates, and dist paths."
+        description = "Get the current typstlab project status, including toolchain, docs path and cache, papers, templates, and dist paths."
     )]
     async fn status(&self) -> Result<CallToolResult, McpError> {
         let root = self.project_root.clone();

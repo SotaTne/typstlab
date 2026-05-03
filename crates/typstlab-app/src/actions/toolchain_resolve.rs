@@ -26,6 +26,7 @@ pub struct ToolchainResolveInput {
 pub struct ToolChain {
     pub typst: Typst,
     pub typst_docs: Option<Docs>,
+    pub typst_docs_cache: Option<PathBuf>,
     pub typstyle: Option<()>,
 }
 
@@ -96,16 +97,19 @@ impl ToolchainResolveAction {
         let resolved_toolchain = resolve_toolchain(&toolchain)?;
 
         let typst = Self::resolve_typst(&typst_store, resolved_toolchain.typst, monitor)?;
+        let typst_docs_version = resolved_toolchain.typst_docs.clone();
         let typst_docs = Self::resolve_typst_docs(
             &project_root,
             &docs_store,
-            resolved_toolchain.typst_docs,
+            typst_docs_version.clone(),
             monitor,
         )?;
+        let typst_docs_cache = typst_docs_version.map(|_| docs_store.root.clone());
 
         Ok(ToolChain {
             typst,
             typst_docs,
+            typst_docs_cache,
             typstyle: None,
         })
     }

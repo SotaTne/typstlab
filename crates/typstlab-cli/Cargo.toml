@@ -3,6 +3,10 @@ name = "typstlab-cli"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "typstlab"
+path = "src/main.rs"
+
 [dependencies]
 typstlab-proto = { path = "../typstlab-proto" }
 typstlab-base = { path = "../typstlab-base" }
