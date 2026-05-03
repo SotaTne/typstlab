@@ -1,4 +1,4 @@
-name: Monitor Toolchain Update
+name: Monitor Toolchain JSON Update
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
     # 手動実行用
 
 jobs:
-  monitor-toolchain-update:
+  monitor-toolchain-json-update:
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -26,7 +26,7 @@ jobs:
         run: bun run build:index
         working-directory: .github/scripts
 
-      - name: Monitor Toolchain Update
+      - name: Monitor Toolchain JSON Update
         uses: actions/github-script@v9
         with:
           script: |

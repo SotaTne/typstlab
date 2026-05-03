@@ -1,4 +1,4 @@
-name: Check Typst Version Schema
+name: Check Typst Version JSON Schema
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
     # 手動実行用
 
 jobs:
-  check-typst-version-schema:
+  check-typst-version-json-schema:
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -26,7 +26,7 @@ jobs:
         run: bun run build:index
         working-directory: .github/scripts
 
-      - name: Check Typst Version Schema
+      - name: Check Typst Version JSON Schema
         uses: actions/github-script@v9
         with:
           script: |
