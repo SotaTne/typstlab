@@ -43,9 +43,7 @@ pub fn resolve_docs_href(source_route: &str, href: &str) -> Result<String, DocsR
     };
 
     let target_route = format!("{DOCS_ROUTE_PREFIX}{target_route}");
-    let mut relative = route_to_relative_link(source_route, &target_route)?
-        .display()
-        .to_string();
+    let mut relative = markdown_path_string(&route_to_relative_link(source_route, &target_route)?);
     if let Some(fragment) = fragment {
         relative.push('#');
         relative.push_str(fragment);
@@ -120,6 +118,17 @@ fn normalized_components(path: &Path) -> Vec<String> {
         .collect()
 }
 
+pub fn markdown_path_string(path: &Path) -> String {
+    let mut text = String::new();
+    for (index, component) in path.components().enumerate() {
+        if index > 0 {
+            text.push('/');
+        }
+        text.push_str(&component.as_os_str().to_string_lossy());
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +158,14 @@ mod tests {
             )
             .unwrap(),
             PathBuf::from("text").join("highlight.md")
+        );
+    }
+
+    #[test]
+    fn test_markdown_path_string_uses_forward_slashes() {
+        assert_eq!(
+            markdown_path_string(&PathBuf::from("text").join("highlight.md")),
+            "text/highlight.md"
         );
     }
 

@@ -2,7 +2,7 @@ use std::io::Read;
 
 use super::DocsRenderError;
 use super::html::{Html, HtmlRenderError};
-use super::route::{route_to_relative_link, route_to_relative_path};
+use super::route::{markdown_path_string, route_to_relative_link, route_to_relative_path};
 use super::schema::{
     CategoryContent, CategoryItem, DocsBody, DocsEntry, FuncContent, GroupContent, ParamContent,
     RichBlock, RichContent, SymbolItem, SymbolsContent, TypeContent,
@@ -221,7 +221,7 @@ fn push_category_items(
             item.name.clone()
         };
         let target = route_to_relative_link(source_route, &item.route)?;
-        let mut line = format!("- [{name}]({})", target.display());
+        let mut line = format!("- [{name}]({})", markdown_path_string(&target));
         if let Some(oneliner) = &item.oneliner {
             line.push_str(": ");
             line.push_str(oneliner);
