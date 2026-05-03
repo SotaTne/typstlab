@@ -1,8 +1,12 @@
 use std::io::Read;
 
 use super::DocsRenderError;
+use super::html::{Html, HtmlRenderError};
 use super::route::route_to_relative_path;
-use super::schema::{DocsBody, DocsEntry};
+use super::schema::{
+    CategoryContent, CategoryItem, DocsBody, DocsEntry, FuncContent, GroupContent, ParamContent,
+    RichBlock, RichContent, SymbolItem, SymbolsContent, TypeContent,
+};
 use super::sink::{DocsRenderSink, RenderedDocs, TempDocsRenderSink};
 
 pub fn parse_docs_json_from_reader<R>(reader: R) -> Result<Vec<DocsEntry>, serde_json::Error>
@@ -70,7 +74,14 @@ fn entry_to_markdown(entry: &DocsEntry) -> Result<String, DocsRenderError> {
     markdown.push_str("---\n\n");
 
     if let Some(body) = &entry.body {
-        markdown.push_str(&body_to_markdown(body)?);
+        let body_markdown = body_to_markdown(body)?;
+        if body_markdown.trim().is_empty() {
+            return Err(DocsRenderError::Body(format!(
+                "body rendered empty for route {}",
+                entry.route
+            )));
+        }
+        markdown.push_str(&body_markdown);
         markdown.push('\n');
     }
 
@@ -80,12 +91,248 @@ fn entry_to_markdown(entry: &DocsEntry) -> Result<String, DocsRenderError> {
 fn body_to_markdown(body: &DocsBody) -> Result<String, DocsRenderError> {
     match body {
         DocsBody::Html(content) => Ok(content.to_markdown()?),
-        DocsBody::Func(_)
-        | DocsBody::Type(_)
-        | DocsBody::Category(_)
-        | DocsBody::Group(_)
-        | DocsBody::Symbols(_) => Ok(String::new()),
+        DocsBody::Func(content) => func_to_markdown(content),
+        DocsBody::Type(content) => type_to_markdown(content),
+        DocsBody::Category(content) => category_to_markdown(content),
+        DocsBody::Group(content) => group_to_markdown(content),
+        DocsBody::Symbols(content) => symbols_to_markdown(content),
     }
+}
+
+fn category_to_markdown(content: &CategoryContent) -> Result<String, DocsRenderError> {
+    let mut markdown = String::new();
+    push_rich_content(&mut markdown, content.details.as_ref())?;
+    push_category_items(&mut markdown, "Items", &content.items);
+    if let Some(shorthands) = &content.shorthands {
+        push_symbol_items(&mut markdown, "Markup Shorthands", &shorthands.markup);
+        push_symbol_items(&mut markdown, "Math Shorthands", &shorthands.math);
+    }
+    Ok(trim_section(markdown))
+}
+
+fn type_to_markdown(content: &TypeContent) -> Result<String, DocsRenderError> {
+    let mut markdown = String::new();
+    push_oneliner(&mut markdown, content.oneliner.as_deref());
+    push_rich_content(&mut markdown, content.details.as_ref())?;
+    if let Some(constructor) = &content.constructor {
+        push_func_summary(&mut markdown, "Constructor", constructor);
+    }
+    push_func_list(&mut markdown, "Definitions", &content.scope);
+    Ok(trim_section(markdown))
+}
+
+fn func_to_markdown(content: &FuncContent) -> Result<String, DocsRenderError> {
+    let mut markdown = String::new();
+    push_oneliner(&mut markdown, content.oneliner.as_deref());
+    push_rich_content(&mut markdown, content.details.as_ref())?;
+    push_params(&mut markdown, &content.params)?;
+    push_returns(&mut markdown, &content.returns);
+    push_func_list(&mut markdown, "Definitions", &content.scope);
+    Ok(trim_section(markdown))
+}
+
+fn group_to_markdown(content: &GroupContent) -> Result<String, DocsRenderError> {
+    let mut markdown = String::new();
+    push_rich_content(&mut markdown, content.details.as_ref())?;
+    push_func_list(&mut markdown, "Functions", &content.functions);
+    Ok(trim_section(markdown))
+}
+
+fn symbols_to_markdown(content: &SymbolsContent) -> Result<String, DocsRenderError> {
+    let mut markdown = String::new();
+    push_rich_content(&mut markdown, content.details.as_ref())?;
+    push_symbol_items(&mut markdown, "Symbols", &content.list);
+    Ok(trim_section(markdown))
+}
+
+fn push_oneliner(markdown: &mut String, oneliner: Option<&str>) {
+    if let Some(oneliner) = oneliner.filter(|value| !value.trim().is_empty()) {
+        push_block(markdown, oneliner);
+    }
+}
+
+fn push_rich_content(
+    markdown: &mut String,
+    content: Option<&RichContent>,
+) -> Result<(), DocsRenderError> {
+    let Some(content) = content else {
+        return Ok(());
+    };
+
+    match content {
+        RichContent::Plain(value) => {
+            push_block(markdown, &html_string_to_markdown(value)?);
+        }
+        RichContent::Blocks(blocks) => {
+            for block in blocks {
+                match block {
+                    RichBlock::Html(html) => push_block(markdown, &html.to_markdown()?),
+                    RichBlock::Example(example) => {
+                        if let Some(title) = &example.title {
+                            push_block(markdown, &format!("### {title}"));
+                        }
+                        push_block(markdown, &example.body.to_markdown()?);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn html_string_to_markdown(input: &str) -> Result<String, DocsRenderError> {
+    Html::parse(input)
+        .map_err(|error| DocsRenderError::Html(HtmlRenderError::Parse(error)))?
+        .to_markdown()
+        .map_err(DocsRenderError::from)
+}
+
+fn push_category_items(markdown: &mut String, title: &str, items: &[CategoryItem]) {
+    if items.is_empty() {
+        return;
+    }
+
+    push_block(markdown, &format!("## {title}"));
+    for item in items {
+        let name = if item.code {
+            format!("`{}`", item.name)
+        } else {
+            item.name.clone()
+        };
+        let mut line = format!("- [{name}]({})", item.route);
+        if let Some(oneliner) = &item.oneliner {
+            line.push_str(": ");
+            line.push_str(oneliner);
+        }
+        markdown.push_str(&line);
+        markdown.push('\n');
+    }
+    markdown.push('\n');
+}
+
+fn push_func_summary(markdown: &mut String, title: &str, func: &FuncContent) {
+    push_block(markdown, &format!("## {title}"));
+    push_func_item(markdown, func);
+    markdown.push('\n');
+}
+
+fn push_func_list(markdown: &mut String, title: &str, functions: &[FuncContent]) {
+    if functions.is_empty() {
+        return;
+    }
+
+    push_block(markdown, &format!("## {title}"));
+    for func in functions {
+        push_func_item(markdown, func);
+    }
+    markdown.push('\n');
+}
+
+fn push_func_item(markdown: &mut String, func: &FuncContent) {
+    let title = if func.title.is_empty() {
+        &func.name
+    } else {
+        &func.title
+    };
+    let mut line = format!("- `{}`", func.name);
+    if title != &func.name {
+        line.push_str(" - ");
+        line.push_str(title);
+    }
+    if let Some(oneliner) = &func.oneliner {
+        line.push_str(": ");
+        line.push_str(oneliner);
+    }
+    markdown.push_str(&line);
+    markdown.push('\n');
+}
+
+fn push_params(markdown: &mut String, params: &[ParamContent]) -> Result<(), DocsRenderError> {
+    if params.is_empty() {
+        return Ok(());
+    }
+
+    push_block(markdown, "## Parameters");
+    for param in params {
+        let mut line = format!("- `{}`", param.name);
+        if !param.types.is_empty() {
+            line.push_str(" (");
+            line.push_str(&param.types.join(", "));
+            line.push(')');
+        }
+        if param.required {
+            line.push_str(" required");
+        }
+        markdown.push_str(&line);
+        markdown.push('\n');
+
+        let details = rich_content_to_markdown(param.details.as_ref())?;
+        if !details.trim().is_empty() {
+            for line in details.lines() {
+                markdown.push_str("  ");
+                markdown.push_str(line);
+                markdown.push('\n');
+            }
+        }
+    }
+    markdown.push('\n');
+    Ok(())
+}
+
+fn rich_content_to_markdown(content: Option<&RichContent>) -> Result<String, DocsRenderError> {
+    let mut markdown = String::new();
+    push_rich_content(&mut markdown, content)?;
+    Ok(trim_section(markdown))
+}
+
+fn push_returns(markdown: &mut String, returns: &[String]) {
+    if returns.is_empty() {
+        return;
+    }
+
+    push_block(markdown, "## Returns");
+    markdown.push_str(&returns.join(", "));
+    markdown.push_str("\n\n");
+}
+
+fn push_symbol_items(markdown: &mut String, title: &str, items: &[SymbolItem]) {
+    if items.is_empty() {
+        return;
+    }
+
+    push_block(markdown, &format!("## {title}"));
+    markdown.push_str("| Name | Value | Markup | Math |\n");
+    markdown.push_str("| --- | --- | --- | --- |\n");
+    for item in items {
+        markdown.push_str("| `");
+        markdown.push_str(&escape_table_cell(&item.name));
+        markdown.push_str("` | ");
+        markdown.push_str(item.value.as_deref().unwrap_or(""));
+        markdown.push_str(" | ");
+        markdown.push_str(item.markup_shorthand.as_deref().unwrap_or(""));
+        markdown.push_str(" | ");
+        markdown.push_str(item.math_shorthand.as_deref().unwrap_or(""));
+        markdown.push_str(" |\n");
+    }
+    markdown.push('\n');
+}
+
+fn push_block(markdown: &mut String, block: &str) {
+    let block = block.trim();
+    if block.is_empty() {
+        return;
+    }
+    markdown.push_str(block);
+    markdown.push_str("\n\n");
+}
+
+fn trim_section(markdown: String) -> String {
+    markdown.trim().to_string()
+}
+
+fn escape_table_cell(value: &str) -> String {
+    value.replace('|', "\\|").replace('\n', "<br>")
 }
 
 #[cfg(test)]
@@ -181,6 +428,72 @@ mod tests {
 
         assert!(matches!(err, DocsRenderError::Json(_)));
         assert!(sink.files.is_empty());
+    }
+
+    #[test]
+    fn test_render_docs_from_reader_into_rejects_frontmatter_only_body() {
+        let json = br#"[
+            {
+                "route": "/DOCS-BASE/reference/text/",
+                "title": "Text",
+                "body": {
+                    "kind": "category",
+                    "content": {
+                        "name": "text",
+                        "title": "Text",
+                        "items": []
+                    }
+                },
+                "children": []
+            }
+        ]"#;
+        let mut sink = MemorySink::default();
+
+        let err = render_docs_from_reader_into(&json[..], &mut sink).unwrap_err();
+
+        assert!(
+            matches!(err, DocsRenderError::Body(message) if message.contains("body rendered empty"))
+        );
+        assert!(sink.files.is_empty());
+    }
+
+    #[test]
+    fn test_render_docs_from_reader_into_renders_category_body() {
+        let json = br#"[
+            {
+                "route": "/DOCS-BASE/reference/text/",
+                "title": "Text",
+                "body": {
+                    "kind": "category",
+                    "content": {
+                        "name": "text",
+                        "title": "Text",
+                        "details": "<p>Text styling.</p>",
+                        "items": [
+                            {
+                                "name": "highlight",
+                                "route": "/DOCS-BASE/reference/text/highlight/",
+                                "oneliner": "Highlights text.",
+                                "code": true
+                            }
+                        ]
+                    }
+                },
+                "children": []
+            }
+        ]"#;
+        let mut sink = MemorySink::default();
+
+        render_docs_from_reader_into(&json[..], &mut sink).unwrap();
+
+        let markdown = &sink.files[0].1;
+        assert!(markdown.contains("Text styling."));
+        assert!(markdown.contains("## Items"));
+        assert!(
+            markdown.contains(
+                "- [`highlight`](/DOCS-BASE/reference/text/highlight/): Highlights text."
+            )
+        );
     }
 
     #[test]
