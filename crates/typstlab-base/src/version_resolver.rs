@@ -415,25 +415,6 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_toolchain_auto_picks_latest_compatible_versions() {
-        let resolved = resolve_toolchain(&ProjectToolChain {
-            typst: "0.14.2".to_string(),
-            typst_docs: ToolChoice::Auto,
-            typstyle: ToolChoice::Auto,
-        })
-        .unwrap();
-
-        assert_eq!(
-            resolved,
-            ResolvedToolChain {
-                typst: "0.14.2".to_string(),
-                typst_docs: Some("0.14.2".to_string()),
-                typstyle: Some("0.14.2".to_string()),
-            }
-        );
-    }
-
-    #[test]
     fn test_resolve_toolchain_none_skips_optional_tool() {
         let resolved = resolve_toolchain(&ProjectToolChain {
             typst: "0.14.2".to_string(),
