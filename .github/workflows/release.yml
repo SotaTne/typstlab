@@ -1,0 +1,182 @@
+# Based on Typst's release action:
+# https://github.com/typst/typst/blob/main/.github/workflows/release.yml
+
+name: Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to upload assets to, for example v0.1.0
+        required: true
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CROSS_REV: 085092ca
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            cross: true
+          - target: armv7-unknown-linux-musleabi
+            os: ubuntu-latest
+            cross: true
+          - target: riscv64gc-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            cross: false
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            cross: false
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            cross: false
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cross
+        if: matrix.cross
+        shell: bash
+        run: cargo install cross --git https://github.com/cross-rs/cross.git --locked --rev "$CROSS_REV"
+
+      - name: Build release binary
+        if: ${{ !matrix.cross }}
+        shell: bash
+        run: cargo build -p typstlab-cli --release --target ${{ matrix.target }}
+
+      - name: Build release binary with cross
+        if: matrix.cross
+        shell: bash
+        run: cross build -p typstlab-cli --release --target ${{ matrix.target }}
+
+      - name: Package archive
+        shell: bash
+        run: |
+          directory="typstlab-${{ matrix.target }}"
+          mkdir "$directory"
+
+          if [[ -f "target/${{ matrix.target }}/release/typstlab.exe" ]]; then
+            cp "target/${{ matrix.target }}/release/typstlab.exe" "$directory/"
+            7z a "$directory.zip" "$directory"
+          else
+            cp "target/${{ matrix.target }}/release/typstlab" "$directory/"
+            tar cJf "$directory.tar.xz" "$directory"
+          fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-asset-${{ matrix.target }}
+          path: typstlab-${{ matrix.target }}.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - uses: ncipollo/release-action@v1
+        if: github.event_name == 'release'
+        with:
+          artifacts: typstlab-${{ matrix.target }}.*
+          allowUpdates: true
+          omitNameDuringUpdate: true
+          omitBodyDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
+
+  checksum-and-upload:
+    name: checksum, sign, upload
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: release-asset-*
+          path: dist
+          merge-multiple: true
+
+      - name: Resolve release tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${{ github.event.release.tag_name }}"
+          fi
+          if [[ -z "$tag" ]]; then
+            echo "release tag is empty" >&2
+            exit 1
+          fi
+          echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+
+      - name: Create checksum file
+        shell: bash
+        working-directory: dist
+        run: shasum -a 256 typstlab-* > sha256.txt
+
+      - name: Install minisign
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+      - name: Sign checksum file
+        shell: bash
+        working-directory: dist
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [[ -z "$MINISIGN_SECRET_KEY" ]]; then
+            echo "MINISIGN_SECRET_KEY is required to sign sha256.txt" >&2
+            exit 1
+          fi
+          printf '%s' "$MINISIGN_SECRET_KEY" > minisign.key
+          chmod 600 minisign.key
+          minisign -S -s minisign.key -m sha256.txt -x sha256.txt.minisig -t "typstlab $VERSION checksums"
+          rm minisign.key
+
+      - uses: actions/upload-artifact@v6
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: release-checksums
+          path: |
+            dist/sha256.txt
+            dist/sha256.txt.minisig
+          if-no-files-found: error
+          retention-days: 3
+
+      - uses: ncipollo/release-action@v1
+        if: github.event_name == 'release'
+        with:
+          artifacts: |
+            dist/sha256.txt
+            dist/sha256.txt.minisig
+          allowUpdates: true
+          omitNameDuringUpdate: true
+          omitBodyDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
