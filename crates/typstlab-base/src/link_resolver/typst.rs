@@ -48,7 +48,6 @@ fn typst_target_and_format(
         (Os::MacOS, Arch::Aarch64) => "aarch64-apple-darwin",
         (Os::Linux, Arch::X86_64) => "x86_64-unknown-linux-musl",
         (Os::Linux, Arch::Aarch64) => "aarch64-unknown-linux-musl",
-        (Os::Linux, Arch::Armv7) => "armv7-unknown-linux-musleabi",
         (Os::Linux, Arch::Riscv64) => "riscv64gc-unknown-linux-gnu",
         (Os::Windows, Arch::X86_64) => "x86_64-pc-windows-msvc",
         (Os::Windows, Arch::Aarch64) => "aarch64-pc-windows-msvc",
@@ -115,22 +114,6 @@ mod tests {
         assert_eq!(
             link.url,
             "https://github.com/typst/typst/releases/download/v0.14.2/typst-aarch64-unknown-linux-musl.tar.xz"
-        );
-        assert_eq!(
-            link.format,
-            SourceFormat::TarXz {
-                strip_components: 1
-            }
-        );
-    }
-
-    #[test]
-    fn test_resolve_typst_link_for_linux_armv7() {
-        let link = resolve_typst_link(request(Os::Linux, Arch::Armv7)).unwrap();
-
-        assert_eq!(
-            link.url,
-            "https://github.com/typst/typst/releases/download/v0.14.2/typst-armv7-unknown-linux-musleabi.tar.xz"
         );
         assert_eq!(
             link.format,

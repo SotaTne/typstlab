@@ -36,7 +36,6 @@ pub enum Arch {
     X86_64,
     Aarch64,
     Riscv64,
-    Armv7,
 }
 
 impl Arch {
@@ -56,16 +55,10 @@ impl Arch {
             Self::Riscv64
         }
 
-        #[cfg(all(target_arch = "arm", target_feature = "v7"))]
-        {
-            Self::Armv7
-        }
-
         #[cfg(not(any(
             target_arch = "x86_64",
             target_arch = "aarch64",
-            target_arch = "riscv64",
-            all(target_arch = "arm", target_feature = "v7")
+            target_arch = "riscv64"
         )))]
         {
             compile_error!("Unsupported architecture");

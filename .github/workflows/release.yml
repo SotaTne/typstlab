@@ -29,9 +29,6 @@ jobs:
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
             cross: true
-          - target: armv7-unknown-linux-musleabi
-            os: ubuntu-latest
-            cross: true
           - target: riscv64gc-unknown-linux-gnu
             os: ubuntu-latest
             cross: true
