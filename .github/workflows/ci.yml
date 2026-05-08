@@ -3,18 +3,8 @@ name: CI
 on:
   push:
     branches: [ main ]
-    paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".github/workflows/ci.yml"
   pull_request:
     branches: [ main ]
-    paths:
-      - "crates/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".github/workflows/ci.yml"
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,19 +20,36 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: dorny/paths-filter@v4
+        id: changes
+        with:
+          filters: |
+            rust:
+              - "crates/**"
+              - "Cargo.toml"
+              - "Cargo.lock"
+              - ".github/workflows/ci.yml"
+
+      - name: Skip Rust CI
+        if: steps.changes.outputs.rust != 'true'
+        run: echo "No Rust related files changed."
+
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.changes.outputs.rust == 'true'
         with:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.changes.outputs.rust == 'true'
 
       - name: fmt
-        if: matrix.os == 'ubuntu-latest'
+        if: steps.changes.outputs.rust == 'true' && matrix.os == 'ubuntu-latest'
         run: cargo fmt --all -- --check
 
       - name: clippy
-        if: matrix.os == 'ubuntu-latest'
+        if: steps.changes.outputs.rust == 'true' && matrix.os == 'ubuntu-latest'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: test
+        if: steps.changes.outputs.rust == 'true'
         run: cargo test --workspace --all-targets
