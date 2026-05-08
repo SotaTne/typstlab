@@ -1,0 +1,12 @@
+{
+  "name": "@typstlab/release",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "run:cli": "bun src/cli.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc -p tsconfig.json --noEmit",
+    "build:index": "bun build src/index.ts --target=node --bundle --outfile=dist/index.js",
+    "build:cli": "bun build src/cli.ts --target=node --bundle --outfile=dist/cli.js"
+  }
+}

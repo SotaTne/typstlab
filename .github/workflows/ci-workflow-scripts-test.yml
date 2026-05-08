@@ -24,7 +24,7 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('.github/scripts/bun.lock') }}
 
       - name: install
         run: bun install

@@ -38,7 +38,7 @@ function validateAndSetupEnv(opts: any) {
   process.env.GITHUB_TOKEN = opts.token;
   process.env.GITHUB_REPOSITORY = opts.repo;
   if (!process.env.GITHUB_WORKSPACE) {
-    process.env.GITHUB_WORKSPACE = path.resolve(__dirname, "../../../");
+    process.env.GITHUB_WORKSPACE = path.resolve(__dirname, "../../../../../");
   }
 }
 

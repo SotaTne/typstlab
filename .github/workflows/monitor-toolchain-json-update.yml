@@ -30,5 +30,5 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const { jobMonitorToolchainUpdate } = await import('${{ github.workspace }}/.github/scripts/dist/index.js');
+            const { jobMonitorToolchainUpdate } = await import('${{ github.workspace }}/.github/scripts/packages/toolchain-monitor/dist/index.js');
             await jobMonitorToolchainUpdate({ github, context, core });

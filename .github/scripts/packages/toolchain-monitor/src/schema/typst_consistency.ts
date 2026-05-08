@@ -1,7 +1,8 @@
-import type { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { extractVersion } from "../utils/version_extractor";
 
-export type GitHubReleases = RestEndpointMethodTypes["repos"]["listReleases"]["response"]["data"];
+export type GitHubReleases = Array<{
+  tag_name: string;
+}>;
 
 export interface ConsistencyResult {
   missingInSchema: string[];

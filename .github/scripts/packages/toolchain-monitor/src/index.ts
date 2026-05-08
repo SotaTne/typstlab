@@ -17,7 +17,7 @@ export async function jobCheckTypstSchemaConsistency(args: AsyncFunctionArgument
 
   // 1. スキーマファイルの調達
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const workspaceRoot = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, "../../../");
+  const workspaceRoot = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, "../../../../../");
 
   const schemaPath = path.join(
     workspaceRoot,
@@ -71,7 +71,7 @@ export async function jobMonitorToolchainUpdate(args: AsyncFunctionArguments) {
   const resolverRelativeDir = "crates/typstlab-base/src/version_resolver_jsons";
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const workspaceRoot = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, "../../../");
+  const workspaceRoot = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, "../../../../../");
   const resolverDir = path.join(workspaceRoot, resolverRelativeDir);
 
   if (!fs.existsSync(resolverDir)) {

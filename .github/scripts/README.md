@@ -1,6 +1,11 @@
-# typstlab-scripts
+# typstlab-github-scripts
 
-GitHub Actions から呼び出す TypeScript スクリプト群です。
+GitHub Actions から呼び出す TypeScript スクリプト群です。Bun workspace として管理し、用途ごとに package を分けています。
+
+## Packages
+
+- `@typstlab/toolchain-monitor`: Typst toolchain / resolver JSON の監視と schema check
+- `@typstlab/release`: release automation 用 helper
 
 ## Setup
 
@@ -11,15 +16,22 @@ bun install
 ## Test
 
 ```bash
-bun test
+bun run test
+```
+
+## Typecheck
+
+```bash
+bun run typecheck
 ```
 
 ## Build
 
-Actions から読み込む `dist/index.js` を作ります。
+Actions から読み込む package ごとの `dist/index.js` を作ります。
 
 ```bash
 bun run build:index
+bun run build:cli
 ```
 
 ## JSON Check
@@ -41,19 +53,20 @@ bun run json-check
 
 ## Local check
 
-`actions/github-script` から呼ばれる本体は `src/index.ts` の
+`actions/github-script` から呼ばれる本体は `packages/toolchain-monitor/src/index.ts` の
 `jobCheckTypstSchemaConsistency` です。
 
 ```bash
 bun run build:index
-node --input-type=module -e "import('./dist/index.js').then((m) => console.log(Object.keys(m)))"
+node --input-type=module -e "import('./packages/toolchain-monitor/dist/index.js').then((m) => console.log(Object.keys(m)))"
 ```
 
 ## CLI
 
-ローカルで手動実行する場合は `src/cli.ts` を使います。
+ローカルで手動実行する場合は package ごとの CLI を使います。
 
 ```bash
-bun run cli list
-bun run cli run jobCheckTypstSchemaConsistency
+bun --filter '@typstlab/toolchain-monitor' run:cli list
+bun --filter '@typstlab/toolchain-monitor' run:cli run jobCheckTypstSchemaConsistency
+bun --filter '@typstlab/release' run:cli validate-version v0.1.0
 ```

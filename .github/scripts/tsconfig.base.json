@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    // Environment setup & latest features
     "lib": [
       "ESNext"
     ],
@@ -9,7 +8,6 @@
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,
-    // Bundler mode
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -17,20 +15,13 @@
     "types": [
       "bun"
     ],
-    // Best practices
     "strict": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false,
-    "rootDir": "./src",
-  },
-  "exclude": [
-    "ajv/*",
-    "dist/*"
-  ]
+    "noPropertyAccessFromIndexSignature": false
+  }
 }

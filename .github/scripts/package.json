@@ -1,19 +1,26 @@
 {
-  "name": "typstlab-scripts",
-  "module": "index.ts",
+  "name": "typstlab-github-scripts",
+  "private": true,
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "cli": "bun src/cli.ts",
-    "test": "bun test",
-    "typecheck": "bunx tsc -p tsconfig.json --noEmit",
-    "build:index": "bun build src/index.ts --target=node --bundle --outfile=dist/index.js",
-    "build:cli": "bun build src/cli.ts --target=node --bundle --outfile=dist/cli.js",
-    "json-check:schema": "bunx ajv-cli compile --spec=draft7 -c ./ajv/version_ignores.cjs -s ../../crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json",
-    "json-check:files": "find ../../crates/typstlab-base/src/version_resolver_jsons -name \"*.json\" ! -name \"typst_version_schema.json\" -print0 | xargs -0 -n1 bunx ajv-cli validate --spec=draft7 -c ./ajv/version_ignores.cjs -s ../../crates/typstlab-base/src/version_resolver_jsons/typst_version_schema.json -d",
+    "test": "bun --filter '*' test",
+    "typecheck": "bun --filter '*' typecheck",
+    "build:index": "bun --filter '*' build:index",
+    "build:cli": "bun --filter '*' build:cli",
+    "json-check:schema": "bun --filter '@typstlab/toolchain-monitor' json-check:schema",
+    "json-check:files": "bun --filter '@typstlab/toolchain-monitor' json-check:files",
     "json-check": "bun run json-check:schema && bun run json-check:files"
   },
   "devDependencies": {
+    "@actions/core": "latest",
+    "@actions/exec": "latest",
+    "@actions/github": "latest",
     "@actions/github-script": "github:actions/github-script",
+    "@actions/glob": "latest",
+    "@actions/io": "latest",
     "@types/bun": "latest",
     "commander": "^14.0.3",
     "typescript": "^6"

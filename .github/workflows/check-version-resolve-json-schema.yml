@@ -2,17 +2,17 @@ name: JSON Schema Validation
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - "crates/typstlab-base/src/version_resolver_jsons/*.json"
       - ".github/workflows/check-version-resolve-json-schema.yml"
-      - ".github/scripts/ajv/*.cjs"
+      - ".github/scripts/packages/toolchain-monitor/ajv/*.cjs"
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - "crates/typstlab-base/src/version_resolver_jsons/*.json"
       - ".github/workflows/check-version-resolve-json-schema.yml"
-      - ".github/scripts/ajv/*.cjs"
+      - ".github/scripts/packages/toolchain-monitor/ajv/*.cjs"
 
   workflow_dispatch:
 

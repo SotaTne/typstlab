@@ -30,5 +30,5 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const { jobCheckTypstSchemaConsistency } = await import('${{ github.workspace }}/.github/scripts/dist/index.js');
+            const { jobCheckTypstSchemaConsistency } = await import('${{ github.workspace }}/.github/scripts/packages/toolchain-monitor/dist/index.js');
             await jobCheckTypstSchemaConsistency({ github, context, core });
