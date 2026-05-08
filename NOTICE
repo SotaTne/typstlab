@@ -1,0 +1,14 @@
+typstlab
+Copyright 2026 Sota Tsunemine
+
+typstlab depends on the work of the Typst project and related community
+projects. In particular, typstlab resolves, downloads, caches, and invokes
+release artifacts produced by:
+
+- Typst: https://github.com/typst/typst
+- Typst documentation builds: https://github.com/typst-community/dev-builds
+
+Those projects and artifacts remain governed by their respective licenses,
+copyright notices, and attribution requirements.
+
+typstlab is not part of, endorsed by, or maintained by those upstream projects.
