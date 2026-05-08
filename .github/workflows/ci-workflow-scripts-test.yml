@@ -3,14 +3,8 @@ name: CI (workflow scripts test)
 on:
   push:
     branches: [ main ]
-    paths:
-      - ".github/scripts/**"
-      - ".github/workflows/ci-workflow-scripts-test.yml"
   pull_request:
     branches: [ main ]
-    paths:
-      - ".github/scripts/**"
-      - ".github/workflows/ci-workflow-scripts-test.yml"
 
 jobs:
   ci:
@@ -18,26 +12,44 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: dorny/paths-filter@v4
+        id: changes
+        with:
+          filters: |
+            scripts:
+              - ".github/scripts/**"
+              - ".github/workflows/ci-workflow-scripts-test.yml"
+
+      - name: Skip workflow scripts test
+        if: steps.changes.outputs.scripts != 'true'
+        run: echo "No workflow script files changed."
+
       - uses: oven-sh/setup-bun@v2
+        if: steps.changes.outputs.scripts == 'true'
 
       - uses: actions/cache@v5
+        if: steps.changes.outputs.scripts == 'true'
         with:
           path: |
             ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('.github/scripts/bun.lock') }}
 
       - name: install
+        if: steps.changes.outputs.scripts == 'true'
         run: bun install
         working-directory: .github/scripts
 
       - name: typecheck
+        if: steps.changes.outputs.scripts == 'true'
         run: bun run typecheck
         working-directory: .github/scripts
 
       - name: build
+        if: steps.changes.outputs.scripts == 'true'
         run: bun run build:index
         working-directory: .github/scripts
 
       - name: test
+        if: steps.changes.outputs.scripts == 'true'
         run: bun test
         working-directory: .github/scripts

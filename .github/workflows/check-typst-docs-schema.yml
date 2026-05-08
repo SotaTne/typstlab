@@ -3,22 +3,8 @@ name: Check Typst Docs Schema
 on:
   push:
     branches: [main]
-    paths:
-      - "crates/typstlab-base/src/docs_parser/**"
-      - "crates/typstlab-base/src/version_resolver_jsons/type_docs.json"
-      - "crates/typstlab-base/Cargo.toml"
-      - "crates/xtask/**"
-      - ".cargo/config.toml"
-      - ".github/workflows/check-typst-docs-schema.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "crates/typstlab-base/src/docs_parser/**"
-      - "crates/typstlab-base/src/version_resolver_jsons/type_docs.json"
-      - "crates/typstlab-base/Cargo.toml"
-      - "crates/xtask/**"
-      - ".cargo/config.toml"
-      - ".github/workflows/check-typst-docs-schema.yml"
   workflow_dispatch:
 
 env:
@@ -32,11 +18,30 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: dorny/paths-filter@v4
+        id: changes
+        with:
+          filters: |
+            docs:
+              - "crates/typstlab-base/src/docs_parser/**"
+              - "crates/typstlab-base/src/version_resolver_jsons/type_docs.json"
+              - "crates/typstlab-base/Cargo.toml"
+              - "crates/xtask/**"
+              - ".cargo/config.toml"
+              - ".github/workflows/check-typst-docs-schema.yml"
+
+      - name: Skip docs schema check
+        if: github.event_name != 'workflow_dispatch' && steps.changes.outputs.docs != 'true'
+        run: echo "No docs schema related files changed."
+
       - uses: dtolnay/rust-toolchain@stable
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.docs == 'true'
 
       - uses: Swatinem/rust-cache@v2
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.docs == 'true'
 
       - uses: actions/cache@v5
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.docs == 'true'
         with:
           path: ${{ env.DOCS_CACHE_DIR }}
           key: typst-docs-json-${{ hashFiles('crates/typstlab-base/src/version_resolver_jsons/type_docs.json') }}
@@ -44,6 +49,7 @@ jobs:
             typst-docs-json-
 
       - name: Fetch Typst docs.json releases
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.docs == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -76,6 +82,7 @@ jobs:
           done < "$DOCS_CACHE_DIR/version-set.txt"
 
       - name: Check docs schema
+        if: github.event_name == 'workflow_dispatch' || steps.changes.outputs.docs == 'true'
         shell: bash
         run: |
           set -euo pipefail
