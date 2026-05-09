@@ -1,39 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { extractReleaseNotesSection, validateReleaseNotes } from "./parser";
-import { DEFAULT_RELEASE_NOTE_CATEGORIES } from "./struct";
-import { renderReleaseNoteEntries } from "./writer";
-
-describe("extractReleaseNotesSection", () => {
-  test("extracts content until the next level-2 heading", () => {
-    const result = extractReleaseNotesSection(
-      [
-        "## Summary",
-        "",
-        "Internal summary.",
-        "",
-        "## Release Notes",
-        "",
-        "- Added: Support release PR generation.",
-        "",
-        "## Test Plan",
-        "",
-        "- bun test",
-      ].join("\n"),
-      "Release Notes",
-    );
-
-    expect(result).toEqual({
-      kind: "found",
-      content: "- Added: Support release PR generation.",
-    });
-  });
-
-  test("returns missing when the heading is absent", () => {
-    expect(extractReleaseNotesSection("## Summary\n\nNo notes.", "Release Notes")).toEqual({
-      kind: "missing",
-    });
-  });
-});
+import { validateReleaseNotes } from "./validate_release_notes.ts";
+import { DEFAULT_RELEASE_NOTE_CATEGORIES } from "./struct.ts";
 
 describe("validateReleaseNotes", () => {
   test("accepts Keep a Changelog categories", () => {
@@ -146,23 +113,5 @@ describe("validateReleaseNotes", () => {
         "release note text must not be empty: - Fixed:",
       ],
     });
-  });
-});
-
-describe("renderReleaseNoteEntries", () => {
-  test("renders categorized and Other entries", () => {
-    expect(
-      renderReleaseNoteEntries([
-        { category: "Added", text: "Support release PR generation." },
-        { category: "Other", text: "Improve release automation diagnostics." },
-        { category: "Fixed", text: "Reject malformed release note entries." },
-      ]),
-    ).toBe(
-      [
-        "- Added: Support release PR generation.",
-        "- Improve release automation diagnostics.",
-        "- Fixed: Reject malformed release note entries.",
-      ].join("\n"),
-    );
   });
 });
