@@ -71,6 +71,17 @@ describe("validateReleaseNotes", () => {
     });
   });
 
+  test("rejects an empty release note section", () => {
+    expect(
+      validateReleaseNotes("\n\n", {
+        allowedCategories: DEFAULT_RELEASE_NOTE_CATEGORIES,
+      }),
+    ).toEqual({
+      kind: "invalid",
+      errors: ["release note section must not be empty"],
+    });
+  });
+
   test("treats a single N/A item as ignored", () => {
     expect(
       validateReleaseNotes("- N/A", {

@@ -7,6 +7,21 @@ export {
 } from "./version/version_validator.ts";
 
 export {
+  loadReleaseConfig,
+} from "./config/load_config.ts";
+export {
+  countVersionPlaceholders,
+  expandVersionPattern,
+  parseAllowedCategories,
+  parseReleaseDraft,
+  validateReleaseConfig,
+} from "./config/validate_config.ts";
+export {
+  type ReleaseConfig,
+  type ValidateReleaseConfigResult,
+} from "./config/struct.ts";
+
+export {
   extractChangelogReleaseSection,
   parseChangelogDocument,
 } from "./changelog/extract_changelog_section.ts";
@@ -42,3 +57,10 @@ export {
   renderReleaseNoteEntries,
 } from "./changelog/render_changelog_section.ts";
 export { upsertChangelogRelease } from "./changelog/update_changelog.ts";
+export {
+  analyzePullRequestForRelease,
+  isReleasePrCandidate,
+  type PrCheckFinding,
+  type PrCheckResult,
+  type PullRequestLike,
+} from "./commands/pr_check.ts";

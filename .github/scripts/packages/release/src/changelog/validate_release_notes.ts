@@ -12,6 +12,14 @@ export function validateReleaseNotes(
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return {
+      kind: "invalid",
+      errors: ["release note section must not be empty"],
+    };
+  }
+
   const allowedCategories = new Set(options.allowedCategories);
   const entries: ReleaseNoteEntry[] = [];
   const errors: string[] = [];
