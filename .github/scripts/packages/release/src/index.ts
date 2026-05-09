@@ -1,66 +1,29 @@
-export {
-  isStableVersion,
-  isVersionTag,
-  normalizeVersion,
-  parseStableVersion,
-  type StableVersion,
-} from "./version/version_validator.ts";
+import { loadReleaseConfig } from "./config/load_config.ts";
+import type { ReleaseConfig, ValidateReleaseConfigResult } from "./config/struct.ts";
+import { analyzePullRequestForRelease, analyzePullRequestForReleaseFromActionArgs } from "./commands/pr_check.ts";
+import type { PrCheckResult } from "./commands/pr_check.ts";
+import type { AsyncFunctionArguments } from "@actions/github-script";
+import { normalizeVersion } from "./version/version_validator.ts";
 
-export {
-  loadReleaseConfig,
-} from "./config/load_config.ts";
-export {
-  countVersionPlaceholders,
-  expandVersionPattern,
-  parseAllowedCategories,
-  parseReleaseDraft,
-  validateReleaseConfig,
-} from "./config/validate_config.ts";
-export {
-  type ReleaseConfig,
-  type ValidateReleaseConfigResult,
-} from "./config/struct.ts";
+export type { ReleaseConfig, ValidateReleaseConfigResult, PrCheckResult };
 
-export {
-  extractChangelogReleaseSection,
-  parseChangelogDocument,
-} from "./changelog/extract_changelog_section.ts";
-export {
-  extractReleaseNotesSection,
-} from "./changelog/extract_release_notes.ts";
-export { validateReleaseNotes } from "./changelog/validate_release_notes.ts";
-export {
-  guardChangelogUpdate,
-  hasChangelogPathChange,
-} from "./changelog/guard_changelog_update.ts";
-export {
-  type ChangelogDocument,
-  type ChangelogEntry,
-  type ChangelogRelease,
-  DEFAULT_RELEASE_NOTE_CATEGORIES,
-  type ExtractChangelogSectionResult,
-  type ExtractReleaseNotesSectionResult,
-  type GuardChangelogUpdateOptions,
-  type GuardChangelogUpdateResult,
-  type ParseChangelogDocumentResult,
-  type PullRequestRef,
-  type ReleaseNoteCategory,
-  type ReleaseNoteEntry,
-  type RepositoryRef,
-  type ValidateReleaseNotesOptions,
-  type ValidateReleaseNotesResult,
-} from "./changelog/struct.ts";
-export {
-  renderChangelogDocument,
-  renderChangelogRelease,
-  renderChangelogSection,
-  renderReleaseNoteEntries,
-} from "./changelog/render_changelog_section.ts";
-export { upsertChangelogRelease } from "./changelog/update_changelog.ts";
-export {
-  analyzePullRequestForRelease,
-  isReleasePrCandidate,
-  type PrCheckFinding,
-  type PrCheckResult,
-  type PullRequestLike,
-} from "./commands/pr_check.ts";
+export { loadReleaseConfig };
+
+export function validateVersion(version: string): string {
+  return normalizeVersion(version);
+}
+
+export function runPrCheckFromJson(
+  config: ReleaseConfig,
+  pullRequestJson: string,
+): PrCheckResult {
+  const pullRequest = JSON.parse(pullRequestJson) as Parameters<typeof analyzePullRequestForRelease>[1];
+  return analyzePullRequestForRelease(config, pullRequest);
+}
+
+export async function runPrCheckFromActionArgs(
+  config: ReleaseConfig,
+  args: Pick<AsyncFunctionArguments, "github" | "context">,
+): Promise<PrCheckResult> {
+  return analyzePullRequestForReleaseFromActionArgs(config, args);
+}

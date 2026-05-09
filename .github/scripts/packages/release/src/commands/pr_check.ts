@@ -1,15 +1,10 @@
+import type { AsyncFunctionArguments } from "@actions/github-script";
 import { extractReleaseNotesSection } from "../changelog/extract_release_notes.ts";
 import { guardChangelogUpdate } from "../changelog/guard_changelog_update.ts";
 import type { ReleaseConfig } from "../config/struct.ts";
 import { validateReleaseNotes } from "../changelog/validate_release_notes.ts";
-
-export type PullRequestLike = {
-  body: string;
-  changedPaths: readonly string[];
-  headRefName: string;
-  title: string;
-  labels: readonly string[];
-};
+import { loadPullRequestLikeFromActionArgs, loadPullRequestLikeFromGitHub } from "../github/collect_pull_requests.ts";
+import type { GitHubClientLike, GitHubContextLike, PullRequestLike } from "../github/struct.ts";
 
 export type PrCheckFinding = {
   severity: "warning" | "failure";
@@ -83,6 +78,25 @@ export function analyzePullRequestForRelease(
   }
 
   return { kind: "pass", findings, isReleaseCandidate };
+}
+
+export async function analyzePullRequestForReleaseFromGitHub(
+  config: ReleaseConfig,
+  github: GitHubClientLike,
+  context: GitHubContextLike,
+  pullNumber = context.payload.pull_request?.number,
+): Promise<PrCheckResult> {
+  const pullRequest = await loadPullRequestLikeFromGitHub(github, context, pullNumber);
+  return analyzePullRequestForRelease(config, pullRequest);
+}
+
+export async function analyzePullRequestForReleaseFromActionArgs(
+  config: ReleaseConfig,
+  args: Pick<AsyncFunctionArguments, "github" | "context">,
+  pullNumber = args.context.payload.pull_request?.number,
+): Promise<PrCheckResult> {
+  const pullRequest = await loadPullRequestLikeFromActionArgs(args, pullNumber);
+  return analyzePullRequestForRelease(config, pullRequest);
 }
 
 export function isReleasePrCandidate(

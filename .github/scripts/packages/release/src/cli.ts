@@ -1,8 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
-import { loadReleaseConfig } from "./config/load_config.ts";
-import { analyzePullRequestForRelease } from "./commands/pr_check.ts";
-import { normalizeVersion } from "./version/version_validator.ts";
+import { loadReleaseConfig, runPrCheckFromJson, validateVersion } from "./index.ts";
 
 const program = new Command();
 
@@ -16,7 +14,7 @@ program
   .description("Validate a stable semver version or v-prefixed tag")
   .action((version: string) => {
     try {
-      console.log(normalizeVersion(version));
+      console.log(validateVersion(version));
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -54,15 +52,7 @@ program
     }
 
     const input = await readFile(options.input, "utf-8");
-    const pullRequest = JSON.parse(input) as {
-      body: string;
-      changedPaths: readonly string[];
-      headRefName: string;
-      title: string;
-      labels: readonly string[];
-    };
-
-    const result = analyzePullRequestForRelease(config.config, pullRequest);
+    const result = runPrCheckFromJson(config.config, input);
     console.log(JSON.stringify(result, null, 2));
 
     if (result.kind === "failure") {

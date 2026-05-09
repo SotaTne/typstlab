@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { analyzePullRequestForRelease, isReleasePrCandidate } from "./pr_check.ts";
+import {
+  analyzePullRequestForRelease,
+  analyzePullRequestForReleaseFromGitHub,
+  isReleasePrCandidate,
+} from "./pr_check.ts";
 
 const config = {
   changelogPath: "CHANGELOG.md",
@@ -176,6 +180,39 @@ describe("analyzePullRequestForRelease", () => {
           message: "missing ## Release Notes section",
         },
       ],
+      isReleaseCandidate: true,
+    });
+  });
+
+  test("loads the pull request from github context", async () => {
+    const github = {
+      rest: {
+        pulls: {
+          get: () =>
+            Promise.resolve({
+              data: {
+                body: [
+                  "## Release Notes",
+                  "",
+                  "- Added: Support release automation.",
+                ].join("\n"),
+                title: "release: v1.2.3",
+                head: { ref: "release/v1.2.3" },
+                labels: [{ name: "release-pr" }],
+              },
+            }),
+          listFiles: () => Promise.resolve({ data: [{ filename: "CHANGELOG.md" }] }),
+        },
+      },
+    } as any;
+    const context = {
+      repo: { owner: "owner", repo: "repo" },
+      payload: { pull_request: { number: 42 } },
+    } as any;
+
+    await expect(analyzePullRequestForReleaseFromGitHub(config, github, context)).resolves.toEqual({
+      kind: "pass",
+      findings: [],
       isReleaseCandidate: true,
     });
   });
