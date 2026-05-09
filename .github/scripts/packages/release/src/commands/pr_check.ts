@@ -33,7 +33,7 @@ export function analyzePullRequestForRelease(
   pullRequest: PullRequestLike,
 ): PrCheckResult {
   const findings: PrCheckFinding[] = [];
-  const isReleaseCandidate = isReleasePrCandidate(config, pullRequest);
+  const isReleaseCandidate = isReleasePr(config, pullRequest);
   const releaseNotesSection = extractReleaseNotesSection(pullRequest.body, config.releaseNotesHeading);
 
   if (releaseNotesSection.kind === "missing") {
@@ -44,6 +44,7 @@ export function analyzePullRequestForRelease(
   } else {
     const releaseNotes = validateReleaseNotes(releaseNotesSection.content, {
       allowedCategories: config.allowedCategories,
+      fallbackCategory: config.fallbackCategory,
     });
 
     if (releaseNotes.kind === "invalid") {
@@ -99,13 +100,13 @@ export async function analyzePullRequestForReleaseFromActionArgs(
   return analyzePullRequestForRelease(config, pullRequest);
 }
 
-export function isReleasePrCandidate(
+export function isReleasePr(
   config: Pick<ReleaseConfig, "releaseBranchPattern" | "releasePrTitlePattern" | "releasePrLabel">,
   pullRequest: Pick<PullRequestLike, "headRefName" | "title" | "labels">,
 ): boolean {
   return (
-    matchesPattern(pullRequest.headRefName, config.releaseBranchPattern) ||
-    matchesPattern(pullRequest.title, config.releasePrTitlePattern) ||
+    matchesPattern(pullRequest.headRefName, config.releaseBranchPattern) &&
+    matchesPattern(pullRequest.title, config.releasePrTitlePattern) &&
     pullRequest.labels.includes(config.releasePrLabel)
   );
 }

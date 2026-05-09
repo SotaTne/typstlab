@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_RELEASE_NOTE_CATEGORIES, type AllowedReleaseNoteCategory } from "../changelog/struct.ts";
 import {
   countVersionPlaceholders,
   expandVersionPattern,
   parseAllowedCategories,
+  parseFallbackCategory,
   parseReleaseDraft,
   validateReleaseConfig,
 } from "./validate_config.ts";
@@ -19,13 +21,40 @@ describe("parseReleaseDraft", () => {
   });
 });
 
+describe("parseFallbackCategory", () => {
+  test("defaults to Other when env is empty", () => {
+    expect(parseFallbackCategory(undefined)).toBe("Other");
+  });
+
+  test("accepts explicit null", () => {
+    expect(parseFallbackCategory("null")).toBeNull();
+  });
+
+  test("accepts Other", () => {
+    expect(parseFallbackCategory("Other")).toBe("Other");
+  });
+
+  test("rejects non-fallback categories", () => {
+    expect(parseFallbackCategory("Added")).toBeUndefined();
+    expect(parseFallbackCategory("Performance")).toBeUndefined();
+  });
+});
+
 describe("parseAllowedCategories", () => {
-  test("splits comma separated categories and trims whitespace", () => {
-    expect(parseAllowedCategories("Added, Changed ,Fixed", ["Other"])).toEqual([
+  test("defaults to explicit categories when env is empty", () => {
+    expect(parseAllowedCategories(undefined)).toEqual(DEFAULT_RELEASE_NOTE_CATEGORIES);
+  });
+
+  test("accepts comma separated categories", () => {
+    expect(parseAllowedCategories("Added, Fixed,Changed")).toEqual([
       "Added",
-      "Changed",
       "Fixed",
+      "Changed",
     ]);
+  });
+
+  test("rejects Other in allowed categories", () => {
+    expect(parseAllowedCategories("Added,Other")).toBeUndefined();
   });
 });
 
@@ -50,7 +79,8 @@ describe("validateReleaseConfig", () => {
         changelogTitle: "Changelog",
         changelogHeader: "Header",
         releaseNotesHeading: "Release Notes",
-        allowedCategories: ["Added", "Other"],
+        allowedCategories: DEFAULT_RELEASE_NOTE_CATEGORIES,
+        fallbackCategory: "Other",
         releaseBranchPattern: "release/v{version}",
         releaseTagPattern: "v{version}",
         releasePrTitlePattern: "release: v{version}",
@@ -64,7 +94,8 @@ describe("validateReleaseConfig", () => {
         changelogTitle: "Changelog",
         changelogHeader: "Header",
         releaseNotesHeading: "Release Notes",
-        allowedCategories: ["Added", "Other"],
+        allowedCategories: DEFAULT_RELEASE_NOTE_CATEGORIES,
+        fallbackCategory: "Other",
         releaseBranchPattern: "release/v{version}",
         releaseTagPattern: "v{version}",
         releasePrTitlePattern: "release: v{version}",
@@ -81,7 +112,8 @@ describe("validateReleaseConfig", () => {
         changelogTitle: "",
         changelogHeader: "",
         releaseNotesHeading: "",
-        allowedCategories: [],
+        allowedCategories: DEFAULT_RELEASE_NOTE_CATEGORIES,
+        fallbackCategory: "Other",
         releaseBranchPattern: "release/v",
         releaseTagPattern: "v{version}-{version}",
         releasePrTitlePattern: "release: v{version}",
@@ -96,10 +128,75 @@ describe("validateReleaseConfig", () => {
         "CHANGELOG_HEADER must not be empty",
         "RELEASE_NOTES_HEADING must not be empty",
         "RELEASE_PR_LABEL must not be empty",
-        "ALLOWED_CATEGORIES must not be empty",
         'RELEASE_BRANCH_PATTERN must contain "{version}" exactly once',
         'RELEASE_TAG_PATTERN must contain "{version}" exactly once',
       ],
+    });
+  });
+
+  test("accepts configurations with null fallback category", () => {
+    expect(
+      validateReleaseConfig({
+        changelogPath: "CHANGELOG.md",
+        changelogTitle: "Changelog",
+        changelogHeader: "Header",
+        releaseNotesHeading: "Release Notes",
+        allowedCategories: DEFAULT_RELEASE_NOTE_CATEGORIES,
+        fallbackCategory: null,
+        releaseBranchPattern: "release/v{version}",
+        releaseTagPattern: "v{version}",
+        releasePrTitlePattern: "release: v{version}",
+        releasePrLabel: "release-pr",
+        releaseDraft: true,
+      }),
+    ).toEqual({
+      kind: "valid",
+      config: expect.objectContaining({
+        fallbackCategory: null,
+      }),
+    });
+  });
+
+  test("rejects fallback categories other than Other or null", () => {
+    expect(
+      validateReleaseConfig({
+        changelogPath: "CHANGELOG.md",
+        changelogTitle: "Changelog",
+        changelogHeader: "Header",
+        releaseNotesHeading: "Release Notes",
+        allowedCategories: DEFAULT_RELEASE_NOTE_CATEGORIES,
+        fallbackCategory: "Added" as never,
+        releaseBranchPattern: "release/v{version}",
+        releaseTagPattern: "v{version}",
+        releasePrTitlePattern: "release: v{version}",
+        releasePrLabel: "release-pr",
+        releaseDraft: true,
+      }),
+    ).toEqual({
+      kind: "invalid",
+      errors: ["FALLBACK_CATEGORY must be Other or null"],
+    });
+  });
+
+  test("rejects allowed categories that include Other", () => {
+    expect(
+      validateReleaseConfig({
+        changelogPath: "CHANGELOG.md",
+        changelogTitle: "Changelog",
+        changelogHeader: "Header",
+        releaseNotesHeading: "Release Notes",
+        allowedCategories:
+          [...DEFAULT_RELEASE_NOTE_CATEGORIES, "Other" as const] as unknown as readonly AllowedReleaseNoteCategory[],
+        fallbackCategory: "Other",
+        releaseBranchPattern: "release/v{version}",
+        releaseTagPattern: "v{version}",
+        releasePrTitlePattern: "release: v{version}",
+        releasePrLabel: "release-pr",
+        releaseDraft: true,
+      }),
+    ).toEqual({
+      kind: "invalid",
+      errors: ["ALLOWED_CATEGORIES must not include Other"],
     });
   });
 });

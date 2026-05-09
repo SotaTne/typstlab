@@ -1,3 +1,7 @@
+import {
+  DEFAULT_RELEASE_NOTE_CATEGORIES,
+  type AllowedReleaseNoteCategory,
+} from "../changelog/struct.ts";
 import type { ReleaseConfig, ValidateReleaseConfigResult } from "./struct.ts";
 
 export function validateReleaseConfig(config: ReleaseConfig): ValidateReleaseConfigResult {
@@ -11,10 +15,8 @@ export function validateReleaseConfig(config: ReleaseConfig): ValidateReleaseCon
   validateRequiredText(config.releaseTagPattern, "RELEASE_TAG_PATTERN", errors);
   validateRequiredText(config.releasePrTitlePattern, "RELEASE_PR_TITLE_PATTERN", errors);
   validateRequiredText(config.releasePrLabel, "RELEASE_PR_LABEL", errors);
-
-  if (config.allowedCategories.length === 0) {
-    errors.push("ALLOWED_CATEGORIES must not be empty");
-  }
+  validateAllowedCategories(config.allowedCategories, errors);
+  validateFallbackCategory(config.fallbackCategory, errors);
 
   validatePattern(config.releaseBranchPattern, "RELEASE_BRANCH_PATTERN", errors);
   validatePattern(config.releaseTagPattern, "RELEASE_TAG_PATTERN", errors);
@@ -43,15 +45,50 @@ export function parseReleaseDraft(value: string | undefined): boolean | null {
   return null;
 }
 
-export function parseAllowedCategories(value: string | undefined, fallback: readonly string[]): string[] {
+export function parseFallbackCategory(value: string | undefined): "Other" | null | undefined {
   if (value === undefined || value.trim().length === 0) {
-    return [...fallback];
+    return "Other";
   }
 
-  return value
+  if (value === "null") {
+    return null;
+  }
+
+  if (value === "Other") {
+    return value;
+  }
+
+  return undefined;
+}
+
+export function parseAllowedCategories(
+  value: string | undefined,
+): readonly AllowedReleaseNoteCategory[] | undefined {
+  if (value === undefined || value.trim().length === 0) {
+    return DEFAULT_RELEASE_NOTE_CATEGORIES;
+  }
+
+  const categories = value
     .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
+    .map((category) => category.trim())
+    .filter((category) => category.length > 0);
+
+  if (categories.length === 0) {
+    return undefined;
+  }
+
+  const parsed: AllowedReleaseNoteCategory[] = [];
+  for (const category of categories) {
+    if (!isAllowedReleaseNoteCategory(category)) {
+      return undefined;
+    }
+
+    if (!parsed.includes(category)) {
+      parsed.push(category);
+    }
+  }
+
+  return parsed;
 }
 
 export function countVersionPlaceholders(pattern: string): number {
@@ -73,4 +110,38 @@ function validatePattern(pattern: string, name: string, errors: string[]): void 
   if (count !== 1) {
     errors.push(`${name} must contain "{version}" exactly once`);
   }
+}
+
+function validateAllowedCategories(
+  allowedCategories: readonly AllowedReleaseNoteCategory[],
+  errors: string[],
+): void {
+  if (allowedCategories.length === 0) {
+    errors.push("ALLOWED_CATEGORIES must not be empty");
+    return;
+  }
+
+  if ((allowedCategories as readonly string[]).includes("Other")) {
+    errors.push("ALLOWED_CATEGORIES must not include Other");
+    return;
+  }
+
+  for (const category of allowedCategories) {
+    if (!isAllowedReleaseNoteCategory(category)) {
+      errors.push("ALLOWED_CATEGORIES must contain only known release note categories");
+      return;
+    }
+  }
+}
+
+function validateFallbackCategory(fallbackCategory: "Other" | null, errors: string[]): void {
+  if (fallbackCategory === null || fallbackCategory === "Other") {
+    return;
+  }
+
+  errors.push("FALLBACK_CATEGORY must be Other or null");
+}
+
+function isAllowedReleaseNoteCategory(value: string): value is AllowedReleaseNoteCategory {
+  return (DEFAULT_RELEASE_NOTE_CATEGORIES as readonly string[]).includes(value);
 }

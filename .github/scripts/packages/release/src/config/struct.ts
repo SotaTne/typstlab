@@ -1,9 +1,12 @@
+import type { AllowedReleaseNoteCategory } from "../changelog/struct.ts";
+
 export type ReleaseConfig = {
   changelogPath: string;
   changelogTitle: string;
   changelogHeader: string;
   releaseNotesHeading: string;
-  allowedCategories: readonly string[];
+  allowedCategories: readonly AllowedReleaseNoteCategory[];
+  fallbackCategory: "Other" | null;
   releaseBranchPattern: string;
   releaseTagPattern: string;
   releasePrTitlePattern: string;

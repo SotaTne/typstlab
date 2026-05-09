@@ -1,16 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_RELEASE_NOTE_CATEGORIES } from "../changelog/struct.ts";
+import type { ReleaseConfig } from "../config/struct.ts";
 import {
   analyzePullRequestForRelease,
   analyzePullRequestForReleaseFromGitHub,
-  isReleasePrCandidate,
+  isReleasePr,
 } from "./pr_check.ts";
 
-const config = {
+const config: ReleaseConfig = {
   changelogPath: "CHANGELOG.md",
   changelogTitle: "Changelog",
   changelogHeader: "Header",
   releaseNotesHeading: "Release Notes",
-  allowedCategories: ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security", "Other"],
+  allowedCategories: DEFAULT_RELEASE_NOTE_CATEGORIES,
+  fallbackCategory: "Other",
   releaseBranchPattern: "release/v{version}",
   releaseTagPattern: "v{version}",
   releasePrTitlePattern: "release: v{version}",
@@ -18,31 +21,45 @@ const config = {
   releaseDraft: true,
 };
 
-describe("isReleasePrCandidate", () => {
-  test("matches branch, title, and label", () => {
+describe("isReleasePr", () => {
+  test("returns true only when branch, title, and label all match", () => {
     expect(
-      isReleasePrCandidate(config, {
+      isReleasePr(config, {
         headRefName: "release/v1.2.3",
-        title: "something else",
-        labels: [],
-      }),
-    ).toBe(true);
-
-    expect(
-      isReleasePrCandidate(config, {
-        headRefName: "feature/foo",
         title: "release: v1.2.3",
-        labels: [],
-      }),
-    ).toBe(true);
-
-    expect(
-      isReleasePrCandidate(config, {
-        headRefName: "feature/foo",
-        title: "something else",
         labels: ["release-pr"],
       }),
     ).toBe(true);
+  });
+
+  test("returns false when branch misses", () => {
+    expect(
+      isReleasePr(config, {
+        headRefName: "feature/foo",
+        title: "release: v1.2.3",
+        labels: ["release-pr"],
+      }),
+    ).toBe(false);
+  });
+
+  test("returns false when title misses", () => {
+    expect(
+      isReleasePr(config, {
+        headRefName: "release/v1.2.3",
+        title: "something else",
+        labels: ["release-pr"],
+      }),
+    ).toBe(false);
+  });
+
+  test("returns false when label misses", () => {
+    expect(
+      isReleasePr(config, {
+        headRefName: "release/v1.2.3",
+        title: "release: v1.2.3",
+        labels: ["bug"],
+      }),
+    ).toBe(false);
   });
 });
 

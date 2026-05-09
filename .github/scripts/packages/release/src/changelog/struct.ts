@@ -5,10 +5,11 @@ export const DEFAULT_RELEASE_NOTE_CATEGORIES = [
   "Removed",
   "Fixed",
   "Security",
-  "Other",
 ] as const;
 
-export type ReleaseNoteCategory = (typeof DEFAULT_RELEASE_NOTE_CATEGORIES)[number];
+export type AllowedReleaseNoteCategory = (typeof DEFAULT_RELEASE_NOTE_CATEGORIES)[number];
+
+export type ReleaseNoteCategory = AllowedReleaseNoteCategory | "Other";
 
 export type RepositoryRef = {
   owner: string;
@@ -56,7 +57,8 @@ export type ValidateReleaseNotesResult =
     };
 
 export type ValidateReleaseNotesOptions = {
-  allowedCategories: readonly string[];
+  allowedCategories: readonly AllowedReleaseNoteCategory[];
+  fallbackCategory: "Other" | null;
 };
 
 export type PullRequestRef = {

@@ -26,7 +26,7 @@ export function validateReleaseNotes(
   let hasIgnoredItem = false;
 
   for (const line of lines) {
-    const parsed = parseReleaseNoteLine(line, allowedCategories);
+    const parsed = parseReleaseNoteLine(line, allowedCategories, options.fallbackCategory);
 
     if (parsed.kind === "ignored") {
       hasIgnoredItem = true;
@@ -68,6 +68,7 @@ type ParseReleaseNoteLineResult =
 function parseReleaseNoteLine(
   line: string,
   allowedCategories: ReadonlySet<string>,
+  fallbackCategory: "Other" | null,
 ): ParseReleaseNoteLineResult {
   if (!line.startsWith("- ")) {
     return {
@@ -85,17 +86,17 @@ function parseReleaseNoteLine(
   const categoryMatch = item.match(/^([^:]+):\s*(.*)$/);
 
   if (categoryMatch === null) {
-    if (!allowedCategories.has("Other")) {
+    if (fallbackCategory === null) {
       return {
         kind: "invalid",
-        error: "Other category is required for release note items without a category prefix",
+        error: "release note items without a category prefix require a fallback category",
       };
     }
 
     return {
       kind: "entry",
       entry: {
-        category: "Other",
+        category: fallbackCategory,
         text: item,
       },
     };
