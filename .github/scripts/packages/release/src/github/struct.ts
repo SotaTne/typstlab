@@ -10,6 +10,9 @@ export type GitHubPullRequestHead = {
 };
 
 export type GitHubPullRequest = {
+  number?: number;
+  html_url?: string;
+  merged_at?: string | null;
   body: string | null;
   title: string;
   head: GitHubPullRequestHead;
@@ -44,9 +47,35 @@ export type GitHubRestPullsApi = {
   }>;
 };
 
+export type GitHubAssociatedPullRequest = GitHubPullRequest & {
+  number: number;
+  html_url: string;
+  merged_at: string | null;
+};
+
+export type GitHubRestReposApi = {
+  listPullRequestsAssociatedWithCommit(params: {
+    owner: string;
+    repo: string;
+    commit_sha: string;
+    per_page?: number;
+  }): Promise<{
+    data: readonly GitHubAssociatedPullRequest[];
+  }>;
+};
+
 export type PullRequestLike = {
   body: string;
   changedPaths: readonly string[];
+  headRefName: string;
+  title: string;
+  labels: readonly string[];
+};
+
+export type ReleasePullRequestLike = {
+  number: number;
+  body: string;
+  htmlUrl: string;
   headRefName: string;
   title: string;
   labels: readonly string[];

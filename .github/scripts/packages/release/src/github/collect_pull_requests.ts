@@ -1,7 +1,15 @@
 import type { AsyncFunctionArguments } from "@actions/github-script";
+import type { GitCommit } from "../git/git.ts";
 import type { GitHubClientLike, GitHubContextLike, PullRequestLike } from "./struct.ts";
 import { getPullRequest } from "./github_client.ts";
 import { getPullRequestChangedPaths } from "./get_pr_changed_files.ts";
+import { findPullRequestsForCommit } from "./find_pr_for_commit.ts";
+import type { ReleasePullRequestLike } from "./struct.ts";
+
+export type ReleasePullRequestCollection = {
+  pullRequests: readonly ReleasePullRequestLike[];
+  unassociatedCommits: readonly GitCommit[];
+};
 
 export function toPullRequestLike(
   pullRequest: {
@@ -48,4 +56,33 @@ export async function loadPullRequestLikeFromActionArgs(
   pullNumber = args.context.payload.pull_request?.number,
 ): Promise<PullRequestLike> {
   return loadPullRequestLikeFromGitHub(args.github, args.context, pullNumber);
+}
+
+export async function collectPullRequestsForCommits(
+  github: GitHubClientLike,
+  owner: string,
+  repo: string,
+  commits: readonly GitCommit[],
+): Promise<ReleasePullRequestCollection> {
+  const pullRequestsByNumber = new Map<number, ReleasePullRequestLike>();
+  const unassociatedCommits: GitCommit[] = [];
+
+  for (const commit of commits) {
+    const result = await findPullRequestsForCommit(github, owner, repo, commit);
+    if (result.pullRequests.length === 0) {
+      unassociatedCommits.push(commit);
+      continue;
+    }
+
+    for (const pullRequest of result.pullRequests) {
+      if (!pullRequestsByNumber.has(pullRequest.number)) {
+        pullRequestsByNumber.set(pullRequest.number, pullRequest);
+      }
+    }
+  }
+
+  return {
+    pullRequests: [...pullRequestsByNumber.values()],
+    unassociatedCommits,
+  };
 }
