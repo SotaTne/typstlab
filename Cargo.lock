@@ -2414,11 +2414,11 @@ checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
 name = "typstlab"
-version = "0.0.0"
+version = "0.1.0"
 
 [[package]]
 name = "typstlab-app"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2437,7 +2437,7 @@ dependencies = [
 
 [[package]]
 name = "typstlab-base"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "colored",
@@ -2459,7 +2459,7 @@ dependencies = [
 
 [[package]]
 name = "typstlab-cli"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2476,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "typstlab-mcp"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -2493,7 +2493,7 @@ dependencies = [
 
 [[package]]
 name = "typstlab-proto"
-version = "0.0.0"
+version = "0.0.1"
 
 [[package]]
 name = "unicode-general-category"
@@ -3091,7 +3091,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
