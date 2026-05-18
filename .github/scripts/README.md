@@ -5,7 +5,6 @@ GitHub Actions から呼び出す TypeScript スクリプト群です。Bun work
 ## Packages
 
 - `@typstlab/toolchain-monitor`: Typst toolchain / resolver JSON の監視と schema check
-- `@typstlab/release`: release automation 用 helper
 
 ## Setup
 
@@ -68,5 +67,4 @@ node --input-type=module -e "import('./packages/toolchain-monitor/dist/index.js'
 ```bash
 bun --filter '@typstlab/toolchain-monitor' run:cli list
 bun --filter '@typstlab/toolchain-monitor' run:cli run jobCheckTypstSchemaConsistency
-bun --filter '@typstlab/release' run:cli validate-version v0.1.0
 ```
