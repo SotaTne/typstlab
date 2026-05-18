@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "rust",
+  "packages": {
+    ".": {
+      "package-name": "typstlab",
+      "changelog-path": "CHANGELOG.md"
+    }
+  },
+  "plugins": [
+    {
+      "type": "cargo-workspace"
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "typstlab",
+      "components": [
+        "typstlab-app",
+        "typstlab-base",
+        "typstlab-cli",
+        "typstlab-mcp",
+        "typstlab-proto"
+      ]
+    }
+  ],
+  "include-component-in-tag": false,
+  "pull-request-title-pattern": "release: v${version}",
+  "draft": true,
+  "force-tag-creation": true
+}
