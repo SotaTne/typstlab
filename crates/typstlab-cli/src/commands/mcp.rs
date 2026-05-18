@@ -1,9 +1,19 @@
-use anyhow::{Result, anyhow};
+use crate::utils::find_project_root;
+use anyhow::{Context, Result, anyhow};
 use std::path::PathBuf;
 use typstlab_mcp::serve_stdio;
 use typstlab_proto::PROJECT_SETTING_FILE;
 
-pub fn run_stdio(root: PathBuf) -> Result<()> {
+pub fn run_stdio(root: Option<PathBuf>) -> Result<()> {
+    let root = match root {
+        Some(root) => root,
+        None => {
+            let current_dir =
+                std::env::current_dir().context("Could not identify current directory")?;
+            find_project_root(&current_dir)?
+        }
+    };
+
     validate_project_root(&root)?;
 
     tokio::runtime::Builder::new_multi_thread()

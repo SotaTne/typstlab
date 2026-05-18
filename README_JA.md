@@ -89,6 +89,12 @@ typstlab new my-project
 cd my-project
 ```
 
+既存のディレクトリやネストしたパスにも作成できます。
+
+```bash
+typstlab new path/to/project
+```
+
 プロジェクトの状態を確認します。
 
 ```bash
@@ -276,13 +282,13 @@ Project
 MCP server は stdio で起動できます。
 
 ```bash
-typstlab mcp stdio .
+typstlab mcp stdio
 ```
 
 インストールせずに起動する場合:
 
 ```bash
-cargo run -- mcp stdio .
+cargo run -- mcp stdio
 ```
 
 現在 MCP から使える主な機能:
@@ -292,7 +298,8 @@ cargo run -- mcp stdio .
 
 これにより、エディタや agent から `typstlab` の状態確認やビルド実行を行えるようになります。
 
-MCP クライアントには、プロジェクトルートを引数として渡します。
+MCP クライアントには、プロジェクトルートを引数として渡せます。
+省略した場合は、現在の作業ディレクトリからプロジェクトルートを探索します。
 
 ```json
 {
@@ -300,6 +307,19 @@ MCP クライアントには、プロジェクトルートを引数として渡�
     "typstlab": {
       "command": "typstlab",
       "args": ["mcp", "stdio", "/path/to/project"]
+    }
+  }
+}
+```
+
+MCP クライアントがプロジェクトディレクトリで起動するなら、`ROOT` は省略できます。
+
+```json
+{
+  "mcpServers": {
+    "typstlab": {
+      "command": "typstlab",
+      "args": ["mcp", "stdio"]
     }
   }
 }

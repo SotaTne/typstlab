@@ -92,6 +92,12 @@ typstlab new my-project
 cd my-project
 ```
 
+You can also create into an existing or nested path:
+
+```bash
+typstlab new path/to/project
+```
+
 Check the project status.
 
 ```bash
@@ -279,13 +285,13 @@ This lets each project refer to resolved local docs while still sharing the cach
 The MCP server can run over stdio.
 
 ```bash
-typstlab mcp stdio .
+typstlab mcp stdio
 ```
 
 Without installing:
 
 ```bash
-cargo run -- mcp stdio .
+cargo run -- mcp stdio
 ```
 
 Current MCP capabilities:
@@ -296,6 +302,7 @@ Current MCP capabilities:
 This allows editors and agents to inspect `typstlab` project status and trigger builds.
 
 Pass the project root as an argument from your MCP client.
+If omitted, the server resolves the project root from the current working directory.
 
 ```json
 {
@@ -303,6 +310,19 @@ Pass the project root as an argument from your MCP client.
     "typstlab": {
       "command": "typstlab",
       "args": ["mcp", "stdio", "/path/to/project"]
+    }
+  }
+}
+```
+
+If your MCP client starts the process in the project directory, you can also omit the root argument:
+
+```json
+{
+  "mcpServers": {
+    "typstlab": {
+      "command": "typstlab",
+      "args": ["mcp", "stdio"]
     }
   }
 }
@@ -344,4 +364,3 @@ Typst is powerful on its own, but real projects still need answers to questions 
 It is not complete yet.
 The first focus is stabilizing Typst command execution, docs, and MCP.
 After that, fmt, LSP, and test support will be added.
-
