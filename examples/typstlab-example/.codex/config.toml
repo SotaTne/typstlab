@@ -1,0 +1,6 @@
+[mcp_servers.typstlab]
+command = "typstlab"
+args = [
+    "mcp",
+    "stdio"
+]

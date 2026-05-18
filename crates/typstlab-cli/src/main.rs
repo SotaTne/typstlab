@@ -41,8 +41,6 @@ pub enum Commands {
     Status,
     /// Create a new project
     New {
-        /// Project name (optional, defaults to current directory name)
-        name: Option<String>,
         /// Optional path to create the project (defaults to .)
         path: Option<String>,
     },
@@ -77,10 +75,10 @@ pub enum GenCommands {
 
 #[derive(Subcommand, Clone)]
 pub enum McpCommands {
-    /// Run the MCP server over stdio for a project root
+    /// Run the MCP server over stdio
     Stdio {
-        /// Project root containing typstlab.toml
-        root: PathBuf,
+        /// Project root containing typstlab.toml (defaults to current project)
+        root: Option<PathBuf>,
     },
 }
 
@@ -122,8 +120,8 @@ impl Action for CliAction {
         _warning: &mut dyn FnMut(()),
     ) -> Result<Self::Output, Vec<Self::Error>> {
         match &self.cli.command {
-            Commands::New { name, path } => {
-                commands::new::run(name.clone(), path.clone(), self.cli.verbose)
+            Commands::New { path } => {
+                commands::new::run(path.clone(), self.cli.verbose)
                     .map_err(|e| vec![CliError::Command(e.to_string())])?;
                 return Ok(());
             }

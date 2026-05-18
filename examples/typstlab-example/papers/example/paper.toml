@@ -1,0 +1,4 @@
+[paper]
+title = "example"
+entry_point = "main.typ"
+output_name = "main"

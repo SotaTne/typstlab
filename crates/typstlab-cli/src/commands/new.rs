@@ -21,18 +21,10 @@ fn detect_new_warning(target_path: &Path) -> Result<Option<NewWarning>> {
     }
 }
 
-/// new コマンドのエントリポイント
-pub fn run(name: Option<String>, path: Option<String>, verbose: bool) -> Result<()> {
-    let current_dir = std::env::current_dir()?;
-
-    // 1. 作成場所の決定
-    let target_path = match (&name, &path) {
-        // 名前もパスもなし -> カレントディレクトリ
-        (None, None) => current_dir.clone(),
-        // 名前あり、パスなし -> カレントディレクトリの下に名前で作成
-        (Some(n), None) => current_dir.join(n),
-        // パス指定あり -> そのパスを優先
-        (_, Some(p)) => {
+fn resolve_target_path(current_dir: &Path, path: Option<&str>) -> PathBuf {
+    let target_path = match path {
+        None => current_dir.to_path_buf(),
+        Some(p) => {
             let p = Path::new(p);
             let has_absolute_or_rooted_component = matches!(
                 p.components().next(),
@@ -47,17 +39,46 @@ pub fn run(name: Option<String>, path: Option<String>, verbose: bool) -> Result<
         }
     };
 
+    normalize_path_lexically(&target_path)
+}
+
+fn normalize_path_lexically(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+
+    normalized
+}
+
+fn project_name_from_target_path(target_path: &Path) -> Result<String> {
+    target_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            anyhow!(
+                "project target path must have a directory name: {}",
+                target_path.display()
+            )
+        })
+}
+
+/// new コマンドのエントリポイント
+pub fn run(path: Option<String>, verbose: bool) -> Result<()> {
+    let current_dir = std::env::current_dir()?;
+
+    // 1. 作成場所の決定
+    let target_path = resolve_target_path(&current_dir, path.as_deref());
+
     // 2. プロジェクト名の決定
-    let project_name = if let Some(n) = name {
-        n
-    } else {
-        // 名前がなければディレクトリ名から推測
-        target_path
-            .file_name()
-            .and_then(|f| f.to_str())
-            .unwrap_or("unnamed-project")
-            .to_string()
-    };
+    let project_name = project_name_from_target_path(&target_path)?;
 
     let warning = detect_new_warning(&target_path)?;
 
@@ -158,7 +179,10 @@ impl CliSpeaker for NewPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::{NewWarning, detect_new_warning};
+    use super::{
+        NewWarning, detect_new_warning, project_name_from_target_path, resolve_target_path,
+    };
+    use std::path::Path;
     use tempfile::TempDir;
     use typstlab_proto::PROJECT_SETTING_FILE;
 
@@ -185,5 +209,38 @@ mod tests {
             }
             None => panic!("expected warning"),
         }
+    }
+
+    #[test]
+    fn test_project_name_comes_from_target_directory_when_name_and_path_are_given() {
+        let temp = TempDir::new().unwrap();
+        let target_path = resolve_target_path(temp.path(), Some("actual-dir"));
+
+        let project_name = project_name_from_target_path(&target_path).unwrap();
+
+        assert_eq!(target_path, temp.path().join("actual-dir"));
+        assert_eq!(project_name, "actual-dir");
+    }
+
+    #[test]
+    fn test_project_name_comes_from_current_directory_when_no_target_is_given() {
+        let current_dir = Path::new("/workspace/current-project");
+        let target_path = resolve_target_path(current_dir, None);
+
+        let project_name = project_name_from_target_path(&target_path).unwrap();
+
+        assert_eq!(target_path, current_dir);
+        assert_eq!(project_name, "current-project");
+    }
+
+    #[test]
+    fn test_project_name_uses_normalized_target_directory() {
+        let current_dir = Path::new("/workspace/current-project");
+        let target_path = resolve_target_path(current_dir, Some("../other-project/./nested/.."));
+
+        let project_name = project_name_from_target_path(&target_path).unwrap();
+
+        assert_eq!(target_path, Path::new("/workspace/other-project"));
+        assert_eq!(project_name, "other-project");
     }
 }
