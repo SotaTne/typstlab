@@ -1,0 +1,46 @@
+[workspace]
+release = false
+release_always = false
+git_only = true
+publish = false
+semver_check = false
+features_always_increment_minor = true
+max_analyze_commits = 5000
+git_release_draft = true
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
+pr_name = "release: v{{ version }}"
+
+[[package]]
+name = "typstlab-cli"
+release = true
+changelog_update = true
+changelog_path = "CHANGELOG.md"
+changelog_include = [
+  "typstlab-app",
+  "typstlab-base",
+  "typstlab-mcp",
+  "typstlab-proto",
+  "xtask",
+]
+
+[changelog]
+header = """# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+"""
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^changed", group = "Changed" },
+  { message = "^perf", group = "Changed" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^deps", group = "Changed" },
+  { message = "^deprecated", group = "Deprecated" },
+  { message = "^remove", group = "Removed" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^security", group = "Security" },
+  { message = "^.*", group = "Other" },
+]
