@@ -71,3 +71,6 @@ coverage/
 .tools
 
 tmp/
+
+# Release signing private keys
+*minisign*.key
