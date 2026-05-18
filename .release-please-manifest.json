@@ -1,3 +1,7 @@
 {
-  ".": "0.1.0"
+  "crates/typstlab-app": "0.1.0",
+  "crates/typstlab-base": "0.1.0",
+  "crates/typstlab-cli": "0.1.0",
+  "crates/typstlab-mcp": "0.1.0",
+  "crates/typstlab-proto": "0.1.0"
 }
