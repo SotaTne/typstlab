@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "typstlab": {
+      "command": "typstlab",
+      "args": [
+        "mcp",
+        "stdio"
+      ]
+    }
+  }
+}
