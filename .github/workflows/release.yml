@@ -107,6 +107,8 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - uses: actions/checkout@v6
+
       - name: Resolve release tag
         shell: bash
         run: |
@@ -122,6 +124,10 @@ jobs:
         shell: bash
         working-directory: dist
         run: shasum -a 256 typstlab-* > sha256.txt
+
+      - name: Copy minisign public key
+        shell: bash
+        run: cp minisign.pub dist/minisign.pub
 
       - name: Install minisign
         shell: bash
@@ -151,6 +157,7 @@ jobs:
           path: |
             dist/sha256.txt
             dist/sha256.txt.minisig
+            dist/minisign.pub
           if-no-files-found: error
           retention-days: 3
 
@@ -160,6 +167,7 @@ jobs:
           artifacts: |
             dist/sha256.txt
             dist/sha256.txt.minisig
+            dist/minisign.pub
           allowUpdates: true
           omitNameDuringUpdate: true
           omitBodyDuringUpdate: true
