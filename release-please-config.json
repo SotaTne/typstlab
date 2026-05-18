@@ -2,41 +2,15 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "rust",
   "packages": {
-    "crates/typstlab-app": {
-      "package-name": "typstlab-app",
-      "changelog-path": "CHANGELOG.md"
-    },
-    "crates/typstlab-base": {
-      "package-name": "typstlab-base",
-      "changelog-path": "CHANGELOG.md"
-    },
-    "crates/typstlab-cli": {
-      "package-name": "typstlab-cli",
-      "changelog-path": "CHANGELOG.md"
-    },
-    "crates/typstlab-mcp": {
-      "package-name": "typstlab-mcp",
-      "changelog-path": "CHANGELOG.md"
-    },
-    "crates/typstlab-proto": {
-      "package-name": "typstlab-proto",
+    ".": {
+      "package-name": "typstlab",
       "changelog-path": "CHANGELOG.md"
     }
   },
   "plugins": [
     {
-      "type": "cargo-workspace"
-    },
-    {
-      "type": "linked-versions",
-      "groupName": "typstlab",
-      "components": [
-        "typstlab-app",
-        "typstlab-base",
-        "typstlab-cli",
-        "typstlab-mcp",
-        "typstlab-proto"
-      ]
+      "type": "cargo-workspace",
+      "updateAllPackages": true
     }
   ],
   "include-component-in-tag": false,

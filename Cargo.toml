@@ -1,3 +1,10 @@
+[package]
+name = "typstlab"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
 [workspace]
 members = [
   "crates/typstlab-proto",
