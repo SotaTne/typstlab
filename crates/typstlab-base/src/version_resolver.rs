@@ -408,12 +408,10 @@ fn validate_and_parse_version(
     tool: &'static str,
     version: &str,
 ) -> Result<SemverVersion, VersionResolveError> {
-    SemverVersion::parse(version)
-        .map(|version| version)
-        .map_err(|_| VersionResolveError::InvalidVersion {
-            tool,
-            version: version.to_string(),
-        })
+    SemverVersion::parse(version).map_err(|_| VersionResolveError::InvalidVersion {
+        tool,
+        version: version.to_string(),
+    })
 }
 
 #[cfg(test)]
