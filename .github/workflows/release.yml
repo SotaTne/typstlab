@@ -101,13 +101,13 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v6
         with:
           pattern: typstlab-*
           path: dist
           merge-multiple: true
-
-      - uses: actions/checkout@v6
 
       - name: Resolve release tag
         shell: bash
