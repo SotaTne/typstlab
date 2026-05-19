@@ -15,6 +15,7 @@ static TYPST_TABLE: OnceLock<Result<CompatibilityTable, VersionResolveError>> = 
 static TYPST_DOCS_TABLE: OnceLock<Result<CompatibilityTable, VersionResolveError>> =
     OnceLock::new();
 static TYPSTYLE_TABLE: OnceLock<Result<CompatibilityTable, VersionResolveError>> = OnceLock::new();
+static LATEST_TYPST: OnceLock<String> = OnceLock::new();
 
 static TYPST_RESOLVER: JsonToolResolver = JsonToolResolver {
     name: "typst",
@@ -33,7 +34,16 @@ static TYPSTYLE_RESOLVER: JsonToolResolver = JsonToolResolver {
 };
 
 pub fn get_latest_typst() -> &'static str {
-    "0.14.2"
+    LATEST_TYPST
+        .get_or_init(|| {
+            TYPST_RESOLVER
+                .table()
+                .and_then(|table| table.get_latest_without_compatible("typst"))
+                .unwrap_or_else(|error| {
+                    panic!("Failed to get latest typst version from embedded JSON: {error}")
+                })
+        })
+        .as_str()
 }
 
 fn default_typst_version() -> String {
@@ -267,7 +277,7 @@ impl CompatibilityTable {
             }
 
             let typst_version = normalize_version(key);
-            validate_version(tool, &typst_version)?;
+            validate_and_parse_version(tool, &typst_version)?;
 
             let versions =
                 value
@@ -287,7 +297,8 @@ impl CompatibilityTable {
                             message: format!("expected string version under key '{key}'"),
                         })?;
                 let version = normalize_version(version);
-                validate_version(tool, &version)?;
+                validate_and_parse_version(tool, &version)?;
+
                 all_versions.insert(version.clone());
                 compatible_versions.push(version);
             }
@@ -309,6 +320,31 @@ impl CompatibilityTable {
         self.versions_by_typst.get(typst_version).map(Vec::as_slice)
     }
 
+    fn get_latest_without_compatible(
+        &self,
+        tool: &'static str,
+    ) -> Result<String, VersionResolveError> {
+        let versions = self
+            .all_versions
+            .iter()
+            .map(|version| {
+                let parsed = validate_and_parse_version(tool, version)?;
+                Ok((parsed, version))
+            })
+            .collect::<Result<Vec<_>, VersionResolveError>>()?;
+
+        let latest = versions
+            .into_iter()
+            .max_by(|(left, _), (right, _)| left.cmp(right))
+            .map(|(_, version)| version.clone())
+            .ok_or_else(|| VersionResolveError::InvalidEmbeddedJson {
+                tool,
+                message: "no valid versions found in JSON".to_string(),
+            })?;
+
+        Ok(latest)
+    }
+
     fn latest_compatible(
         &self,
         tool: &'static str,
@@ -321,9 +357,7 @@ impl CompatibilityTable {
         let latest = versions
             .iter()
             .map(|version| {
-                validate_version(tool, version)?;
-                let parsed =
-                    SemverVersion::parse(version).expect("version was validated immediately above");
+                let parsed = validate_and_parse_version(tool, version)?;
                 Ok((parsed, version))
             })
             .collect::<Result<Vec<_>, VersionResolveError>>()?
@@ -340,7 +374,7 @@ impl CompatibilityTable {
         typst_version: &str,
         version: &str,
     ) -> Result<(), VersionResolveError> {
-        validate_version(tool, version)?;
+        validate_and_parse_version(tool, version)?;
         let versions = self.compatible_versions(typst_version).unwrap_or(&[]);
 
         if versions.iter().any(|candidate| candidate == version) {
@@ -370,9 +404,12 @@ fn is_version_key(key: &str) -> bool {
     SemverVersion::parse(key.strip_prefix('v').unwrap_or(key)).is_ok()
 }
 
-fn validate_version(tool: &'static str, version: &str) -> Result<(), VersionResolveError> {
+fn validate_and_parse_version(
+    tool: &'static str,
+    version: &str,
+) -> Result<SemverVersion, VersionResolveError> {
     SemverVersion::parse(version)
-        .map(|_| ())
+        .map(|version| version)
         .map_err(|_| VersionResolveError::InvalidVersion {
             tool,
             version: version.to_string(),
