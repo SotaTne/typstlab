@@ -5,6 +5,11 @@ name: Release Assets
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to publish, for example v0.1.2. Leave empty to build artifacts only."
+        required: false
+        type: string
   release:
     types: [published]
 
@@ -47,6 +52,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -102,6 +109,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
       - uses: actions/download-artifact@v6
         with:
@@ -114,16 +123,32 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
             tag="${{ github.event.release.tag_name }}"
+            is_release_target="true"
+          elif [[ -n "${{ inputs.release_tag }}" ]]; then
+            tag="${{ inputs.release_tag }}"
+            is_release_target="true"
           else
             tag="workflow-dispatch"
+            is_release_target="false"
           fi
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
           echo "VERSION=${tag#v}" >> "$GITHUB_ENV"
+          echo "IS_RELEASE_TARGET=$is_release_target" >> "$GITHUB_ENV"
 
       - name: Create checksum file
         shell: bash
         working-directory: dist
         run: shasum -a 256 typstlab-* > sha256.txt
+
+      - name: Resolve Homebrew source checksum
+        if: env.IS_RELEASE_TARGET == 'true'
+        id: homebrew-source
+        shell: bash
+        run: |
+          url="https://github.com/SotaTne/typstlab/archive/refs/tags/${RELEASE_TAG}.tar.gz"
+          sha256="$(curl -fsSL "$url" | shasum -a 256 | awk '{ print $1 }')"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
 
       - name: Copy minisign public key
         shell: bash
@@ -151,7 +176,7 @@ jobs:
           rm minisign.key
 
       - uses: actions/upload-artifact@v6
-        if: github.event_name == 'workflow_dispatch'
+        if: env.IS_RELEASE_TARGET != 'true'
         with:
           name: release-checksums
           path: |
@@ -164,6 +189,7 @@ jobs:
       - uses: ncipollo/release-action@v1
         if: github.event_name == 'release'
         with:
+          tag: ${{ env.RELEASE_TAG }}
           artifacts: |
             dist/sha256.txt
             dist/sha256.txt.minisig
@@ -173,14 +199,30 @@ jobs:
           omitBodyDuringUpdate: true
           omitPrereleaseDuringUpdate: true
 
+      - uses: ncipollo/release-action@v1
+        if: github.event_name == 'workflow_dispatch' && env.IS_RELEASE_TARGET == 'true'
+        with:
+          tag: ${{ env.RELEASE_TAG }}
+          artifacts: |
+            dist/typstlab-*
+            dist/sha256.txt
+            dist/sha256.txt.minisig
+            dist/minisign.pub
+          allowUpdates: true
+          omitNameDuringUpdate: true
+          omitBodyDuringUpdate: true
+          omitPrereleaseDuringUpdate: true
+
       - name: Bump Homebrew formula
-        if: github.event_name == 'release'
+        if: env.IS_RELEASE_TARGET == 'true'
         uses: mislav/bump-homebrew-formula-action@v4
         with:
           formula-name: typstlab
           formula-path: Formula/typstlab.rb
           homebrew-tap: SotaTne/homebrew-tap
           tag-name: ${{ env.RELEASE_TAG }}
+          download-url: ${{ steps.homebrew-source.outputs.url }}
+          download-sha256: ${{ steps.homebrew-source.outputs.sha256 }}
           create-pullrequest: true
           commit-message: |
             {{formulaName}} {{version}}
