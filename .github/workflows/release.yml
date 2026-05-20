@@ -172,3 +172,19 @@ jobs:
           omitNameDuringUpdate: true
           omitBodyDuringUpdate: true
           omitPrereleaseDuringUpdate: true
+
+      - name: Bump Homebrew formula
+        if: github.event_name == 'release'
+        uses: mislav/bump-homebrew-formula-action@v4
+        with:
+          formula-name: typstlab
+          formula-path: Formula/typstlab.rb
+          homebrew-tap: SotaTne/homebrew-tap
+          tag-name: ${{ env.RELEASE_TAG }}
+          create-pullrequest: true
+          commit-message: |
+            {{formulaName}} {{version}}
+
+            Created by https://github.com/mislav/bump-homebrew-formula-action
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
