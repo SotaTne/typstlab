@@ -1,3 +1,10 @@
+/*
+ * これは、 typstlab-toolchain 内での tool version 解決のためのモジュールです。
+ * resolver.json を使うか、typstlab 自身の version を使うかを決定し、互換性表を構築します。
+ * また、主なパース処理などはresolver.json の構造に依存しており、 tool ごとに異なる resolver.json
+ * を扱うことができます。
+ */
+
 use semver::Version;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -5,7 +12,11 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VersionResolution {
+    /// tool ごとの resolver.json を使い、base version から利用可能な version を解決する。
+    /// typst のように外部リリースとの互換性表を持つ tool はこの経路を使う。
     ResolverJson(&'static str),
+    /// typstlab 自身のバージョンをそのまま tool の version として扱う。
+    /// typstlab のドキュメントなど、外部の互換性表を持たない配布物で使う。
     TypstlabVersion,
 }
 
@@ -19,7 +30,9 @@ pub enum VersionResolveError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompatibilityTable {
+    /// base version をキーに、その時点で互換とみなせる tool version を保持する。
     versions_by_base: BTreeMap<String, Vec<String>>,
+    /// resolver.json 内に登場した全 version。検証や status 表示で使うために保持する。
     all_versions: BTreeSet<String>,
 }
 
@@ -124,14 +137,14 @@ mod tests {
         let error = CompatibilityTable::from_json_str(
             "tool",
             r#"{
-                "0.1.0": ["0.1.0"]
+                "0.1.0": ["v0.1.0"]
             }"#,
         )
         .unwrap_err();
 
         assert!(matches!(
             error,
-            VersionResolveError::InvalidVersion { version, .. } if version == "0.1.0"
+            VersionResolveError::InvalidVersion { version, .. } if version == "v0.1.0"
         ));
     }
 }

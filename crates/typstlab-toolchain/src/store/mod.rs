@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-pub mod binary_store;
-pub mod docs_store;
+pub mod binary;
+pub mod docs;
 
-pub use binary_store::{BinaryStoreKey, StoredBinary, ToolchainBinaryStore};
-pub use docs_store::{DocsStoreKey, StoredDocsTree, ToolchainDocsStore};
+pub use binary::{BinaryStoreKey, StoredBinary, ToolchainBinaryStore};
+pub use docs::{DocsStoreKey, StoredDocsTree, ToolchainDocsStore};
 
 #[derive(Debug, Error)]
 pub enum ToolchainStoreError {

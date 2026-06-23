@@ -4,27 +4,22 @@ use crate::ToolchainError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolInvocation {
-    pub executable: String,
+    /// executable は runtime 側で解決するため、ここでは引数列だけを持つ。
     pub args: Vec<String>,
+    /// この invocation が実行可能な tool version の条件。
     pub version_guard: VersionGuard,
 }
 
 impl ToolInvocation {
-    pub fn new(
-        executable: impl Into<String>,
-        args: Vec<String>,
-        version_guard: VersionGuard,
-    ) -> Result<Self, ToolchainError> {
-        Ok(Self {
-            executable: executable.into(),
+    pub fn new(args: Vec<String>, version_guard: VersionGuard) -> Self {
+        Self {
             args,
             version_guard,
-        })
+        }
     }
 
-    pub fn new_all_versions(executable: impl Into<String>, args: Vec<String>) -> Self {
+    pub fn new_all_versions(args: Vec<String>) -> Self {
         Self {
-            executable: executable.into(),
             args,
             version_guard: VersionGuard::any(),
         }
@@ -33,8 +28,11 @@ impl ToolInvocation {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VersionGuard {
+    /// 全 version で使える command。
     Any,
+    /// 単一の semver requirement を満たす version だけで使える command。
     Req(VersionReq),
+    /// 複数の requirement のどれかを満たせば使える command。
     AnyOf(Vec<VersionReq>),
 }
 
@@ -68,13 +66,15 @@ impl VersionGuard {
 }
 
 pub trait ToolCommand {
-    fn invocation(&self) -> Result<ToolInvocation, ToolchainError>;
+    /// 型付き command を、実行前の中間表現へ変換する。
+    /// ここではまだ executable path を知らない。
+    fn to_invocation(&self) -> Result<ToolInvocation, ToolchainError>;
 }
 
 pub trait RawCommandFactory {
     type Command: ToolCommand;
 
+    /// 型付き API にない command を使うための escape hatch。
+    /// raw でも version guard を必須にして、無条件実行を避ける。
     fn raw(&self, args: Vec<String>, guard: VersionGuard) -> Self::Command;
 }
-
-pub fn assert_raw_command_factory<T: RawCommandFactory>(_factory: &T) {}

@@ -1,38 +1,55 @@
-use crate::{
-    InstallLayout, InstallSource, Platform, RawCommandFactory, ToolInvocation, ToolchainError,
-    VersionResolution,
-};
+use crate::{Platform, ToolchainError, VersionResolution};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum VersionParser {
-    Regex { pattern: &'static str },
-}
+pub mod command;
+pub mod distribution;
+pub mod github;
+pub mod platform_asset;
+pub mod version;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VersionCommand {
-    pub invocation: ToolInvocation,
-    pub parser: VersionParser,
-}
+pub use command::{RawCommandFactory, ToolCommand, ToolInvocation, VersionGuard};
+pub use distribution::{BinaryArchiveFormat, BinaryDistribution, BinaryLayout};
+pub use github::{GithubBinaryTool, GithubReleaseSource};
+pub use platform_asset::{PlatformAssetSpec, resolve_platform_asset};
+pub use version::{VersionCommand, VersionParser, VersionProbe};
 
+/// compile-time に登録された binary tool の共通 protocol。
+/// ここには「配布物をどう解決するか」だけを置き、実行場所や Store は持たせない。
 pub trait BinaryTool: Sync {
+    /// toolchain 全体で一意な tool id。
     fn id(&self) -> &'static str;
-    fn version_resolution(&self) -> VersionResolution;
-    fn version_command(&self) -> Result<VersionCommand, ToolchainError>;
-    fn asset_name(&self, target_platform: Platform) -> Result<&'static str, ToolchainError>;
-    fn install_layout(&self, target_platform: Platform) -> Result<InstallLayout, ToolchainError>;
 
-    fn install_source(
+    /// version を resolver.json で解決するか、typstlab 自身の version に揃えるかを返す。
+    fn version_resolution(&self) -> VersionResolution;
+
+    /// installed binary から実際の version を読むための command を返す。
+    fn version_command(&self) -> Result<VersionCommand, ToolchainError>;
+
+    /// target platform に対応する配布 asset 名を返す。
+    fn asset_name(&self, target_platform: Platform) -> Result<&'static str, ToolchainError>;
+
+    /// target platform の archive 展開方法と executable の位置を返す。
+    fn binary_layout(&self, target_platform: Platform) -> Result<BinaryLayout, ToolchainError>;
+
+    /// version と target platform から、download URL と配置 layout を確定する。
+    fn distribution(
         &self,
         version: &str,
         target_platform: Platform,
-    ) -> Result<InstallSource, ToolchainError>;
+    ) -> Result<BinaryDistribution, ToolchainError>;
 }
 
+/// 型付き command API を持つ binary tool。
+/// typst の compile/query のような command を tool ごとの型として公開するための層。
 pub trait TypedBinaryTool: BinaryTool {
     type Commands: RawCommandFactory + Sync + 'static;
 
     fn commands(&self) -> &'static Self::Commands;
 }
+
+#[cfg(test)]
+/// `RawCommandFactory` を実装しているかを、型制約だけで test するための補助関数。
+/// 実行時の意味はなく、生成された registry が contract を満たすかをコンパイル時に固定する。
+pub fn assert_raw_command_factory<T: RawCommandFactory>(_factory: &T) {}
 
 include!(concat!(env!("OUT_DIR"), "/binary_registry.rs"));
 
@@ -77,7 +94,6 @@ mod tests {
     fn every_binary_tool_has_version_command() {
         for tool in TOOLS {
             let command = tool.version_command().unwrap();
-            assert!(!command.invocation.executable.is_empty());
             assert!(!command.invocation.args.is_empty());
             assert!(
                 command
@@ -103,18 +119,19 @@ mod tests {
 
     #[test]
     fn every_binary_tool_has_raw_command_factory() {
+        // build.rs が生成した registry 全体に対して、COMMAND が RawCommandFactory を満たすことを固定する。
         assert_command_contracts();
     }
 
     #[test]
-    fn every_binary_tool_resolves_current_platform_install_source() {
+    fn every_binary_tool_resolves_current_platform_distribution() {
         let platform = Platform::current();
 
         for tool in TOOLS {
-            let source = tool.install_source("0.1.0", platform).unwrap();
-            assert!(!source.url.is_empty());
+            let distribution = tool.distribution("0.1.0", platform).unwrap();
+            assert!(!distribution.url.is_empty());
             assert!(
-                !source
+                !distribution
                     .layout
                     .executable_relative_path
                     .as_os_str()

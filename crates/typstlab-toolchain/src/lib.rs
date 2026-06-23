@@ -1,28 +1,27 @@
 pub mod binary;
-pub mod command;
 pub mod docs;
 pub mod error;
-pub mod install;
 pub mod platform;
-pub mod resolver;
 pub mod runtime;
 pub mod store;
+pub mod toolchain_spec;
+pub mod version_resolution;
 
-pub use binary::{BinaryTool, TypedBinaryTool, VersionCommand, typst::TOOL_ID as TYPST_TOOL_ID};
-pub use command::{RawCommandFactory, ToolCommand, ToolInvocation, VersionGuard};
+pub use binary::{
+    BinaryArchiveFormat, BinaryDistribution, BinaryLayout, BinaryTool, RawCommandFactory,
+    ToolCommand, ToolInvocation, TypedBinaryTool, VersionCommand, VersionGuard,
+    typst::TOOL_ID as TYPST_TOOL_ID,
+};
 pub use docs::{DocsSource, DocsSourceFormat, DocsTool, RenderedDocs};
 pub use error::ToolchainError;
-pub use install::{InstallLayout, InstallSource, SourceFormat};
 pub use platform::{Arch, Os, Platform};
-pub use resolver::{
-    CompatibilityTable, ToolChoice, ToolchainCandidate, ToolchainSpec, ToolchainSpecError,
-    VersionResolution, VersionResolveError,
-};
 pub use runtime::{ResolvedDocsTree, TypedResolvedBinary};
 pub use store::{
     BinaryStoreKey, DocsStoreKey, StoredBinary, StoredDocsTree, ToolchainBinaryStore,
     ToolchainDocsStore, ToolchainStoreError,
 };
+pub use toolchain_spec::{ToolChoice, ToolchainCandidate, ToolchainSpec, ToolchainSpecError};
+pub use version_resolution::{CompatibilityTable, VersionResolution, VersionResolveError};
 
 #[cfg(test)]
 mod tests {

@@ -1,4 +1,4 @@
-use crate::{DocsTool, StoredBinary, StoredDocsTree, TypedBinaryTool};
+use crate::{StoredBinary, TypedBinaryTool};
 
 #[derive(Debug, Clone)]
 pub struct TypedResolvedBinary<'a, T>
@@ -25,34 +25,10 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ResolvedDocsTree<'a, D>
-where
-    D: DocsTool,
-{
-    pub tool: &'a D,
-    pub stored: StoredDocsTree,
-    pub version: String,
-}
-
-impl<'a, D> ResolvedDocsTree<'a, D>
-where
-    D: DocsTool,
-{
-    pub fn new(tool: &'a D, stored: StoredDocsTree, version: impl Into<String>) -> Self {
-        Self {
-            tool,
-            stored,
-            version: version.into(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::BinaryTool;
     use crate::binary::typst;
-    use crate::{StoredBinary, TypedResolvedBinary};
+    use crate::{BinaryTool, StoredBinary, TypedResolvedBinary};
 
     #[test]
     fn typed_resolved_binary_uses_tool_commands() {

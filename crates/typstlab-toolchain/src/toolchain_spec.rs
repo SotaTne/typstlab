@@ -1,3 +1,10 @@
+/*
+ * これは、 typstlab-toolchain 内でのtypstlabで使うtoolchainの仕様
+ * および、実際の選択を行うためのモジュールです。
+ * これはtomlに書かれたtoolchain specificationを読み込み、 toolごとの選択肢を
+ * 保持します。
+ */
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -131,37 +138,51 @@ impl DerefMut for ToolchainSpec {
 mod tests {
     use super::*;
 
+    #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+    struct ChoiceWrapper {
+        choice: ToolChoice,
+    }
+
     #[test]
     fn tool_choice_serializes_as_plain_string() {
-        let serialized = serde_json::to_string(&ToolChoice::Version("0.14.2".to_string())).unwrap();
+        let serialized = toml::to_string(&ChoiceWrapper {
+            choice: ToolChoice::Version("0.14.2".to_string()),
+        })
+        .unwrap();
 
-        assert_eq!(serialized, r#""0.14.2""#);
+        assert_eq!(serialized.trim(), r#"choice = "0.14.2""#);
     }
 
     #[test]
     fn tool_choice_deserializes_special_values_and_versions() {
         assert_eq!(
-            serde_json::from_str::<ToolChoice>(r#""auto""#).unwrap(),
+            toml::from_str::<ChoiceWrapper>("choice = \"auto\"")
+                .unwrap()
+                .choice,
             ToolChoice::Auto
         );
         assert_eq!(
-            serde_json::from_str::<ToolChoice>(r#""none""#).unwrap(),
+            toml::from_str::<ChoiceWrapper>("choice = \"none\"")
+                .unwrap()
+                .choice,
             ToolChoice::None
         );
         assert_eq!(
-            serde_json::from_str::<ToolChoice>(r#""0.14.2""#).unwrap(),
+            toml::from_str::<ChoiceWrapper>("choice = \"0.14.2\"")
+                .unwrap()
+                .choice,
             ToolChoice::Version("0.14.2".to_string())
         );
     }
 
     #[test]
     fn toolchain_spec_is_transparent_map() {
-        let spec: ToolchainSpec = serde_json::from_str(
-            r#"{
-                "typst": "0.14.2",
-                "typst-docs": "auto",
-                "typstyle": "none"
-            }"#,
+        let spec: ToolchainSpec = toml::from_str(
+            r#"
+                typst = "0.14.2"
+                typst-docs = "auto"
+                typstyle = "none"
+            "#,
         )
         .unwrap();
 
@@ -175,12 +196,12 @@ mod tests {
 
     #[test]
     fn toolchain_spec_returns_candidates_in_key_order() {
-        let spec: ToolchainSpec = serde_json::from_str(
-            r#"{
-                "typstyle": "none",
-                "typst": "0.14.2",
-                "typst-docs": "auto"
-            }"#,
+        let spec: ToolchainSpec = toml::from_str(
+            r#"
+                typstyle = "none"
+                typst = "0.14.2"
+                typst-docs = "auto"
+            "#,
         )
         .unwrap();
 
@@ -198,10 +219,10 @@ mod tests {
 
     #[test]
     fn toolchain_spec_requires_explicit_typst_version() {
-        let spec: ToolchainSpec = serde_json::from_str(
-            r#"{
-                "typst": "auto"
-            }"#,
+        let spec: ToolchainSpec = toml::from_str(
+            r#"
+                typst = "auto"
+            "#,
         )
         .unwrap();
 
@@ -213,10 +234,10 @@ mod tests {
 
     #[test]
     fn toolchain_spec_accepts_explicit_typst_version() {
-        let spec: ToolchainSpec = serde_json::from_str(
-            r#"{
-                "typst": "0.14.2"
-            }"#,
+        let spec: ToolchainSpec = toml::from_str(
+            r#"
+                typst = "0.14.2"
+            "#,
         )
         .unwrap();
 
