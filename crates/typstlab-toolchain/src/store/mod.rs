@@ -29,9 +29,11 @@ pub(crate) fn create_staging(
 }
 
 pub(crate) fn commit_directory(
-    staging: &Path,
+    staging: &tempfile::TempDir,
     destination: &Path,
 ) -> Result<(), ToolchainStoreError> {
+    // staging の所有権は Store::commit が持つ。
+    // helper は rename だけを担当し、失敗時の cleanup は TempDir の Drop に任せる。
     if destination.exists() {
         return Err(ToolchainStoreError::DestinationAlreadyExists {
             path: destination.to_path_buf(),
@@ -42,6 +44,6 @@ pub(crate) fn commit_directory(
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::rename(staging, destination)?;
+    std::fs::rename(staging.path(), destination)?;
     Ok(())
 }

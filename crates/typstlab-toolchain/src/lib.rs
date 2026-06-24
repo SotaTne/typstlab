@@ -4,23 +4,26 @@ pub mod error;
 pub mod platform;
 pub mod runtime;
 pub mod store;
+pub mod tool;
+pub mod tool_choices;
 pub mod toolchain_spec;
 pub mod version_resolution;
 
 pub use binary::{
     BinaryArchiveFormat, BinaryDistribution, BinaryLayout, BinaryTool, RawCommandFactory,
     ToolCommand, ToolInvocation, TypedBinaryTool, VersionCommand, VersionGuard,
-    typst::TOOL_ID as TYPST_TOOL_ID,
 };
 pub use docs::{DocsSource, DocsSourceFormat, DocsTool, RenderedDocs};
 pub use error::ToolchainError;
 pub use platform::{Arch, Os, Platform};
-pub use runtime::{ResolvedDocsTree, TypedResolvedBinary};
+pub use runtime::{ResolvedBinary, ResolvedDocsTree};
 pub use store::{
     BinaryStoreKey, DocsStoreKey, StoredBinary, StoredDocsTree, ToolchainBinaryStore,
     ToolchainDocsStore, ToolchainStoreError,
 };
-pub use toolchain_spec::{ToolChoice, ToolchainCandidate, ToolchainSpec, ToolchainSpecError};
+pub use tool::ToolchainTool;
+pub use tool_choices::{ToolChoice, ToolChoiceCandidate, ToolChoices, ToolChoicesError};
+pub use toolchain_spec::ToolchainSpec;
 pub use version_resolution::{CompatibilityTable, VersionResolution, VersionResolveError};
 
 #[cfg(test)]

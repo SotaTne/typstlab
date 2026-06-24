@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use typstlab_proto::path::HasRoot;
-use typstlab_proto::{Store, StoreIndex};
+use typstlab_proto::{Store, StoreEntryAddress, StoreIndex};
 
 use crate::{Arch, Os, Platform};
 
@@ -24,9 +24,34 @@ impl BinaryStoreKey {
     }
 }
 
+impl StoreEntryAddress for BinaryStoreKey {
+    fn relative_path(&self) -> PathBuf {
+        PathBuf::from(&self.tool_id)
+            .join(&self.version)
+            .join(platform_path_segment(self.platform))
+    }
+
+    fn staging_prefix(&self) -> String {
+        format!(
+            "binary-{}-{}-{}-",
+            self.tool_id,
+            self.version,
+            platform_path_segment(self.platform)
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredBinary {
-    pub root: PathBuf,
+    /// tool/version/platform ごとに commit された install root。
+    /// executable_relative_path はこの path からの相対 path として解決する。
+    pub install_root: PathBuf,
+}
+
+impl HasRoot for StoredBinary {
+    fn root(&self) -> PathBuf {
+        self.install_root.clone()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -37,13 +62,6 @@ pub struct ToolchainBinaryStore {
 impl ToolchainBinaryStore {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
-    }
-
-    pub fn path_for(&self, key: &BinaryStoreKey) -> PathBuf {
-        self.root
-            .join(&key.tool_id)
-            .join(&key.version)
-            .join(platform_path_segment(key.platform))
     }
 }
 
@@ -61,25 +79,19 @@ impl Store for ToolchainBinaryStore {
 
     fn resolve(&self, key: &Self::Key) -> Result<Option<Self::Item>, Self::Error> {
         let root = self.path_for(key);
-        Ok(root.exists().then_some(StoredBinary { root }))
+        Ok(root.exists().then_some(StoredBinary { install_root: root }))
     }
 
     fn stage(&self, key: &Self::Key) -> Result<Self::Staging, Self::Error> {
-        create_staging(
-            &self.root,
-            &format!(
-                "binary-{}-{}-{}-",
-                key.tool_id,
-                key.version,
-                platform_path_segment(key.platform)
-            ),
-        )
+        create_staging(&self.root, &key.staging_prefix())
     }
 
     fn commit(&self, key: &Self::Key, staging: Self::Staging) -> Result<Self::Item, Self::Error> {
         let destination = self.path_for(key);
-        commit_directory(staging.path(), &destination)?;
-        Ok(StoredBinary { root: destination })
+        commit_directory(&staging, &destination)?;
+        Ok(StoredBinary {
+            install_root: destination,
+        })
     }
 }
 
@@ -108,7 +120,7 @@ impl StoreIndex for ToolchainBinaryStore {
                         && !is_hidden(&platform.file_name().to_string_lossy())
                     {
                         binaries.push(StoredBinary {
-                            root: platform.path(),
+                            install_root: platform.path(),
                         });
                     }
                 }
@@ -159,14 +171,14 @@ mod tests {
         let stored = store.commit(&key, staging).unwrap();
 
         assert_eq!(
-            stored.root,
+            stored.root(),
             temp.path()
                 .join("binary")
                 .join("typst")
                 .join("0.14.2")
                 .join("aarch64-apple-darwin")
         );
-        assert!(stored.root.join("typst").exists());
+        assert!(stored.install_root.join("typst").exists());
         assert_eq!(store.resolve(&key).unwrap(), Some(stored));
     }
 }

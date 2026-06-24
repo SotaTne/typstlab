@@ -1,18 +1,33 @@
+/*
+ *
+ * typstのバイナリツールの定義とコマンドの実装を提供するモジュールです。
+ * ここではTOOLのみが公開されていたら、正しくtypstのバイナリツールを利用できるようになります。
+ * 他のバイナリツールでもTOOLを公開することで、同様の方法で利用可能になります。
+ *
+ */
+
 use std::path::PathBuf;
 
-use crate::binary::{
-    GithubBinaryTool, GithubReleaseSource, VersionParser, VersionProbe,
+use crate::binary::{GithubBinaryTool, GithubReleaseSource, VersionParser, VersionProbe};
+use crate::{
+    RawCommandFactory, ToolCommand, ToolInvocation, ToolchainError, VersionGuard, VersionResolution,
 };
-use crate::binary::command::{
-    RawCommandFactory, ToolCommand, ToolInvocation, VersionGuard,
-};
-use crate::{ToolchainError, VersionResolution};
 
 mod platform;
 
+static COMMANDS: TypstCommands = TypstCommands;
+
+const TOOL_ID: &str = "typst";
+
+const GITHUB_SOURCE: GithubReleaseSource = GithubReleaseSource {
+    owner: "typst",
+    repo: "typst",
+    tag_prefix: "v",
+};
+
 pub static TOOL: GithubBinaryTool<TypstCommands> = GithubBinaryTool {
     id: TOOL_ID,
-    commands: &COMMAND,
+    commands: &COMMANDS,
     github: GITHUB_SOURCE,
     version_resolution: VersionResolution::ResolverJson(include_str!("resolver.json")),
     version_probe: VersionProbe {
@@ -22,13 +37,6 @@ pub static TOOL: GithubBinaryTool<TypstCommands> = GithubBinaryTool {
         },
     },
     platforms: platform::SPECS,
-};
-pub static COMMAND: TypstCommands = TypstCommands;
-pub const TOOL_ID: &str = "typst";
-const GITHUB_SOURCE: GithubReleaseSource = GithubReleaseSource {
-    owner: "typst",
-    repo: "typst",
-    tag_prefix: "v",
 };
 
 pub struct TypstCommands;
@@ -139,13 +147,15 @@ impl ToolCommand for TypstCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TypedBinaryTool;
     use crate::binary::BinaryTool;
-    use crate::{Arch, Os, Platform, BinaryArchiveFormat};
+    use crate::{Arch, BinaryArchiveFormat, Os, Platform};
     use semver::VersionReq;
 
     #[test]
     fn compile_command_maps_to_invocation() {
-        let invocation = COMMAND
+        let invocation = TOOL
+            .commands()
             .compile("main.typ", Some(PathBuf::from("main.pdf")))
             .to_invocation()
             .unwrap();
@@ -167,14 +177,15 @@ mod tests {
 
     #[test]
     fn command_factory_creates_typed_commands() {
-        assert!(matches!(COMMAND.update(), TypstCommand::Update));
-        assert!(matches!(COMMAND.version(), TypstCommand::Version));
+        assert!(matches!(TOOL.commands().update(), TypstCommand::Update));
+        assert!(matches!(TOOL.commands().version(), TypstCommand::Version));
     }
 
     #[test]
     fn raw_command_accepts_discontinuous_version_guard() {
         let guard = VersionGuard::any_of(&[">=0.1.0, <0.3.0", ">=0.7.0"]).unwrap();
-        let invocation = COMMAND
+        let invocation = TOOL
+            .commands()
             .raw(vec!["--help".to_string()], guard.clone())
             .to_invocation()
             .unwrap();

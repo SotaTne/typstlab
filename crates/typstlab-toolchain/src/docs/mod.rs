@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::{ToolchainError, VersionResolution};
+use crate::{ToolchainError, ToolchainTool};
 
 pub mod typst;
 
@@ -48,9 +48,7 @@ impl AsRef<Path> for RenderedDocs {
     }
 }
 
-pub trait DocsTool: Sync {
-    fn id(&self) -> &'static str;
-    fn version_resolution(&self) -> VersionResolution;
+pub trait DocsTool: ToolchainTool {
     fn source(&self, version: &str) -> Result<DocsSource, ToolchainError>;
     fn render(&self, source_root: &Path) -> Result<RenderedDocs, ToolchainError>;
 }

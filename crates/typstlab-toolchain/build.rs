@@ -59,7 +59,7 @@ fn generate_binary_registry(tools: &[(String, PathBuf)]) -> String {
     output.push_str("\n#[cfg(test)]\npub fn assert_command_contracts() {\n");
     for (name, _) in tools {
         output.push_str(&format!(
-            "    crate::binary::assert_raw_command_factory(&{name}::COMMAND);\n"
+            "    crate::binary::assert_raw_command_factory(crate::binary::TypedBinaryTool::commands(&{name}::TOOL));\n"
         ));
     }
     output.push_str("}\n");

@@ -3,7 +3,7 @@ use crate::binary::{
     BinaryDistribution, BinaryLayout, PlatformAssetSpec, VersionCommand, VersionProbe,
     resolve_platform_asset,
 };
-use crate::{Platform, ToolchainError, VersionResolution};
+use crate::{Platform, ToolchainError, ToolchainTool, VersionResolution};
 
 use super::{BinaryTool, TypedBinaryTool};
 
@@ -46,7 +46,7 @@ where
     pub platforms: &'static [PlatformAssetSpec],
 }
 
-impl<C> BinaryTool for GithubBinaryTool<C>
+impl<C> ToolchainTool for GithubBinaryTool<C>
 where
     C: RawCommandFactory + Sync + 'static,
 {
@@ -57,7 +57,12 @@ where
     fn version_resolution(&self) -> VersionResolution {
         self.version_resolution
     }
+}
 
+impl<C> BinaryTool for GithubBinaryTool<C>
+where
+    C: RawCommandFactory + Sync + 'static,
+{
     fn version_command(&self) -> Result<VersionCommand, ToolchainError> {
         Ok(self.version_probe.to_command())
     }

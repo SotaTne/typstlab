@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use typstlab_proto::path::HasRoot;
-use typstlab_proto::{Store, StoreIndex};
+use typstlab_proto::{Store, StoreEntryAddress, StoreIndex};
 
 use super::{ToolchainStoreError, commit_directory, create_staging};
 
@@ -20,9 +20,25 @@ impl DocsStoreKey {
     }
 }
 
+impl StoreEntryAddress for DocsStoreKey {
+    fn relative_path(&self) -> PathBuf {
+        PathBuf::from(&self.docs_id).join(&self.version)
+    }
+
+    fn staging_prefix(&self) -> String {
+        format!("docs-{}-{}-", self.docs_id, self.version)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredDocsTree {
     pub root: PathBuf,
+}
+
+impl HasRoot for StoredDocsTree {
+    fn root(&self) -> PathBuf {
+        self.root.clone()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -33,10 +49,6 @@ pub struct ToolchainDocsStore {
 impl ToolchainDocsStore {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
-    }
-
-    pub fn path_for(&self, key: &DocsStoreKey) -> PathBuf {
-        self.root.join(&key.docs_id).join(&key.version)
     }
 }
 
@@ -58,15 +70,12 @@ impl Store for ToolchainDocsStore {
     }
 
     fn stage(&self, key: &Self::Key) -> Result<Self::Staging, Self::Error> {
-        create_staging(
-            &self.root,
-            &format!("docs-{}-{}-", key.docs_id, key.version),
-        )
+        create_staging(&self.root, &key.staging_prefix())
     }
 
     fn commit(&self, key: &Self::Key, staging: Self::Staging) -> Result<Self::Item, Self::Error> {
         let destination = self.path_for(key);
-        commit_directory(staging.path(), &destination)?;
+        commit_directory(&staging, &destination)?;
         Ok(StoredDocsTree { root: destination })
     }
 }

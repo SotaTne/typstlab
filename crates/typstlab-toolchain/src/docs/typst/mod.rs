@@ -3,7 +3,7 @@ use std::io::BufReader;
 use std::path::Path;
 
 use crate::docs::{DocsSource, DocsSourceFormat, DocsTool, RenderedDocs, raw_file_path};
-use crate::{ToolchainError, VersionResolution};
+use crate::{ToolchainError, ToolchainTool, VersionResolution};
 
 pub mod parser;
 
@@ -13,7 +13,7 @@ pub static TOOL: TypstDocs = TypstDocs;
 
 pub struct TypstDocs;
 
-impl DocsTool for TypstDocs {
+impl ToolchainTool for TypstDocs {
     fn id(&self) -> &'static str {
         "typst-docs"
     }
@@ -21,7 +21,9 @@ impl DocsTool for TypstDocs {
     fn version_resolution(&self) -> VersionResolution {
         VersionResolution::ResolverJson(include_str!("resolver.json"))
     }
+}
 
+impl DocsTool for TypstDocs {
     fn source(&self, version: &str) -> Result<DocsSource, ToolchainError> {
         Ok(DocsSource {
             url: format!(

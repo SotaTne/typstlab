@@ -1,4 +1,4 @@
-use crate::{Platform, ToolchainError, VersionResolution};
+use crate::{Platform, ToolchainError, ToolchainTool};
 
 pub mod command;
 pub mod distribution;
@@ -14,13 +14,7 @@ pub use version::{VersionCommand, VersionParser, VersionProbe};
 
 /// compile-time に登録された binary tool の共通 protocol。
 /// ここには「配布物をどう解決するか」だけを置き、実行場所や Store は持たせない。
-pub trait BinaryTool: Sync {
-    /// toolchain 全体で一意な tool id。
-    fn id(&self) -> &'static str;
-
-    /// version を resolver.json で解決するか、typstlab 自身の version に揃えるかを返す。
-    fn version_resolution(&self) -> VersionResolution;
-
+pub trait BinaryTool: ToolchainTool {
     /// installed binary から実際の version を読むための command を返す。
     fn version_command(&self) -> Result<VersionCommand, ToolchainError>;
 
@@ -119,7 +113,7 @@ mod tests {
 
     #[test]
     fn every_binary_tool_has_raw_command_factory() {
-        // build.rs が生成した registry 全体に対して、COMMAND が RawCommandFactory を満たすことを固定する。
+        // build.rs が生成した registry 全体に対して、TOOL から取得できる command factory の契約を固定する。
         assert_command_contracts();
     }
 
