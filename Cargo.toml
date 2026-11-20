@@ -2,6 +2,7 @@
 members = [
   "crates/typstlab-proto",
   "crates/typstlab-base",
+  "crates/typstlab-toolchain",
   "crates/typstlab-app",
   "crates/typstlab-cli",
   "crates/typstlab-mcp",
