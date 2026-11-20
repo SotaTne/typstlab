@@ -2492,6 +2492,16 @@ name = "typstlab-proto"
 version = "0.1.2"
 
 [[package]]
+name = "typstlab-template"
+version = "0.1.2"
+dependencies = [
+ "chrono",
+ "serde",
+ "thiserror 2.0.18",
+ "toml",
+]
+
+[[package]]
 name = "unicode-general-category"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

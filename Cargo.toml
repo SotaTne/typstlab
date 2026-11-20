@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/typstlab-proto",
+  "crates/typstlab-template",
   "crates/typstlab-base",
   "crates/typstlab-app",
   "crates/typstlab-cli",
