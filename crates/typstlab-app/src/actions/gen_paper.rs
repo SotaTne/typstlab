@@ -16,7 +16,7 @@ pub enum GenPaperError {
     ResolveFailed(#[from] CollectionError),
     #[error("Paper creation failed: {source}")]
     PaperError {
-        #[from]
+        #[source]
         source: PaperError,
     },
     #[error("Creation process failed: {0:?}")]
@@ -25,6 +25,12 @@ pub enum GenPaperError {
     TemplateOrInitFailed(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+}
+
+impl From<PaperError> for GenPaperError {
+    fn from(source: PaperError) -> Self {
+        Self::PaperError { source }
+    }
 }
 
 #[derive(Debug, Clone)]

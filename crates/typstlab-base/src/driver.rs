@@ -138,7 +138,7 @@ impl TypstDriver {
 
         let output = Command::new(&self.binary_path).args(args).output()?;
         let duration = start.elapsed().as_millis() as u64;
-        let exit_code = output.status.code().map_or(-1, |code| code);
+        let exit_code = output.status.code().unwrap_or(-1);
 
         Ok(ExecutionResult {
             exit_code,

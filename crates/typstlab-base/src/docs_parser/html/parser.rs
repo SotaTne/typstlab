@@ -44,7 +44,8 @@ pub fn parse_html(input: &str) -> Result<HtmlTree, HtmlParseError> {
     let mut skip_depth = 0usize;
 
     for token in Tokenizer::new(input) {
-        match token.map_err(|error| HtmlParseError::Tokenizer(error.to_string()))? {
+        let Ok(token) = token;
+        match token {
             Token::StartTag(tag) => handle_start_tag(tag, &mut stack, &mut skip_depth)?,
             Token::EndTag(tag) => {
                 let name = html_string_to_string(&tag.name).to_ascii_lowercase();
